@@ -1,0 +1,12 @@
+node_modules/
+dist/
+raw/
+wiki/
+db/
+.env
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.DS_Store
+*.log
