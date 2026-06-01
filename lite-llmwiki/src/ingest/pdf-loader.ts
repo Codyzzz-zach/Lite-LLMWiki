@@ -59,7 +59,7 @@ export async function loadFromPdf(filePath: string, options?: {
         systemPrompt: PDF_CLEAN_PROMPT,
         messages: [{ role: "user", content: body }],
         responseFormat: "text",
-        maxTokens: 16384,
+        maxTokens: 32768,
       });
       cleanedBody = cleanResult.content.trim();
       // 从 cleaned body 中提取第一个 # 标题作为 title

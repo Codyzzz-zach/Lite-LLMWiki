@@ -53,7 +53,7 @@ export async function proIngest(opts: IngestOpts): Promise<ProResult> {
     systemPrompt,
     messages: [{ role: "user", content: userMessage }],
     responseFormat: "json_object",
-    maxTokens: mode === "compile" ? 16384 : 4096,
+    maxTokens: mode === "brainstorm" ? 8192 : mode === "compile" ? 16384 : 4096,
     onStream: onDelta,
     signal,
   });
