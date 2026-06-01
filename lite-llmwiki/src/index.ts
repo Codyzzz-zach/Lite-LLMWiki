@@ -7,7 +7,7 @@
 export { loadConfig } from "./config.js";
 export { KnowledgeStore } from "./knowledge/store.js";
 export { loadFromFile, parseFrontmatter, chunkText, estimateTokens } from "./ingest/loader.js";
-export { loadFromPdf } from "./ingest/pdf-loader.js";
+export { loadFromTex } from "./ingest/tex-loader.js";
 export { proIngest } from "./ingest/listening.js";
 export { queryKnowledge } from "./query/engine.js";
 

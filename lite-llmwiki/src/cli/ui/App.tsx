@@ -3,6 +3,7 @@ import React, { useState, useCallback, useRef } from "react";
 import { loadConfig } from "../../config.js";
 import { KnowledgeStore } from "../../knowledge/store.js";
 import { loadFromFile } from "../../ingest/loader.js";
+import { loadFromTex } from "../../ingest/tex-loader.js";
 import { proIngest } from "../../ingest/listening.js";
 import { queryKnowledge } from "../../query/engine.js";
 import { DeepSeekClient } from "../../core/client.js";
@@ -394,10 +395,11 @@ export function App() {
         if (!args) { add({ kind: "error", content: "需要文件路径" }); break; }
         try {
           if (args.toLowerCase().endsWith(".pdf")) {
-            add({ kind: "error", content: "PDF 暂不支持，请使用 .md 文件" }); break;
+            add({ kind: "error", content: "PDF 暂不支持，请使用 .md 或 .tex 文件" }); break;
           }
           add({ kind: "system", content: "📥 加载材料..." });
-          const src: Source = loadFromFile(args, config);
+          const src: Source = args.toLowerCase().endsWith(".tex")
+            ? await loadFromTex(args, config) : loadFromFile(args, config);
           add({ kind: "result", content: `${src.title}  |  ${src.chunks.length} chunks  |  ~${src.totalTokens} tokens` });
           add({ kind: "system", content: '💡 :anchor "问题" 开始 Brainstorm' });
           sourceRef.current = src;

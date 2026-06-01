@@ -5,6 +5,7 @@ import { loadConfig } from "../../config.js";
 import { DeepSeekClient } from "../../core/client.js";
 import { KnowledgeStore } from "../../knowledge/store.js";
 import { loadFromFile } from "../../ingest/loader.js";
+import { loadFromTex } from "../../ingest/tex-loader.js";
 import { proIngest } from "../../ingest/listening.js";
 import type { IngestOptions, Proposition, ConfirmedProposition, WikiPage } from "../../types.js";
 
@@ -12,7 +13,7 @@ export function registerIngestCommand(program: Command): void {
   program
     .command("ingest")
     .description("Ingest a file — brainstorm → 主线选择 → 逐条确认 → wiki")
-    .argument("<file>", "path to markdown (.md) file")
+    .argument("<file>", "path to markdown (.md) or LaTeX (.tex) file")
     .option("-m, --anchor <text>", "human anchor")
     .action(async (file: string, opts: { anchor?: string }) => {
       await runIngest({ file, anchor: opts.anchor });
@@ -37,11 +38,13 @@ async function runIngest(opts: IngestOptions): Promise<void> {
   // ——— 加载 ———
   const ext = extname(opts.file).toLowerCase();
   if (ext === ".pdf") {
-    console.error("  ❌  PDF ingest is currently disabled. Only .md files are supported.");
+    console.error("  ❌  PDF ingest is currently disabled. Only .md and .tex files are supported.");
     process.exit(1);
   }
   console.log("  [1] Loading source...");
-  const source = loadFromFile(opts.file, { chunkTokenTarget: config.chunkTokenTarget, chunkOverlapTokens: config.chunkOverlapTokens });
+  const source = ext === ".tex"
+    ? await loadFromTex(opts.file, config, { chunkTokenTarget: config.chunkTokenTarget, chunkOverlapTokens: config.chunkOverlapTokens })
+    : loadFromFile(opts.file, { chunkTokenTarget: config.chunkTokenTarget, chunkOverlapTokens: config.chunkOverlapTokens });
   console.log(`        title:   ${source.title}\n        chunks:  ${source.chunks.length}\n        tokens:  ~${source.totalTokens}\n`);
 
   const client = new DeepSeekClient(config);
