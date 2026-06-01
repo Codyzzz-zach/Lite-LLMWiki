@@ -6,6 +6,7 @@ import { loadConfig } from "../../config.js";
 import { DeepSeekClient } from "../../core/client.js";
 import { KnowledgeStore } from "../../knowledge/store.js";
 import { loadFromFile } from "../../ingest/loader.js";
+import { loadFromPdf } from "../../ingest/pdf-loader.js";
 import { loadFromTex } from "../../ingest/tex-loader.js";
 import { proIngest } from "../../ingest/listening.js";
 import type { IngestOptions, Proposition, ConfirmedProposition, WikiPage } from "../../types.js";
@@ -66,15 +67,14 @@ async function runIngest(opts: IngestOptions): Promise<void> {
   if (stat?.isDirectory()) {
     sourcePath = findMainTex(opts.file);
     console.log(`  📂  TeX project detected, main: ${sourcePath}\n`);
-  } else if (ext === ".pdf") {
-    console.error("  ❌  PDF ingest is currently disabled. Use .md or .tex");
-    process.exit(1);
   }
 
   console.log("  [1] Loading source...");
-  const source = ext === ".tex" || (stat?.isDirectory())
+  const source = stat?.isDirectory() || ext === ".tex"
     ? await loadFromTex(sourcePath, config, { chunkTokenTarget: config.chunkTokenTarget, chunkOverlapTokens: config.chunkOverlapTokens })
-    : loadFromFile(opts.file, { chunkTokenTarget: config.chunkTokenTarget, chunkOverlapTokens: config.chunkOverlapTokens });
+    : ext === ".pdf"
+      ? await loadFromPdf(opts.file, { chunkTokenTarget: config.chunkTokenTarget, chunkOverlapTokens: config.chunkOverlapTokens, config })
+      : loadFromFile(opts.file, { chunkTokenTarget: config.chunkTokenTarget, chunkOverlapTokens: config.chunkOverlapTokens });
   console.log(`        title:   ${source.title}\n        chunks:  ${source.chunks.length}\n        tokens:  ~${source.totalTokens}\n`);
 
   const client = new DeepSeekClient(config);
