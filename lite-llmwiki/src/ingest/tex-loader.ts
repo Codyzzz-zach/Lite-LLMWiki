@@ -58,7 +58,7 @@ function resolveTexIncludes(
 
 /** 处理 \bibliography{xxx} → 模糊匹配同目录下的 .bbl 文件 */
 function resolveBbl(rawTex: string, baseDir: string): string {
-  return rawTex.replace(/\\(?:bibliography|bibliographystyle)\{(.+?)\}/g, (_, name: string) => {
+  return rawTex.replace(/\\(?:bibliography)\{(.+?)\}/g, (_, name: string) => {
     const cleanName = name.trim();
     // 精确匹配
     for (const ext of [".bbl", ""]) {
