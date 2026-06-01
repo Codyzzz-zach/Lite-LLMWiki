@@ -1,77 +1,75 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
+import pdfParse from "pdf-parse/lib/pdf-parse.js";
 import type { AppConfig, Source } from "../types.js";
+import { DeepSeekClient } from "../core/client.js";
 import { chunkText, estimateTokens } from "./loader.js";
 
-const MINERU_AGENT = "https://mineru.net/api/v1/agent/parse";
-const POLL_INTERVAL = 3000;
-const MAX_WAIT = 120_000;
+export interface PdfMeta {
+  title?: string;
+  author?: string;
+  pages: number;
+  [key: string]: unknown;
+}
+
+const PDF_CLEAN_PROMPT = `你收到的是从 PDF 中通过程序提取的纯文本，表格、公式、标题层级可能已经丢失。
+请将其恢复为结构化的 Markdown，规则：
+- 识别标题行，用 ## 或 ### 标记层级
+- 表格数据用 | 分隔对齐
+- 公式用 $$ 包裹
+- 保持段落完整
+- 参考文献保留原格式
+- 只输出 Markdown，不要解释`;
 
 export async function loadFromPdf(filePath: string, options?: {
   chunkTokenTarget?: number;
   chunkOverlapTokens?: number;
   config?: AppConfig;
 }): Promise<Source> {
+  const buffer = readFileSync(filePath);
   const filename = basename(filePath);
   const name = filename.replace(/\.pdf$/i, "");
 
-  // 1. MinerU Agent API: 直接上传 PDF
-  console.error("  [PDF] uploading to MinerU Agent API...");
-  const fileBuf = readFileSync(filePath);
-  const blob = new Blob([fileBuf], { type: "application/pdf" });
-  const form = new FormData();
-  form.append("file", blob, filename);
-
-  const submitRes = await fetch(`${MINERU_AGENT}/file`, {
-    method: "POST",
-    body: form,
-  });
-  if (!submitRes.ok) {
-    const err = await submitRes.text().catch(() => "");
-    throw new Error(`MinerU submit failed (${submitRes.status}): ${err.slice(0, 200)}`);
+  const result = await pdfParse(buffer);
+  const body = result.text?.trim() ?? "";
+  if (body.length < 10) {
+    throw new Error("PDF extraction returned near-empty content. This may be a scanned document.");
   }
-  const submitData = await submitRes.json() as any;
-  const taskId = submitData?.data?.task_id;
-  if (!taskId) throw new Error(`MinerU: no task_id in response: ${JSON.stringify(submitData).slice(0, 200)}`);
-  console.error("  [PDF] submitted, task_id:", taskId);
 
-  // 2. 轮询等待解析完成
-  const start = Date.now();
-  let mdUrl = "";
-  while (Date.now() - start < MAX_WAIT) {
-    await new Promise((r) => setTimeout(r, POLL_INTERVAL));
-    const pollRes = await fetch(`${MINERU_AGENT}/result/${taskId}`);
-    if (!pollRes.ok) continue;
-    const pollData = await pollRes.json() as any;
-    const state = pollData?.data?.state;
-    if (state === "done") {
-      mdUrl = pollData?.data?.result_url ?? "";
-      if (mdUrl) break;
+  const totalPages: number = result.numpages ?? 0;
+  const info = result.info ?? {};
+  const rawTitle = String(info.Title ?? name);
+
+  let cleanedBody: string;
+  let finalTitle = rawTitle;
+
+  const config = options?.config;
+  if (config?.apiKey) {
+    console.error("  [PDF] cleaning with DeepSeek...");
+    const client = new DeepSeekClient(config);
+    try {
+      const cleanResult = await client.chat({
+        model: config.model,
+        systemPrompt: PDF_CLEAN_PROMPT,
+        messages: [{ role: "user", content: body }],
+        responseFormat: "text",
+        maxTokens: 32768,
+      });
+      cleanedBody = cleanResult.content.trim();
+      const titleMatch = cleanedBody.match(/^#\s+(.+)/m);
+      if (titleMatch) finalTitle = titleMatch[1]!.trim();
+    } catch (err) {
+      console.error(`  [PDF] cleaning failed, using raw: ${(err as Error).message}`);
+      cleanedBody = body;
     }
-    if (state === "failed") {
-      throw new Error(`MinerU parsing failed: ${pollData?.data?.err_msg ?? "unknown"}`);
-    }
-    console.error("  [PDF] still parsing...");
+  } else {
+    cleanedBody = body;
   }
-  if (!mdUrl) throw new Error("MinerU: parsing timeout or no result URL");
 
-  // 3. 下载解析后的 Markdown
-  console.error("  [PDF] downloading result...");
-  const mdRes = await fetch(mdUrl);
-  if (!mdRes.ok) throw new Error(`MinerU download failed: ${mdRes.status}`);
-  const cleanedBody = (await mdRes.text()).trim();
-  if (cleanedBody.length < 50) throw new Error("MinerU returned near-empty content");
-
-  // 4. 提取标题
-  const titleMatch = cleanedBody.match(/^#\s+(.+)/m);
-  const title = titleMatch ? titleMatch[1]!.trim() : name;
-
-  // 5. 指纹
   const fingerprint = createHash("sha256").update(cleanedBody).digest("hex").slice(0, 16);
   const id = `raw/pdf/${name}-${fingerprint}`;
 
-  // 6. 分块
   const targetTokens = options?.chunkTokenTarget ?? 2000;
   const overlapTokens = options?.chunkOverlapTokens ?? 200;
   const rawChunks = chunkText(cleanedBody, targetTokens, overlapTokens);
@@ -83,25 +81,20 @@ export async function loadFromPdf(filePath: string, options?: {
     const end = Math.min(cleanedBody.length, (start >= 0 ? start : charPos) + text.length);
     if (start >= 0) charPos = end;
     return {
-      id: `${id}-#${index}`,
-      index,
-      text,
+      id: `${id}-#${index}`, index, text,
       tokenEstimate: tokenEst,
-      charStart: Math.max(0, start),
-      charEnd: end,
+      charStart: Math.max(0, start), charEnd: end,
     };
   });
 
+  const meta: PdfMeta = { title: finalTitle, author: String(info.Author ?? ""), pages: totalPages };
+
   return {
-    id,
-    path: filePath,
-    type: "pdf",
-    title,
-    meta: { format: "pdf", source: "mineru-agent" },
-    body: cleanedBody,
-    chunks,
+    id, path: filePath, type: "pdf",
+    title: finalTitle,
+    meta: meta as unknown as Record<string, string>,
+    body: cleanedBody, chunks,
     totalTokens: estimateTokens(cleanedBody),
-    createdAt: new Date(),
-    fingerprint,
+    createdAt: new Date(), fingerprint,
   };
 }
