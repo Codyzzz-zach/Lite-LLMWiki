@@ -163,7 +163,8 @@ export async function loadFromTex(filePath: string, config?: AppConfig, options?
   return {
     id,
     path: filePath,
-    type: "md",
+    sourceRoot: texDir,
+    type: "tex",
     title,
     meta: { format: "tex" },
     body,

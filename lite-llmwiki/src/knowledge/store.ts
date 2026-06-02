@@ -1,12 +1,15 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
-import type { AppConfig, Source, WikiPage } from "../types.js";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, extname, join, resolve, sep } from "node:path";
+import type { AppConfig, Chunk, Source, WikiNodeDraft, WikiPage } from "../types.js";
+import { estimateTokens } from "../ingest/loader.js";
+import { renderWikiNode } from "./render.js";
 
 /**
  * KnowledgeStore — 纯文件存储
  *
- * 两个存储层：
- * - raw/    原始材料副本
+ * 三个存储层：
+ * - raw/original/<format>/  原始材料副本
+ * - raw/chase/              清洗后的 Markdown 中间层
  * - wiki/   编译产物（Markdown）
  *
  * 不再依赖 SQLite 图谱。
@@ -20,25 +23,63 @@ export class KnowledgeStore {
 
   // ─── Raw Layer ──────────────────────────────────────────────────
 
-  /** 将源文件复制到 raw/ 目录 */
+  /** 保存原始材料副本和进入 LLM 的清洗后 Markdown */
   saveRaw(source: Source): string {
-    const destDir = join(this.config.rawDir, "md");
-    mkdirSync(destDir, { recursive: true });
+    const chaseDir = join(this.config.rawDir, "chase");
+    mkdirSync(chaseDir, { recursive: true });
     const cleanId = source.id.replace(/[\/:]/g, "_");
-    const destPath = join(destDir, `${cleanId}.md`);
+    const destPath = join(chaseDir, `${cleanId}.md`);
 
-    if (existsSync(source.path)) {
-      copyFileSync(source.path, destPath);
-    } else {
-      const content = [`# ${source.title}`, "", ...source.chunks.map((c) => c.text)].join("\n\n");
-      writeFileSync(destPath, content, "utf-8");
+    const originalSource = source.sourceRoot ?? source.path;
+    if (existsSync(originalSource)) {
+      const sourcePath = resolve(originalSource);
+      const originalRoot = resolve(this.config.rawDir, "original");
+      const isAlreadyOriginal =
+        sourcePath === originalRoot || sourcePath.startsWith(`${originalRoot}${sep}`);
+
+      if (!isAlreadyOriginal) {
+        const sourceStat = statSync(originalSource);
+        const sourceExt = sourceStat.isDirectory()
+          ? source.type
+          : extname(originalSource).replace(/^\./, "").toLowerCase() || "unknown";
+        const originalDir = join(this.config.rawDir, "original", sourceExt);
+        mkdirSync(originalDir, { recursive: true });
+        const originalDest = join(originalDir, basename(originalSource));
+        if (sourceStat.isDirectory()) {
+          cpSync(originalSource, originalDest, { recursive: true });
+        } else {
+          copyFileSync(originalSource, originalDest);
+        }
+      }
     }
+
+    const bodyContent = source.body || source.chunks.map((c) => c.text).join("\n\n");
+    const chunkMarkers = source.chunks.length > 0
+      ? "\n" + source.chunks.map((c) =>
+        `<!-- chunk:${c.index} -->\n${c.text}\n<!-- /chunk:${c.index} -->`
+      ).join("\n")
+      : "";
+
+    const content = [
+      "---",
+      `title: ${source.title}`,
+      `sourcePath: ${source.path}`,
+      ...(source.sourceRoot ? [`sourceRoot: ${source.sourceRoot}`] : []),
+      `sourceType: ${source.type}`,
+      `fingerprint: ${source.fingerprint}`,
+      `createdAt: ${source.createdAt.toISOString()}`,
+      "---",
+      "",
+      bodyContent + chunkMarkers,
+    ].join("\n");
+
+    writeFileSync(destPath, content, "utf-8");
     return destPath;
   }
 
   /** 读取 raw 文件 */
   readRaw(rawId: string): string | null {
-    const dir = join(this.config.rawDir, "md");
+    const dir = join(this.config.rawDir, "chase");
     if (!existsSync(dir)) return null;
     const files = new Set([
       join(dir, `${rawId.replace(/[\/:]/g, "_")}.md`),
@@ -48,6 +89,32 @@ export class KnowledgeStore {
       if (existsSync(f)) return readFileSync(f, "utf-8");
     }
     return null;
+  }
+
+  /** 从 chase 文件解析 chunk 边界（解析 HTML 注释标记） */
+  readChunks(rawId: string): Chunk[] | null {
+    const content = this.readRaw(rawId);
+    if (!content) return null;
+
+    const chunks: Chunk[] = [];
+    const re = /<!--\s*chunk:(\d+)\s*-->\s*\n?([\s\S]*?)\n?\s*<!--\s*\/chunk:\1\s*-->/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = re.exec(content)) !== null) {
+      const index = parseInt(match[1]!, 10);
+      const text = match[2]!;
+      const cleanId = rawId.replace(/[\/:]/g, "_");
+      chunks.push({
+        id: `${cleanId}-chunk${index}`,
+        index,
+        text,
+        tokenEstimate: estimateTokens(text),
+        charStart: 0,
+        charEnd: 0,
+      });
+    }
+
+    return chunks.length > 0 ? chunks.sort((a, b) => a.index - b.index) : null;
   }
 
   // ─── Wiki Layer ──────────────────────────────────────────────────
@@ -81,6 +148,18 @@ export class KnowledgeStore {
       page.body,
     ].join("\n");
 
+    writeFileSync(fullPath, content, "utf-8");
+    return fullPath;
+  }
+
+  /** 渲染并保存 wiki 节点（v5 固定格式：frontmatter + Claim/Evidence/Interpretation/Use For/Limits/Links sections） */
+  saveWikiNode(draft: WikiNodeDraft): string {
+    const content = renderWikiNode(draft);
+    const relPath = draft.filePath.startsWith("wiki/") ? draft.filePath.slice(5) : draft.filePath;
+    const fullPath = relPath.startsWith("/")
+      ? relPath
+      : join(this.config.wikiDir, relPath);
+    mkdirSync(dirname(fullPath), { recursive: true });
     writeFileSync(fullPath, content, "utf-8");
     return fullPath;
   }
@@ -184,9 +263,9 @@ export class KnowledgeStore {
 
   getStats(): { totalSources: number; totalNodes: number } {
     let totalSources = 0;
-    const rawMdDir = join(this.config.rawDir, "md");
-    if (existsSync(rawMdDir)) {
-      totalSources = readdirSync(rawMdDir).filter((f) => f.endsWith(".md")).length;
+    const rawChaseDir = join(this.config.rawDir, "chase");
+    if (existsSync(rawChaseDir)) {
+      totalSources = readdirSync(rawChaseDir).filter((f) => f.endsWith(".md")).length;
     }
 
     const wikiDir = join(this.config.wikiDir, "concepts");
@@ -199,7 +278,7 @@ export class KnowledgeStore {
 
   // ─── Index & Log ──────────────────────────────────────────────────
 
-  /** 重建 wiki/index.md — 所有页面的目录 */
+  /** 重建 wiki/index.md + wiki/index.json — 所有页面的目录和机器 manifest */
   rebuildIndex(): string {
     const dir = join(this.config.wikiDir, "concepts");
     if (!existsSync(dir)) { mkdirSync(dir, { recursive: true }); return ""; }
@@ -208,6 +287,7 @@ export class KnowledgeStore {
     const daFiles = readdirSync(dir).filter((f) => f.startsWith("_devils-advocate-"));
     const anchorFiles = readdirSync(dir).filter((f) => f.startsWith("anchor-"));
 
+    // ── index.md ──
     let md = "# Wiki Index\n\n";
 
     md += `## Concepts (${files.length})\n`;
@@ -242,6 +322,53 @@ export class KnowledgeStore {
 
     const indexPath = join(this.config.wikiDir, "index.md");
     writeFileSync(indexPath, md, "utf-8");
+
+    // ── index.json (机器 manifest) ──
+    type IndexEntry = {
+      nodeId: string;
+      kind: "concept" | "devils-advocate" | "anchor";
+      title: string;
+      filePath: string;
+      sourceIds: string[];
+      tags: string[];
+      confidence: number;
+      updatedAt: string;
+    };
+
+    const allMarkdown = [...files, ...daFiles, ...anchorFiles];
+    const entries: IndexEntry[] = [];
+
+    for (const f of allMarkdown) {
+      const content = readFileSync(join(dir, f), "utf-8");
+
+      // 解析 frontmatter
+      const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+      const fm: Record<string, string> = {};
+      if (fmMatch) {
+        for (const line of fmMatch[1]!.split("\n")) {
+          const colon = line.indexOf(":");
+          if (colon > 0) fm[line.slice(0, colon).trim()] = line.slice(colon + 1).trim();
+        }
+      }
+
+      const nodeId = f.replace(/\.md$/, "");
+      const kind: IndexEntry["kind"] = f.startsWith("_devils-advocate-")
+        ? "devils-advocate"
+        : f.startsWith("anchor-")
+          ? "anchor"
+          : "concept";
+      const title = fm["title"] || nodeId;
+      const sourceIds: string[] = fm["source"] ? [fm["source"]] : [];
+      const tags: string[] = fm["tags"] ? fm["tags"].split(/,\s*/).filter(Boolean) : [];
+      const confidence = fm["confidence"] ? parseFloat(fm["confidence"]) : 0;
+      const updatedAt = fm["createdAt"] || new Date().toISOString();
+
+      entries.push({ nodeId, kind, title, filePath: `wiki/concepts/${f}`, sourceIds, tags, confidence, updatedAt });
+    }
+
+    const jsonPath = join(this.config.wikiDir, "index.json");
+    writeFileSync(jsonPath, JSON.stringify(entries, null, 2), "utf-8");
+
     return indexPath;
   }
 

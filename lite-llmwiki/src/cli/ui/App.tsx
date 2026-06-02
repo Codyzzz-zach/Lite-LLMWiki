@@ -8,7 +8,7 @@ import { loadFromTex } from "../../ingest/tex-loader.js";
 import { proIngest } from "../../ingest/listening.js";
 import { queryKnowledge } from "../../query/engine.js";
 import { DeepSeekClient } from "../../core/client.js";
-import type { ConfirmedProposition, MainThread, Proposition, ProResult, Source, WikiPage } from "../../types.js";
+import type { ConfirmedProposition, MainThread, Proposition, ProResult, Source, WikiNodeDraft, WikiPage } from "../../types.js";
 import { StatusLine, type Stats } from "./StatusLine.js";
 import { MessageLog, type ChatMessage } from "./MessageLog.js";
 import { InputLine, type CommandFn } from "./InputLine.js";
@@ -49,15 +49,15 @@ export function App() {
     } catch { /* */ }
   }, [config]);
 
-  /** 统一保存：saveRaw + wikiPages + devilsAdvocate + anchor + index + log */
+  /** 统一保存：saveRaw + wikiNodes + devilsAdvocate + anchor + index + log */
   const doFinalSave = useCallback(async (
     store: KnowledgeStore, src: Source, cr: ProResult,
-    pages: WikiPage[], confirmedUpdates: WikiPage[],
+    nodeDrafts: WikiNodeDraft[], confirmedUpdates: WikiPage[],
     list: ConfirmedProposition[],
   ) => {
     add({ kind: "system", content: "Saving..." });
     store.saveRaw(src);
-    for (const p of pages) store.saveWikiPage(p);
+    for (const d of nodeDrafts) store.saveWikiNode(d);
     for (const p of confirmedUpdates) store.saveWikiPage(p);
 
     const ciList = list.filter((c) => c.counterIntuitive);
@@ -85,9 +85,9 @@ export function App() {
       title: cr.title, source: cr.materialId,
       anchor: anchorRef.current || undefined,
       confirmed: list.length, total: allProps.length,
-      newPages: pages.length, updatedPages: confirmedUpdates.length,
+      newPages: nodeDrafts.length, updatedPages: confirmedUpdates.length,
     });
-    add({ kind: "result", content: `✅ ${pages.length} pages saved` });
+    add({ kind: "result", content: `✅ ${nodeDrafts.length} pages saved` });
     setPhase("done");
     await refresh();
   }, [add, refresh]);
@@ -107,15 +107,15 @@ export function App() {
         confirmedPropositionsJson: JSON.stringify(list),
         existingPages: existingPages.length > 0 ? existingPages : undefined,
       });
-      const pages = cr.pages ?? [];
+      const nodeDrafts = cr.nodeDrafts ?? [];
       const updatedPages = cr.updatedPages ?? [];
-      add({ kind: "result", content: `pages: ${pages.length} new, ${updatedPages.length} updated` });
+      add({ kind: "result", content: `pages: ${nodeDrafts.length} new, ${updatedPages.length} updated` });
 
       if (updatedPages.length > 0) {
         // 暂存用于逐条确认
         (clientRef as any)._cr = cr;
         (clientRef as any)._store = store;
-        (clientRef as any)._pages = pages;
+        (clientRef as any)._nodeDrafts = nodeDrafts;
 
         add({ kind: "system", content: `📄 更新 1/${updatedPages.length}:\n${updatedPages[0]!.body.slice(0, 300)}` });
         add({ kind: "system", content: "  [a] 应用更新  [s] 跳过" });
@@ -127,7 +127,7 @@ export function App() {
       }
 
       // 无更新，直接保存
-      await doFinalSave(store, src, cr, pages, [], list);
+      await doFinalSave(store, src, cr, nodeDrafts, [], list);
     } catch (e) { add({ kind: "error", content: `编译: ${(e as Error).message}` }); }
     setBusy(false);
   }, [config, add, doFinalSave]);
@@ -374,11 +374,11 @@ export function App() {
           const store = (clientRef as any)._store;
           const src = sourceRef.current;
           const cr = (clientRef as any)._cr;
-          const pages = (clientRef as any)._pages ?? [];
+          const nodeDrafts = (clientRef as any)._nodeDrafts ?? [];
           const list = confirmedRef.current.filter((c) => c.status === "confirmed");
 
           if (store && src && cr) {
-            await doFinalSave(store, src, cr, pages, confirmedUpdates, list);
+            await doFinalSave(store, src, cr, nodeDrafts, confirmedUpdates, list);
           }
         }
         return;
@@ -427,7 +427,7 @@ export function App() {
           add({ kind: "system", content: `🎯 "${anchor}"` });
           add({ kind: "system", content: "📝 Brainstorm..." });
 
-          const br = await proIngest({ source: src, anchor, config, client, mode: "brainstorm" });
+          const br = await proIngest({ source: src, anchor, config, client, mode: "extract" });
           const threads = br.mainThreads ?? [];
           const allProps = br.propositions ?? [];
 
@@ -465,7 +465,7 @@ export function App() {
         try {
           add({ kind: "system", content: "🔍 ..." });
           const r = await queryKnowledge({ question: args, config });
-          add({ kind: "ai", content: r.answer, sources: r.sourcePages.map((p) => p.filePath) });
+          add({ kind: "ai", content: r.answer, sources: r.sources.map((p) => p.filePath) });
         } catch (e) { add({ kind: "error", content: `${(e as Error).message}` }); }
         break;
       }

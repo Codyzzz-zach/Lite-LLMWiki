@@ -9,6 +9,10 @@ import { registerStatusCommand } from "./commands/status.js";
 import { registerQueryCommand } from "./commands/query.js";
 import { registerNodeCommand } from "./commands/node.js";
 import { registerChatCommand } from "./commands/chat.js";
+import { registerSearchCommand } from "./commands/search.js";
+import { registerAuditCommand } from "./commands/audit.js";
+import { registerInspireCommand } from "./commands/inspire.js";
+import { registerPlanCommand } from "./commands/plan.js";
 
 // 读取 package.json 版本号
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -33,5 +37,9 @@ registerStatusCommand(program);
 registerQueryCommand(program);
 registerNodeCommand(program);
 registerChatCommand(program);
+registerSearchCommand(program);
+registerAuditCommand(program);
+registerInspireCommand(program);
+registerPlanCommand(program);
 
 program.parse(process.argv);

@@ -1,7 +1,7 @@
 /**
  * lite-llmwiki 核心类型定义
  *
- * 三模式：brainstorm（初读 → 主线 + proposition）
+ * 三模式：extract（初读 → 主线 + proposition，含 evidence/kind/coverage）
  *         reread（单条 proposition 按新角度重读）
  *         compile（已确认 proposition → wiki pages）
  */
@@ -11,7 +11,9 @@
 export interface Source {
   id: string;
   path: string;
-  type: "md" | "pdf";
+  /** 原始材料根路径。TeX 通常是项目文件夹，MD/PDF 通常等于 path。 */
+  sourceRoot?: string;
+  type: "md" | "pdf" | "tex";
   title: string;
   meta: Record<string, string>;
   body: string;
@@ -30,7 +32,7 @@ export interface Chunk {
   charEnd: number;
 }
 
-// ─── Phase 1: Brainstorm 主线 ─────────────────────────────────────
+// ─── Phase 1: Extract 主线 ─────────────────────────────────────
 
 export interface MainThread {
   /** 1-based 编号 */
@@ -62,6 +64,16 @@ export interface Proposition {
   counterIntuitive?: boolean;
   /** 反直觉的理由——具体说明挑战了什么认知习惯 */
   counterIntuitiveReason?: string;
+  /** proposition 种类 */
+  kind?: WikiKind;
+  /** 证据链 */
+  evidence?: Evidence[];
+  /** 置信度 0-1 */
+  confidence?: number;
+  /** 来源材料 ID */
+  sourceId?: string;
+  /** extract 阶段：与已有 wiki 页面的覆盖关系 */
+  coverage?: CoverageInfo;
 }
 
 // ─── Confirm 状态 ──────────────────────────────────────────────────
@@ -84,10 +96,83 @@ export interface ConfirmedProposition {
 
 // ─── Compile 输出 ──────────────────────────────────────────────────
 
+export type WikiKind =
+  | "concept"
+  | "claim"
+  | "method"
+  | "case"
+  | "equation"
+  | "question"
+  | "insight"
+  | "anchor"
+  | "counter";
+
+/** 证据链：将 wiki 条目中的主张链接回原始材料 */
+export interface Evidence {
+  /** 来源材料 ID */
+  sourceId: string;
+  /** 涉及 chunk 索引 */
+  chunkRefs: number[];
+  /** 原文摘录（可选）*/
+  excerpt?: string;
+}
+
+/** extract 阶段：proposition 与已有 wiki 的覆盖关系 */
+export interface CoverageInfo {
+  /** "new" | "overlap" | "extension" */
+  status: string;
+  /** 与已有 wiki 页面重叠/扩展时，关联的 filePath 列表 */
+  relatedPages?: string[];
+}
+
+/** 覆盖记录：跟踪 proposition 已被哪些 wiki 页面覆盖 */
+export interface CoverageItem {
+  /** proposition 编号 */
+  propId: number;
+  /** 覆盖到的 wiki 页面 filePath */
+  coveredIn: string;
+  /** 覆盖日期 */
+  coveredAt: Date;
+}
+
+/** wiki 页面 frontmatter 结构化类型 */
+export interface WikiFrontmatter {
+  title: string;
+  /** 来源材料 ID */
+  source?: string;
+  /** 置信度 0-1 */
+  confidence?: number;
+  /** 创建时间 ISO 字符串 */
+  createdAt?: string;
+  /** 关联假设 id */
+  hypothesis?: string;
+  /** 关联假设标题 */
+  hypothesisTitle?: string;
+  /** 关联页面路径列表 */
+  related?: string[];
+  /** wiki 页面种类 */
+  kind?: WikiKind;
+  /** 本条目的证据链 */
+  evidence?: Evidence[];
+}
+
+export interface WikiNodeDraft {
+  nodeId: string;
+  kind: WikiKind;
+  filePath: string;
+  frontmatter: WikiFrontmatter;
+  claim: string;
+  evidence: Evidence[];
+  interpretation?: string;
+  useFor?: string[];
+  limits?: string[];
+  links?: string[];
+}
+
 export interface WikiPage {
   nodeId: string;
   filePath: string;
-  frontmatter: Record<string, unknown>;
+  frontmatter: WikiFrontmatter;
   body: string;
   /** compile 输出: append 追加到已有页面末尾, replace 替换整个 body */
   updateType?: "append" | "replace";
@@ -103,22 +188,23 @@ export interface HypothesisOption {
 
 // ─── Pro 统一输出 ─────────────────────────────────────────────────
 
-export type ProMode = "brainstorm" | "compile" | "reread";
+export type ProMode = "extract" | "compile" | "reread";
 
 export interface ProResult {
   mode: ProMode;
   materialId: string;
   title: string;
-  type: "md" | "pdf";
+  type: "md" | "pdf" | "tex";
   humanAnchor: { id: string; text: string } | null;
 
-  // brainstorm 输出
+  // extract 输出
   mainThreads?: MainThread[];
   propositions?: Proposition[];
 
   // compile 输出
   pages?: WikiPage[];
   updatedPages?: WikiPage[];
+  nodeDrafts?: WikiNodeDraft[];
 
   // 所有模式
   hypotheses: HypothesisOption[];
@@ -144,4 +230,12 @@ export interface IngestOptions {
   file: string;
   anchor?: string;
   mode?: string;
+  /** --auto: 非交互自动确认 */
+  auto?: boolean;
+  /** --policy: conservative | balanced | expansive (默认 balanced) */
+  policy?: string;
+  /** --json: 输出结构化 JSON 到 stdout */
+  json?: boolean;
+  /** --dry-run: 不写 wiki，只输出报告 */
+  dryRun?: boolean;
 }

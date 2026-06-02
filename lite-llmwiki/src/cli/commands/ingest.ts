@@ -9,17 +9,31 @@ import { loadFromFile } from "../../ingest/loader.js";
 import { loadFromPdf } from "../../ingest/pdf-loader.js";
 import { loadFromTex } from "../../ingest/tex-loader.js";
 import { proIngest } from "../../ingest/listening.js";
+import { filterByPolicy } from "../../ingest/policy.js";
+import type { Policy } from "../../ingest/policy.js";
 import type { IngestOptions, Proposition, ConfirmedProposition, WikiPage } from "../../types.js";
 
 export function registerIngestCommand(program: Command): void {
   program
     .command("ingest")
-    .description("Ingest a file or TeX folder — brainstorm → 主线选择 → 逐条确认 → wiki")
+    .description("Ingest a file or TeX folder — extract → 主线选择 → 逐条确认 → wiki")
     .argument("<path>", "path to .md / .tex file, or a TeX project folder")
     .option("-m, --anchor <text>", "human anchor")
     .option("-t, --thread <id>", 'skip thread selection: "all" or thread number', "")
-    .action(async (path: string, opts: { anchor?: string; thread?: string }) => {
-      await runIngest({ file: path, anchor: opts.anchor, mode: opts.thread || undefined });
+    .option("--auto", "非交互自动确认（需配合 --policy）")
+    .option("--policy <name>", "自动确认策略: conservative | balanced | expansive", "balanced")
+    .option("--json", "输出结构化 JSON 到 stdout")
+    .option("--dry-run", "不写 wiki，只输出报告")
+    .action(async (path: string, opts: { anchor?: string; thread?: string; auto?: boolean; policy?: string; json?: boolean; dryRun?: boolean }) => {
+      await runIngest({
+        file: path,
+        anchor: opts.anchor,
+        mode: opts.thread || undefined,
+        auto: opts.auto,
+        policy: opts.policy,
+        json: opts.json,
+        dryRun: opts.dryRun,
+      });
     });
 }
 
@@ -79,9 +93,9 @@ async function runIngest(opts: IngestOptions): Promise<void> {
 
   const client = new DeepSeekClient(config);
 
-  // ——— Phase 1: Brainstorm ———
-  console.log("  [2] Brainstorm — Pro 初读...\n");
-  const br = await proIngest({ source, anchor: opts.anchor, config, client, mode: "brainstorm" });
+  // ——— Phase 1: Extract ———
+  console.log("  [2] Extract — Pro 初读...\n");
+  const br = await proIngest({ source, anchor: opts.anchor, config, client, mode: "extract" });
 
   const threads = br.mainThreads ?? [];
   const allProps = br.propositions ?? [];
@@ -95,7 +109,11 @@ async function runIngest(opts: IngestOptions): Promise<void> {
   let selectedId = 0;
   const threadOpt = opts.mode; // --thread 值传入 mode
 
-  if (source.chunks.length < 5 || threadOpt === "all") {
+  if (opts.auto && !threadOpt) {
+    // --auto 模式下非交互，自动全选
+    selectedId = 0;
+    console.log(`  📋 ${threads.length} 条主线（--auto 全选）\n`);
+  } else if (source.chunks.length < 5 || threadOpt === "all") {
     selectedId = 0;
     const label = source.chunks.length < 5 ? "短文档，自动全部" : "--thread all";
     console.log(`  📋 ${threads.length} 条主线（${label}）\n`);
@@ -136,6 +154,37 @@ async function runIngest(opts: IngestOptions): Promise<void> {
 
   // ——— Phase 2: 逐条确认 ———
   const confirmed: ConfirmedProposition[] = [];
+  const skippedReasons: Array<{ propId: number; reason: string }> = [];
+
+  if (opts.auto) {
+    // ── --auto 模式：filterByPolicy 自动确认 ──
+    const policy = (opts.policy as Policy) ?? "balanced";
+    console.log(`        policy: ${policy}\n`);
+
+    for (const prop of targetProps) {
+      const result = filterByPolicy(policy, {
+        kind: prop.kind,
+        confidence: prop.confidence,
+        evidence: prop.evidence,
+      });
+
+      if (result.accept) {
+        confirmed.push({
+          propId: prop.id, threadId: prop.threadId,
+          claim: prop.claim, aiReading: prop.aiReading,
+          chunkRefs: prop.chunkRefs, revision: prop.revision,
+          status: "confirmed",
+          counterIntuitive: prop.counterIntuitive,
+          counterIntuitiveReason: prop.counterIntuitiveReason,
+        });
+        console.log(`  ✅ [${prop.id}] auto-confirmed (${prop.kind ?? "?"} conf=${(prop.confidence ?? 0).toFixed(2)})`);
+      } else {
+        skippedReasons.push({ propId: prop.id, reason: result.reason ?? "unknown" });
+        console.log(`  ⏭️  [${prop.id}] skipped: ${result.reason}`);
+      }
+    }
+    console.log(`\n  => ${confirmed.length} confirmed, ${skippedReasons.length} skipped\n`);
+  } else {
 
   for (let pi = 0; pi < targetProps.length; pi++) {
     const prop = targetProps[pi]!;
@@ -290,10 +339,12 @@ async function runIngest(opts: IngestOptions): Promise<void> {
       console.log("      请选 a / a all / s / m\n");
     }
   }
+  } // end of --auto else branch
 
   const toCompile = confirmed.filter((c) => c.status === "confirmed");
   if (toCompile.length === 0) {
     console.log("  无已确认条目，跳过编译\n");
+    if (opts.json) printJsonResult({ ok: true, sourceId: source.id, sourceChase: null, created: [], updated: [], skipped: skippedReasons, coverage: computeCoverage(source, allProps, []) });
     return;
   }
 
@@ -314,30 +365,68 @@ async function runIngest(opts: IngestOptions): Promise<void> {
       existingPages,
     });
 
-    const pages = cr.pages ?? [];
+    const nodeDrafts = cr.nodeDrafts ?? [];
     const updatedPages = cr.updatedPages ?? [];
-    console.log(`        pages:   ${pages.length} new, ${updatedPages.length} updated\n`);
+    console.log(`        pages:   ${nodeDrafts.length} new, ${updatedPages.length} updated\n`);
 
     const confirmedUpdates: WikiPage[] = [];
     if (updatedPages.length > 0) {
-      console.log("  [5] 确认已有页面更新:\n");
-      for (const up of updatedPages) {
-        console.log(`  ─── 更新: ${up.filePath} ───`);
-        console.log(`  📄  ${up.body.slice(0, 200)}`);
-        console.log("");
-        const input = await readLine("  [a] 应用更新  [s] 跳过  ❯ ");
-        if (input.toLowerCase() === "a") {
+      if (opts.auto) {
+        // --auto: 自动应用全部更新
+        for (const up of updatedPages) {
           confirmedUpdates.push(up);
-          console.log("  ✅ 已确认\n");
-        } else {
-          console.log("  ⏭️  已跳过\n");
+          console.log(`  ✅ auto-applied update: ${up.filePath}`);
+        }
+        console.log("");
+      } else {
+        console.log("  [5] 确认已有页面更新:\n");
+        for (const up of updatedPages) {
+          console.log(`  ─── 更新: ${up.filePath} ───`);
+          console.log(`  📄  ${up.body.slice(0, 200)}`);
+          console.log("");
+          const input = await readLine("  [a] 应用更新  [s] 跳过  ❯ ");
+          if (input.toLowerCase() === "a") {
+            confirmedUpdates.push(up);
+            console.log("  ✅ 已确认\n");
+          } else {
+            console.log("  ⏭️  已跳过\n");
+          }
         }
       }
     }
 
+    // ——— 收集输出（用于 --json / --dry-run） ———
+    const createdPaths: string[] = nodeDrafts.map((d) => d.filePath);
+    const updatedPaths: string[] = confirmedUpdates.map((p) => p.filePath);
+
+    if (opts.dryRun) {
+      // --dry-run: 只写 raw chase，不写 wiki
+      console.log("  [6] Dry-run — 只保存 chase，不写 wiki...");
+      store.saveRaw(source);
+      const chasePath = join(config.rawDir, "chase", `${source.id.replace(/[\/:]/g, "_")}.md`);
+      console.log(`        chase: ${chasePath}`);
+      console.log(`        would create: ${createdPaths.length} pages`);
+      console.log(`        would update: ${updatedPaths.length} pages\n`);
+
+      if (opts.json) {
+        printJsonResult({
+          ok: true,
+          sourceId: source.id,
+          sourceChase: chasePath,
+          created: createdPaths,
+          updated: updatedPaths,
+          skipped: skippedReasons,
+          coverage: computeCoverage(source, allProps, confirmed),
+        });
+      } else {
+        console.log("  ✅  Dry-run complete (no wiki writes)\n");
+      }
+      return;
+    }
+
     console.log("  [6] Saving...");
     store.saveRaw(source);
-    for (const page of pages) store.saveWikiPage(page);
+    for (const draft of nodeDrafts) store.saveWikiNode(draft);
     for (const page of confirmedUpdates) store.saveWikiPage(page);
 
     const ciList = toCompile.filter((c) => c.counterIntuitive && c.status === "confirmed");
@@ -365,13 +454,69 @@ async function runIngest(opts: IngestOptions): Promise<void> {
       title: cr.title, source: cr.materialId,
       anchor: opts.anchor,
       confirmed: toCompile.length, total: allProps.length,
-      newPages: pages.length, updatedPages: confirmedUpdates.length,
+      newPages: nodeDrafts.length, updatedPages: confirmedUpdates.length,
     });
 
     const s = store.getStats();
     console.log(`\n  ✅  Done  |  sources: ${s.totalSources}  |  nodes: ${s.totalNodes}\n`);
+
+    if (opts.json) {
+      const chasePath = join(config.rawDir, "chase", `${source.id.replace(/[\/:]/g, "_")}.md`);
+      printJsonResult({
+        ok: true,
+        sourceId: source.id,
+        sourceChase: chasePath,
+        created: createdPaths,
+        updated: updatedPaths,
+        skipped: skippedReasons,
+        coverage: computeCoverage(source, allProps, confirmed),
+      });
+    }
   } catch (err) {
-    console.error(`  ❌  Compile failed: ${(err as Error).message}\n`);
+    if (opts.json) {
+      printJsonResult({ ok: false, sourceId: source.id, created: [], updated: [], skipped: skippedReasons, coverage: { coveredChunks: 0, totalChunks: source.chunks.length, uncoveredReasons: [(err as Error).message] } });
+    } else {
+      console.error(`  ❌  Compile failed: ${(err as Error).message}\n`);
+    }
     process.exit(1);
   }
+}
+
+// ─── --json / --dry-run helpers ────────────────────────────────────────
+
+interface IngestJsonOutput {
+  ok: boolean;
+  sourceId: string;
+  sourceChase?: string | null;
+  created: string[];
+  updated: string[];
+  skipped: Array<{ propId: number; reason: string }>;
+  coverage: { coveredChunks: number; totalChunks: number; uncoveredReasons: string[] };
+}
+
+function printJsonResult(out: IngestJsonOutput): void {
+  process.stdout.write(JSON.stringify(out, null, 2) + "\n");
+}
+
+function computeCoverage(
+  source: { chunks: Array<{ index: number }> },
+  allProps: Array<{ chunkRefs: number[] }>,
+  confirmed: Array<{ chunkRefs: number[] }>,
+): { coveredChunks: number; totalChunks: number; uncoveredReasons: string[] } {
+  const totalChunks = source.chunks.length;
+  const covered = new Set<number>();
+  for (const p of allProps) {
+    for (const cr of p.chunkRefs) covered.add(cr);
+  }
+  const uncovered: number[] = [];
+  for (let i = 0; i < totalChunks; i++) {
+    if (!covered.has(i)) uncovered.push(i);
+  }
+  return {
+    coveredChunks: covered.size,
+    totalChunks,
+    uncoveredReasons: uncovered.length > 0
+      ? [`${uncovered.length} chunks not referenced by any proposition: [${uncovered.join(", ")}]`]
+      : [],
+  };
 }
