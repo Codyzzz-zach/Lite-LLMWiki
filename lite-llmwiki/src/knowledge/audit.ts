@@ -13,6 +13,8 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { AppConfig } from "../types.js";
 
+const WIKI_NODE_DIRS = ["concepts", "methods", "cases", "equations", "questions", "insights", "anchors", "counters"];
+
 // ─── 公开类型 ─────────────────────────────────────────────────────────
 
 export type AuditSeverity = "error" | "warning" | "info";
@@ -41,16 +43,30 @@ export interface AuditResult {
 // ─── 内部解析 ─────────────────────────────────────────────────────────
 
 /** 解析 frontmatter key-value（仅简单单行值，不处理 YAML 嵌套） */
-function parseFrontmatter(content: string): Record<string, string> {
-  const fm: Record<string, string> = {};
+function parseFrontmatter(content: string): Record<string, string | string[]> {
+  const fm: Record<string, string | string[]> = {};
   const match = content.match(/^---\n([\s\S]*?)\n---/);
   if (!match) return fm;
+  let currentArrayKey: string | null = null;
   for (const line of match[1]!.split("\n")) {
+    const arrayItem = line.match(/^\s*-\s+(.+)$/);
+    if (arrayItem && currentArrayKey) {
+      const current = fm[currentArrayKey];
+      fm[currentArrayKey] = [...(Array.isArray(current) ? current : []), arrayItem[1]!.trim()];
+      continue;
+    }
     const colon = line.indexOf(":");
     if (colon <= 0) continue;
     const key = line.slice(0, colon).trim();
     const val = line.slice(colon + 1).trim();
-    if (key && val) fm[key] = val;
+    if (!key) continue;
+    if (val) {
+      fm[key] = val;
+      currentArrayKey = null;
+    } else {
+      fm[key] = [];
+      currentArrayKey = key;
+    }
   }
   return fm;
 }
@@ -86,7 +102,7 @@ function parseBodySections(content: string): Record<string, string> {
 /** 从 chase 文件中收集所有 chunk 索引 */
 function collectChunkIndices(chaseContent: string): Set<number> {
   const indices = new Set<number>();
-  const re = /<!--\s*chunk:(\d+)\s*-->/g;
+  const re = /<!--\s*chunk:(\d+)(?:\s+[^>]*)?\s*-->/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(chaseContent)) !== null) {
     indices.add(parseInt(m[1]!, 10));
@@ -95,11 +111,20 @@ function collectChunkIndices(chaseContent: string): Set<number> {
 }
 
 /** 解析 chunkRefs 字符串（如 "[1, 2]" 或 "1, 2"）为数字数组 */
-function parseChunkRefs(raw: string | undefined): number[] {
+function parseStringList(raw: string | string[] | undefined): string[] {
   if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
   return raw
     .replace(/[\[\]]/g, "")
     .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function parseChunkRefs(raw: string | string[] | undefined): number[] {
+  if (!raw) return [];
+  const values = Array.isArray(raw) ? raw : raw.replace(/[\[\]]/g, "").split(",");
+  return values
     .map((s) => parseInt(s.trim(), 10))
     .filter((n) => !isNaN(n));
 }
@@ -116,10 +141,17 @@ export function auditWiki(
   options?: { source?: string },
 ): AuditResult {
   const issues: AuditIssue[] = [];
-  const wikiDir = join(config.wikiDir, "concepts");
   const chaseDir = join(config.rawDir, "chase");
 
-  if (!existsSync(wikiDir)) {
+  const files = WIKI_NODE_DIRS.flatMap((dirName) => {
+    const dir = join(config.wikiDir, dirName);
+    if (!existsSync(dir)) return [];
+    return readdirSync(dir)
+      .filter((file) => file.endsWith(".md"))
+      .map((file) => ({ file, dirName, fullPath: join(dir, file), filePath: `wiki/${dirName}/${file}` }));
+  });
+
+  if (files.length === 0) {
     return {
       ok: true,
       summary: {
@@ -133,22 +165,18 @@ export function auditWiki(
     };
   }
 
-  const files = readdirSync(wikiDir).filter((f) => f.endsWith(".md"));
-
   let nodes = 0;
   let verifiedNodes = 0;
   let missingEvidence = 0;
   let invalidChunkRefs = 0;
 
-  for (const file of files) {
-    const filePath = `wiki/concepts/${file}`;
-    const fullPath = join(wikiDir, file);
+  for (const { filePath, fullPath } of files) {
     const content = readFileSync(fullPath, "utf-8");
     const fm = parseFrontmatter(content);
     const body = parseBodySections(content);
 
-    const nodeId = fm["nodeId"];
-    const kind = fm["kind"];
+    const nodeId = scalar(fm["nodeId"]);
+    const kind = scalar(fm["kind"]);
 
     // ── Legacy v4 页面 ──
     if (!nodeId || !kind) {
@@ -164,7 +192,7 @@ export function auditWiki(
     // ── 根据 source 过滤 ──
     if (options?.source) {
       const sourceFilter = options.source.replace(/[\/:]/g, "_");
-      const sourceChaseRaw = fm["sourceChase"] ?? "";
+      const sourceChaseRaw = parseStringList(fm["sourceChase"])[0] ?? "";
       // sourceChase 可能是 "raw/chase/xxx.md" 或空
       const rawId = extractRawId(sourceChaseRaw);
       if (!rawId.includes(sourceFilter) && sourceChaseRaw !== sourceFilter) {
@@ -175,11 +203,12 @@ export function auditWiki(
     nodes++;
 
     // ── Check: sourceChase ──
-    const sourceChaseVal = fm["sourceChase"] ?? "";
+    const sourceChaseVals = parseStringList(fm["sourceChase"]);
     let chaseFileContent: string | null = null;
     let chaseExists = false;
 
-    if (sourceChaseVal) {
+    if (sourceChaseVals.length > 0) {
+      const sourceChaseVal = sourceChaseVals[0]!;
       const rawId = extractRawId(sourceChaseVal);
       // 尝试多种路径
       const candidates = [join(chaseDir, `${rawId}.md`)];
@@ -202,12 +231,21 @@ export function auditWiki(
         severity: "error",
         filePath,
         nodeId,
-        message: `sourceChase file not found: ${sourceChaseVal || "(empty)"}`,
+        message: `sourceChase file not found: ${sourceChaseVals[0] || "(empty)"}`,
       });
     }
 
     // ── Check: chunkRefs ──
     const chunkRefs = parseChunkRefs(fm["chunkRefs"]);
+    if (chunkRefs.length === 0) {
+      invalidChunkRefs++;
+      issues.push({
+        severity: "error",
+        filePath,
+        nodeId,
+        message: "Missing chunkRefs",
+      });
+    }
 
     if (chunkRefs.length > 0 && chaseFileContent) {
       const validIndices = collectChunkIndices(chaseFileContent);
@@ -247,12 +285,12 @@ export function auditWiki(
       });
     }
 
-    // ── 通过 ──
-    verifiedNodes++;
+    const nodeHasError = issues.some((issue) => issue.severity === "error" && issue.filePath === filePath);
+    if (!nodeHasError) verifiedNodes++;
   }
 
   const coverage = nodes > 0 ? verifiedNodes / nodes : 1;
-  const ok = invalidChunkRefs === 0 && missingEvidence === 0;
+  const ok = issues.every((issue) => issue.severity !== "error");
 
   return {
     ok,
@@ -265,4 +303,8 @@ export function auditWiki(
     },
     issues,
   };
+}
+
+function scalar(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
 }

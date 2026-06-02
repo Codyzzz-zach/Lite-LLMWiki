@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { AppConfig, Evidence, MainThread, Proposition, ProMode, ProResult, Source, WikiFrontmatter, WikiPage } from "../types.js";
+import type { AppConfig, Evidence, MainThread, Proposition, ProMode, ProResult, Source, WikiFrontmatter, WikiKind, WikiPage } from "../types.js";
 import { DeepSeekClient } from "../core/client.js";
 import { buildIngestPrefix } from "../core/prefix.js";
 
@@ -96,21 +96,24 @@ function parseProResult(
 
     const rawProps = Array.isArray(parsed.propositions)
       ? (parsed.propositions as Record<string, unknown>[]) : [];
-    const propositions: Proposition[] = rawProps.map((p) => ({
-      id: (p.id as number) ?? 0,
-      threadId: (p.threadId as number) ?? 0,
-      claim: (p.claim as string) ?? "",
-      aiReading: (p.aiReading as string) ?? "",
-      chunkRefs: Array.isArray(p.chunkRefs) ? (p.chunkRefs as number[]) : [],
-      revision: (p.revision as number) ?? 0,
-      counterIntuitive: (p.counterIntuitive as boolean) ?? false,
-      counterIntuitiveReason: (p.counterIntuitiveReason as string) ?? undefined,
-      kind: (p.kind as Proposition["kind"]) ?? undefined,
-      evidence: Array.isArray(p.evidence) ? (p.evidence as Evidence[]) : undefined,
-      confidence: (p.confidence as number) ?? undefined,
-      sourceId: (p.sourceId as string) ?? undefined,
-      coverage: (p.coverage as Proposition["coverage"]) ?? undefined,
-    }));
+    const propositions: Proposition[] = rawProps.map((p) => {
+      const chunkRefs = parseNumberArray(p.chunkRefs);
+      return {
+        id: asNumber(p.id, 0),
+        threadId: asNumber(p.threadId, 0),
+        claim: (p.claim as string) ?? "",
+        aiReading: (p.aiReading as string) ?? "",
+        chunkRefs,
+        revision: asNumber(p.revision, 0),
+        counterIntuitive: (p.counterIntuitive as boolean) ?? false,
+        counterIntuitiveReason: (p.counterIntuitiveReason as string) ?? undefined,
+        kind: parseWikiKind(p.kind),
+        evidence: normalizeEvidenceArray(p.evidence, source.id, chunkRefs),
+        confidence: parseConfidence(p.confidence),
+        sourceId: (p.sourceId as string) ?? source.id,
+        coverage: (p.coverage as Proposition["coverage"]) ?? undefined,
+      };
+    });
 
     return { ...base, mode: "extract", mainThreads, propositions };
   }
@@ -123,12 +126,12 @@ function parseProResult(
       threadId: (p?.threadId as number) ?? 0,
       claim: (p?.claim as string) ?? "",
       aiReading: (p?.aiReading as string) ?? "",
-      chunkRefs: Array.isArray(p?.chunkRefs) ? (p.chunkRefs as number[]) : [],
+      chunkRefs: parseNumberArray(p?.chunkRefs),
       revision: (p?.revision as number) ?? 1,
-      kind: (p?.kind as Proposition["kind"]) ?? undefined,
-      evidence: Array.isArray(p?.evidence) ? (p.evidence as Evidence[]) : undefined,
-      confidence: (p?.confidence as number) ?? undefined,
-      sourceId: (p?.sourceId as string) ?? undefined,
+      kind: parseWikiKind(p?.kind),
+      evidence: normalizeEvidenceArray(p?.evidence, source.id, parseNumberArray(p?.chunkRefs)),
+      confidence: parseConfidence(p?.confidence),
+      sourceId: (p?.sourceId as string) ?? source.id,
     };
     return { ...base, mode: "reread", propositions: [prop] };
   }
@@ -136,20 +139,50 @@ function parseProResult(
   // compile
   const rawNodeDrafts = Array.isArray(parsed.nodeDrafts) ? (parsed.nodeDrafts as Record<string, unknown>[]) : [];
   const fallbackSlug = source.title.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, "-").replace(/-+/g, "-").toLowerCase().slice(0, 40).replace(/^-|-$/g, "");
-  const nodeDrafts: import("../types.js").WikiNodeDraft[] = rawNodeDrafts.map((d) => ({
-    nodeId: (d.nodeId as string) ?? fallbackSlug,
-    kind: (d.kind as import("../types.js").WikiKind) ?? "concept",
-    filePath: (d.filePath as string) ?? `wiki/concepts/${fallbackSlug}.md`,
-    frontmatter: {
-      title: (((d.frontmatter as Record<string, unknown>)?.title as string) ?? source.title),
-    },
-    claim: (d.claim as string) ?? "",
-    evidence: Array.isArray(d.evidence) ? (d.evidence as import("../types.js").Evidence[]) : [],
-    interpretation: (d.interpretation as string) ?? undefined,
-    useFor: Array.isArray(d.useFor) ? (d.useFor as string[]) : undefined,
-    limits: Array.isArray(d.limits) ? (d.limits as string[]) : undefined,
-    links: Array.isArray(d.links) ? (d.links as string[]) : undefined,
-  }));
+  const parsedNodeDrafts: import("../types.js").WikiNodeDraft[] = rawNodeDrafts.map((d) => {
+    const rawFm = isRecord(d.frontmatter) ? d.frontmatter : {};
+    const nodeId = (d.nodeId as string) ?? (rawFm.nodeId as string) ?? `concept/${fallbackSlug}`;
+    const kind = parseWikiKind(d.kind ?? rawFm.kind) ?? "concept";
+    const evidence = normalizeEvidenceArray(d.evidence, source.id, parseNumberArray(d.chunkRefs ?? rawFm.chunkRefs));
+    const chunkRefs = uniqueNumbers([
+      ...parseNumberArray(rawFm.chunkRefs),
+      ...parseNumberArray(d.chunkRefs),
+      ...evidence.flatMap((ev) => ev.chunkRefs),
+    ]);
+    const frontmatter: WikiFrontmatter = {
+      ...parseWikiFrontmatter(rawFm),
+      nodeId,
+      kind,
+      title: (rawFm.title as string) ?? (d.title as string) ?? source.title,
+      source: (rawFm.source as string) ?? source.id,
+      sourceIds: uniqueStrings([
+        ...parseStringArray(rawFm.sourceIds),
+        source.id,
+        ...evidence.map((ev) => ev.sourceId),
+      ]),
+      sourceChase: parseStringArray(rawFm.sourceChase),
+      chunkRefs,
+      confidence: parseConfidence(rawFm.confidence ?? d.confidence) ?? (evidence.length > 0 ? 0.7 : 0.3),
+      status: parseStatus(rawFm.status) ?? (evidence.length > 0 ? "verified" : "needs_review"),
+      tags: parseStringArray(rawFm.tags),
+      related: parseStringArray(rawFm.related),
+      createdAt: (rawFm.createdAt as string) ?? new Date().toISOString(),
+      updatedAt: (rawFm.updatedAt as string) ?? new Date().toISOString(),
+    };
+    return {
+      nodeId,
+      kind,
+      filePath: normalizeWikiFilePath(d.filePath, kind, nodeId),
+      frontmatter,
+      claim: (d.claim as string) ?? "",
+      evidence,
+      interpretation: (d.interpretation as string) ?? undefined,
+      useFor: parseStringArray(d.useFor),
+      limits: parseStringArray(d.limits),
+      links: parseStringArray(d.links),
+    };
+  });
+  const nodeDrafts = uniquifyNodeDraftPaths(parsedNodeDrafts);
 
   const rawUpdated = Array.isArray(parsed.updatedPages) ? (parsed.updatedPages as Record<string, unknown>[]) : [];
   const updatedPages: WikiPage[] = rawUpdated.map((p) => ({
@@ -197,4 +230,158 @@ function fallbackResult(
       aiReading: "fallback", chunkRefs: [], revision: 0,
     }],
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function asNumber(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function parseConfidence(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const lower = value.toLowerCase();
+    if (lower === "high") return 0.85;
+    if (lower === "medium") return 0.6;
+    if (lower === "low") return 0.3;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function parseWikiKind(value: unknown): WikiKind | undefined {
+  const allowed: WikiKind[] = [
+    "concept",
+    "claim",
+    "method",
+    "case",
+    "equation",
+    "question",
+    "insight",
+    "anchor",
+    "counter",
+  ];
+  return typeof value === "string" && allowed.includes(value as WikiKind)
+    ? value as WikiKind
+    : undefined;
+}
+
+function parseStatus(value: unknown): WikiFrontmatter["status"] | undefined {
+  const allowed = ["draft", "verified", "needs_review", "legacy"];
+  return typeof value === "string" && allowed.includes(value)
+    ? value as WikiFrontmatter["status"]
+    : undefined;
+}
+
+function parseStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function parseNumberArray(value: unknown): number[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => typeof item === "number" ? item : Number(item))
+      .filter((item) => Number.isFinite(item));
+  }
+  if (typeof value === "number" && Number.isFinite(value)) return [value];
+  if (typeof value === "string") {
+    return value
+      .replace(/[\[\]]/g, "")
+      .split(",")
+      .map((item) => Number(item.trim()))
+      .filter((item) => Number.isFinite(item));
+  }
+  return [];
+}
+
+function normalizeEvidenceArray(value: unknown, fallbackSourceId: string, fallbackChunkRefs: number[]): Evidence[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(isRecord)
+    .map((item) => {
+      const chunkRefs = uniqueNumbers([
+        ...parseNumberArray(item.chunkRefs),
+        ...parseNumberArray(item.chunkRef),
+        ...fallbackChunkRefs,
+      ]);
+      return {
+        sourceId: (item.sourceId as string) ?? fallbackSourceId,
+        chunkRefs,
+        excerpt: (item.excerpt as string) ?? (item.quote as string) ?? undefined,
+        quote: (item.quote as string) ?? undefined,
+        summary: (item.summary as string) ?? undefined,
+      };
+    })
+    .filter((item) => item.sourceId.trim().length > 0 && item.chunkRefs.length > 0);
+}
+
+function parseWikiFrontmatter(raw: Record<string, unknown>): WikiFrontmatter {
+  return {
+    title: (raw.title as string) ?? "",
+    source: (raw.source as string) ?? undefined,
+    sourceIds: parseStringArray(raw.sourceIds),
+    sourceChase: parseStringArray(raw.sourceChase),
+    chunkRefs: parseNumberArray(raw.chunkRefs),
+    confidence: parseConfidence(raw.confidence),
+    status: parseStatus(raw.status),
+    createdAt: (raw.createdAt as string) ?? undefined,
+    updatedAt: (raw.updatedAt as string) ?? undefined,
+    tags: parseStringArray(raw.tags),
+    hypothesis: (raw.hypothesis as string) ?? undefined,
+    hypothesisTitle: (raw.hypothesisTitle as string) ?? undefined,
+    related: parseStringArray(raw.related),
+    kind: parseWikiKind(raw.kind),
+  };
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.filter((value) => value.trim().length > 0))];
+}
+
+function uniqueNumbers(values: number[]): number[] {
+  return [...new Set(values.filter((value) => Number.isFinite(value)))].sort((a, b) => a - b);
+}
+
+function normalizeWikiFilePath(value: unknown, kind: WikiKind, nodeId: string): string {
+  const directoryByKind: Record<WikiKind, string> = {
+    concept: "concepts",
+    claim: "claims",
+    method: "methods",
+    case: "cases",
+    equation: "equations",
+    question: "questions",
+    insight: "insights",
+    anchor: "anchors",
+    counter: "counters",
+  };
+  const fallbackSlug = nodeId.replace(/^[^/]+\//, "").replace(/[^a-zA-Z0-9\u4e00-\u9fff_-]/g, "-");
+  const fallback = `wiki/${directoryByKind[kind]}/${fallbackSlug}.md`;
+  if (typeof value !== "string" || value.trim().length === 0) return fallback;
+
+  const trimmed = value.trim().replace(/^\/+/, "");
+  return trimmed.startsWith("wiki/") ? trimmed : `wiki/${trimmed}`;
+}
+
+function uniquifyNodeDraftPaths<T extends { nodeId: string; filePath: string }>(drafts: T[]): T[] {
+  const seen = new Map<string, number>();
+  return drafts.map((draft) => {
+    const count = seen.get(draft.filePath) ?? 0;
+    seen.set(draft.filePath, count + 1);
+    if (count === 0) return draft;
+
+    const suffix = `-${count + 1}`;
+    const filePath = draft.filePath.replace(/\.md$/, `${suffix}.md`);
+    const nodeId = draft.nodeId.endsWith(suffix) ? draft.nodeId : `${draft.nodeId}${suffix}`;
+    return { ...draft, filePath, nodeId };
+  });
 }

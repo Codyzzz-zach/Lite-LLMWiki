@@ -1,116 +1,256 @@
 # lite-llmwiki
 
-DeepSeek-native 终端知识工作台。
+DeepSeek-native filesystem second-brain CLI.
 
-<!-- TOC -->
-- [简介](#简介)
-- [快速开始](#快速开始)
-- [Ingest 流程](#ingest-流程)
-- [输入格式](#输入格式)
-- [CLI 命令](#cli-命令)
-- [设计哲学](#设计哲学)
-- [开发](#开发)
-- [架构](#架构)
+`lite-llmwiki` turns raw knowledge files into a traceable Markdown wiki that agents can search, audit, query, and use for inspiration. It is designed for workflows where tools such as Codex, Claude Code, opencode, or other coding/research agents call the CLI directly.
 
----
+## Current Goal
 
-## 简介
+The product is moving toward v5:
 
-将论文、笔记、报告等 raw 知识文件，通过 AI 转化为结构化的 wiki 知识库。核心是 Human 和 AI **逐条对齐认知**——AI 从 raw 中提取事实并给出解读，人类逐条验证后才写入 wiki。
+```text
+raw/original -> loader/cleaning -> raw/chase -> extract -> policy confirm -> compile -> wiki -> audit/search/query/inspire
+```
 
-## 快速开始
+The important contract is not only "generate notes". The wiki must remain tied to source material:
+
+- raw files are preserved by format;
+- cleaned Markdown is preserved in `raw/chase`;
+- wiki nodes point back to `sourceChase` and `chunkRefs`;
+- audit can verify whether a node is evidence-backed;
+- query output can separate sourced answers from inferred claims.
+
+## Install
 
 ```bash
-# 设置 API key
-export DEEPSEEK_API_KEY=sk-xxx
-
-# 摄入一篇 markdown
-llmwiki ingest paper.md -m "核心方法是什么"
-
-# 摄入 LaTeX 论文文件夹
-llmwiki ingest ./arXiv-paper/ -m "核心方法"
-
-# 摄入 PDF 短文档
-llmwiki ingest report.pdf -m "结论"
-
-# 跳过交互（脚本友好）
-llmwiki ingest paper.md --thread all
-
-# 查询知识
-llmwiki query "和我之前那篇论文有什么关联？"
-
-# 统计
-llmwiki status
-```
-
-## Ingest 流程
-
-```
-raw (.md / .tex / TeX 文件夹 / .pdf)
-  → AI 初读 brainstorm → 输出主线 + propositions（含反直觉标注）
-  → 人类逐条确认：a(对齐) / s(跳过) / m(换角度重读)
-  → AI 编译已确认的知识 → wiki 文件
-  → 自动生成 index + 日志
-```
-
-每次 ingest 默认需要人类逐条确认，也可用 `--thread all + a all` 全自动。
-
-## 输入格式
-
-| 格式 | 处理方式 | 适合场景 |
-|------|---------|---------|
-| `.md` | 直接加载 | 笔记、报告 |
-| `.tex` | 单文件或文件夹，解析 `\input{}` 拼接，Pro 清洗 → MD | 论文源码（主力通道） |
-| `.pdf` | pdf-parse 提取 + Pro 清洗 → MD | 短文档、不支持 TeX 的论文 |
-
-长论文（>20 页）推荐使用 TeX 源文件。
-
-## CLI 命令
-
-```bash
-ingest <path>         核心命令：摄入文件或 TeX 文件夹
-  -m, --anchor <text> 一句直觉或问题
-  -t, --thread <id>   跳过主线选择："all" 或数字
-
-query <question>      查询知识库
-node <id>             查看 wiki 页面
-status                统计
-
-chat                  启动 TUI (Ink + React)
-```
-
-## 设计哲学
-
-- **事实以 raw 为准** — human 不提供新事实，只给方向和判断
-- **不确认不落盘** — 每条 AI 解读必须经 human 验证才写入 wiki
-- **反直觉标注在 proposition 内** — 不绕开 human 确认，一起验证
-- **四层前缀缓存** — brainstorm 和 compile 共享 system prompt，降低 API 成本
-
-## 开发
-
-```bash
+cd lite-llmwiki
 npm install
-npm run build        # tsup 构建
-npm run ingest -- README.md -m "测试"   # 单次运行
-npm run dev -- ingest README.md -m "测试"  # tsx 直接运行
+npm run build
 ```
 
-## 架构
+Set the API key:
 
-```
-cli (ingest/query/node/status) → core/prefix (prompt 管理)
-        ↓                              ↓
-ingest/{loader,tex,pdf}-loader  ←  core/client (DeepSeek API)
-        ↓
-ingest/listening (proIngest: brainstorm/reread/compile)
-        ↓
-knowledge/store (文件存储 + index/log)
-        ↓
-wiki/concepts/ + raw/
+```bash
+export DEEPSEEK_API_KEY=sk-xxx
 ```
 
-详见 [spec/](spec/) 目录。
+Run the CLI from source during development:
 
-## 许可
+```bash
+npm run dev -- ingest ../raw/original/pdf/e\ 的基本画像.pdf --auto --policy conservative --json
+```
+
+Or after build:
+
+```bash
+node dist/cli.js ingest ../raw/original/pdf/e\ 的基本画像.pdf --auto --policy conservative --json
+```
+
+## Project Structure
+
+Runtime knowledge data lives at the repository root:
+
+```text
+raw/
+  original/
+    md/
+    pdf/
+    tex/
+      <paper-project-folder>/
+  chase/
+wiki/
+  concepts/
+  methods/
+  cases/
+  equations/
+  questions/
+  insights/
+  anchors/
+  counters/
+spec/
+spec_process/
+lite-llmwiki/
+```
+
+Meaning:
+
+- `raw/original/<format>/` stores original source material by format.
+- `raw/original/tex/<paper-project-folder>/` stores an entire TeX paper project, because one paper usually contains many `.tex` files.
+- `raw/chase/` stores cleaned Markdown that was sent into the LLM pipeline.
+- `wiki/` stores generated v5 wiki nodes.
+- `spec/` stores design specifications.
+- `spec_process/` stores implementation reviews, process notes, and roadmaps.
+- `lite-llmwiki/` stores the TypeScript CLI package.
+
+`raw/` and `wiki/` are local knowledge workspaces and are gitignored by default. The remote repository should preserve the structure and code contract, not personal generated knowledge files.
+
+## Input Formats
+
+| Format | Handling | Notes |
+| --- | --- | --- |
+| Markdown | loaded directly, chunked, written to chase | best for notes and reports |
+| PDF | extracted and cleaned into Markdown, written to chase | useful for short documents and PDFs without TeX source |
+| TeX file | resolved as a TeX source | suitable for simple papers |
+| TeX folder | detects main `.tex`, resolves included files, written as one source unit | preferred for papers with many `.tex` files |
+
+## Wiki Node Contract
+
+v5 wiki nodes use Markdown frontmatter plus fixed body sections.
+
+Required frontmatter fields:
+
+```yaml
+nodeId: stable-node-id
+kind: concept
+title: Node title
+sourceIds:
+  - raw/pdf/source-id
+sourceChase:
+  - raw/chase/raw_pdf_source-id.md
+chunkRefs:
+  - 1
+confidence: 0.9
+status: verified
+tags:
+  - example
+createdAt: "2026-06-02T00:00:00.000Z"
+updatedAt: "2026-06-02T00:00:00.000Z"
+```
+
+Supported `kind` values:
+
+```text
+concept | claim | method | case | equation | question | insight | anchor | counter
+```
+
+Body sections:
+
+```text
+## Claim
+## Evidence
+## Interpretation
+## Use For
+## Limits
+## Links
+```
+
+`audit` verifies that `sourceChase` exists, `chunkRefs` are valid, and evidence exists.
+
+## CLI Commands
+
+### Ingest
+
+```bash
+llmwiki ingest <path>
+```
+
+Useful options:
+
+```text
+-m, --anchor <text>      human anchor/question
+-t, --thread <id>        "all" or a thread number
+--auto                   non-interactive confirmation
+--policy <name>          conservative | balanced | expansive
+--json                   machine-readable output
+--dry-run                write chase only, do not write wiki
+```
+
+Recommended agent-safe ingest:
+
+```bash
+llmwiki ingest <path> --auto --policy conservative --json
+```
+
+### Audit
+
+```bash
+llmwiki audit --json
+```
+
+Checks whether generated wiki nodes are traceable to chase and evidence-backed.
+
+### Search
+
+```bash
+llmwiki search "1/e 失败概率" --json
+```
+
+Returns structured matches with node ID, kind, title, file path, claim, and evidence.
+
+### Query
+
+```bash
+llmwiki query "为什么 1/e 可以作为失败概率基线？" --json
+```
+
+Uses wiki search results as context and returns:
+
+- `answer`
+- `sources`
+- `inferences`
+- `missingEvidence`
+- `usage`
+
+### Inspire
+
+```bash
+llmwiki inspire --json
+```
+
+Current state: basic node-based inspiration/sampling.
+
+Planned v5 target: structured inspiration with seed, related nodes, tensions, counter angles, analogies, next actions, and missing evidence.
+
+### Other Commands
+
+```bash
+llmwiki status
+llmwiki node <id>
+llmwiki plan <path>
+llmwiki chat
+```
+
+## Development
+
+```bash
+npm run typecheck
+npm run test
+npm run build
+```
+
+Current validated baseline:
+
+```text
+typecheck passed
+26 tests passed
+build passed
+```
+
+## v5 Process Notes
+
+See:
+
+- `../spec_process/2026-06-02-v5-process-review.md`
+- `../spec_process/v5-roadmap.md`
+
+Current v5 direction completion is estimated at roughly `65% - 70%`.
+
+Working now:
+
+- PDF/MD/TeX entry shape is defined.
+- chase layer is preserved.
+- v5 nodes are auditable.
+- `audit/search/query` are usable for a basic agent second-brain loop.
+
+Still planned:
+
+- stricter policy-vs-compile enforcement;
+- stronger semantic drift audit;
+- PDF/MD/TeX three-format e2e suite;
+- structured `inspire --json`;
+- stable agent CLI contract docs;
+- graph-ready manifest improvements without implementing the graph layer too early.
+
+## License
 
 MIT

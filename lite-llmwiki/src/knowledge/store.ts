@@ -4,6 +4,8 @@ import type { AppConfig, Chunk, Source, WikiNodeDraft, WikiPage } from "../types
 import { estimateTokens } from "../ingest/loader.js";
 import { renderWikiNode } from "./render.js";
 
+const WIKI_NODE_DIRS = ["concepts", "methods", "cases", "equations", "questions", "insights", "anchors", "counters"];
+
 /**
  * KnowledgeStore — 纯文件存储
  *
@@ -56,17 +58,20 @@ export class KnowledgeStore {
     const bodyContent = source.body || source.chunks.map((c) => c.text).join("\n\n");
     const chunkMarkers = source.chunks.length > 0
       ? "\n" + source.chunks.map((c) =>
-        `<!-- chunk:${c.index} -->\n${c.text}\n<!-- /chunk:${c.index} -->`
+        `<!-- chunk:${c.index + 1} id=${c.id} charStart=${c.charStart} charEnd=${c.charEnd} -->\n${c.text}\n<!-- /chunk:${c.index + 1} -->`
       ).join("\n")
       : "";
 
     const content = [
       "---",
+      `sourceId: ${source.id.replace(/[\/:]/g, "_")}`,
       `title: ${source.title}`,
       `sourcePath: ${source.path}`,
       ...(source.sourceRoot ? [`sourceRoot: ${source.sourceRoot}`] : []),
       `sourceType: ${source.type}`,
       `fingerprint: ${source.fingerprint}`,
+      `chunkCount: ${source.chunks.length}`,
+      "loaderVersion: v5.0",
       `createdAt: ${source.createdAt.toISOString()}`,
       "---",
       "",
@@ -97,7 +102,7 @@ export class KnowledgeStore {
     if (!content) return null;
 
     const chunks: Chunk[] = [];
-    const re = /<!--\s*chunk:(\d+)\s*-->\s*\n?([\s\S]*?)\n?\s*<!--\s*\/chunk:\1\s*-->/g;
+    const re = /<!--\s*chunk:(\d+)(?:\s+[^>]*)?\s*-->\s*\n?([\s\S]*?)\n?\s*<!--\s*\/chunk:\1\s*-->/g;
     let match: RegExpExecArray | null;
 
     while ((match = re.exec(content)) !== null) {
@@ -154,7 +159,15 @@ export class KnowledgeStore {
 
   /** 渲染并保存 wiki 节点（v5 固定格式：frontmatter + Claim/Evidence/Interpretation/Use For/Limits/Links sections） */
   saveWikiNode(draft: WikiNodeDraft): string {
-    const content = renderWikiNode(draft);
+    const content = renderWikiNode({
+      ...draft,
+      frontmatter: {
+        ...draft.frontmatter,
+        sourceChase: draft.frontmatter.sourceChase?.length
+          ? draft.frontmatter.sourceChase
+          : draft.frontmatter.sourceIds?.map((sourceId) => `raw/chase/${sourceId.replace(/[\/:]/g, "_")}.md`) ?? [],
+      },
+    });
     const relPath = draft.filePath.startsWith("wiki/") ? draft.filePath.slice(5) : draft.filePath;
     const fullPath = relPath.startsWith("/")
       ? relPath
@@ -176,11 +189,13 @@ export class KnowledgeStore {
 
   /** 列出所有 wiki 文件 */
   listWikiPages(): string[] {
-    const dir = join(this.config.wikiDir, "concepts");
-    if (!existsSync(dir)) return [];
-    return readdirSync(dir)
-      .filter((f) => f.endsWith(".md"))
-      .map((f) => `wiki/concepts/${f}`);
+    return WIKI_NODE_DIRS.flatMap((dirName) => {
+      const dir = join(this.config.wikiDir, dirName);
+      if (!existsSync(dir)) return [];
+      return readdirSync(dir)
+        .filter((f) => f.endsWith(".md"))
+        .map((f) => `wiki/${dirName}/${f}`);
+    });
   }
 
   /** 搜索 wiki 文件内容（通过文件名/摘要行匹配） */
@@ -268,10 +283,7 @@ export class KnowledgeStore {
       totalSources = readdirSync(rawChaseDir).filter((f) => f.endsWith(".md")).length;
     }
 
-    const wikiDir = join(this.config.wikiDir, "concepts");
-    const totalNodes = existsSync(wikiDir)
-      ? readdirSync(wikiDir).filter((f) => f.endsWith(".md")).length
-      : 0;
+    const totalNodes = this.listWikiPages().length;
 
     return { totalSources, totalNodes };
   }
@@ -280,42 +292,20 @@ export class KnowledgeStore {
 
   /** 重建 wiki/index.md + wiki/index.json — 所有页面的目录和机器 manifest */
   rebuildIndex(): string {
-    const dir = join(this.config.wikiDir, "concepts");
-    if (!existsSync(dir)) { mkdirSync(dir, { recursive: true }); return ""; }
-
-    const files = readdirSync(dir).filter((f) => f.endsWith(".md") && !f.startsWith("_") && !f.startsWith("anchor-"));
-    const daFiles = readdirSync(dir).filter((f) => f.startsWith("_devils-advocate-"));
-    const anchorFiles = readdirSync(dir).filter((f) => f.startsWith("anchor-"));
-
+    const conceptsDir = join(this.config.wikiDir, "concepts");
+    if (!existsSync(conceptsDir)) mkdirSync(conceptsDir, { recursive: true });
+    const pagePaths = this.listWikiPages();
     // ── index.md ──
     let md = "# Wiki Index\n\n";
 
-    md += `## Concepts (${files.length})\n`;
-    for (const f of files) {
-      const content = readFileSync(join(dir, f), "utf-8");
+    md += `## Nodes (${pagePaths.length})\n`;
+    for (const filePath of pagePaths) {
+      const content = this.readWikiPage(filePath) ?? "";
       const t = content.match(/^title:\s*(.+)/m);
       const c = content.match(/^confidence:\s*(.+)/m);
-      const title = t ? t[1]!.trim() : f.replace(/\.md$/, "");
+      const title = t ? t[1]!.trim() : filePath.replace(/\.md$/, "");
       const conf = c ? parseFloat(c[1]!) : 0;
-      md += `- [${title}](concepts/${f}) — conf: ${conf.toFixed(1)}\n`;
-    }
-
-    if (daFiles.length > 0) {
-      md += `\n## 反直觉视角 (${daFiles.length})\n`;
-      for (const f of daFiles) {
-        const content = readFileSync(join(dir, f), "utf-8");
-        const t = content.match(/^title:\s*(.+)/m);
-        md += `- [${t ? t[1]!.trim() : f}](concepts/${f})\n`;
-      }
-    }
-
-    if (anchorFiles.length > 0) {
-      md += `\n## Anchors (${anchorFiles.length})\n`;
-      for (const f of anchorFiles) {
-        const content = readFileSync(join(dir, f), "utf-8");
-        const t = content.match(/^title:\s*(.+)/m);
-        md += `- [${t ? t[1]!.trim() : f}](concepts/${f})\n`;
-      }
+      md += `- [${title}](${filePath.replace(/^wiki\//, "")}) — conf: ${conf.toFixed(1)}\n`;
     }
 
     md += `\n*Last updated: ${new Date().toISOString()}*\n`;
@@ -326,7 +316,7 @@ export class KnowledgeStore {
     // ── index.json (机器 manifest) ──
     type IndexEntry = {
       nodeId: string;
-      kind: "concept" | "devils-advocate" | "anchor";
+      kind: string;
       title: string;
       filePath: string;
       sourceIds: string[];
@@ -335,35 +325,49 @@ export class KnowledgeStore {
       updatedAt: string;
     };
 
-    const allMarkdown = [...files, ...daFiles, ...anchorFiles];
     const entries: IndexEntry[] = [];
 
-    for (const f of allMarkdown) {
-      const content = readFileSync(join(dir, f), "utf-8");
+    for (const filePath of pagePaths) {
+      const content = this.readWikiPage(filePath) ?? "";
 
       // 解析 frontmatter
       const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-      const fm: Record<string, string> = {};
+      const fm: Record<string, string | string[]> = {};
       if (fmMatch) {
+        let currentArrayKey: string | null = null;
         for (const line of fmMatch[1]!.split("\n")) {
+          const arrayItem = line.match(/^\s*-\s+(.+)$/);
+          if (arrayItem && currentArrayKey) {
+            const current = fm[currentArrayKey];
+            fm[currentArrayKey] = [...(Array.isArray(current) ? current : []), arrayItem[1]!.trim().replace(/^"(.*)"$/, "$1")];
+            continue;
+          }
           const colon = line.indexOf(":");
-          if (colon > 0) fm[line.slice(0, colon).trim()] = line.slice(colon + 1).trim();
+          if (colon > 0) {
+            const key = line.slice(0, colon).trim();
+            const value = line.slice(colon + 1).trim();
+            if (value) {
+              fm[key] = value.replace(/^"(.*)"$/, "$1");
+              currentArrayKey = null;
+            } else {
+              fm[key] = [];
+              currentArrayKey = key;
+            }
+          }
         }
       }
 
-      const nodeId = f.replace(/\.md$/, "");
-      const kind: IndexEntry["kind"] = f.startsWith("_devils-advocate-")
-        ? "devils-advocate"
-        : f.startsWith("anchor-")
-          ? "anchor"
-          : "concept";
-      const title = fm["title"] || nodeId;
-      const sourceIds: string[] = fm["source"] ? [fm["source"]] : [];
-      const tags: string[] = fm["tags"] ? fm["tags"].split(/,\s*/).filter(Boolean) : [];
-      const confidence = fm["confidence"] ? parseFloat(fm["confidence"]) : 0;
-      const updatedAt = fm["createdAt"] || new Date().toISOString();
+      const nodeId = scalar(fm["nodeId"]) ?? filePath.replace(/^wiki\//, "").replace(/\.md$/, "");
+      const kind = scalar(fm["kind"]) ?? filePath.split("/").at(-2) ?? "concept";
+      const title = scalar(fm["title"]) || nodeId;
+      const sourceIds: string[] = list(fm["sourceIds"]).length > 0
+        ? list(fm["sourceIds"])
+        : scalar(fm["source"]) ? [scalar(fm["source"])!] : [];
+      const tags: string[] = list(fm["tags"]);
+      const confidence = scalar(fm["confidence"]) ? parseFloat(scalar(fm["confidence"])!) : 0;
+      const updatedAt = scalar(fm["updatedAt"]) || scalar(fm["createdAt"]) || new Date().toISOString();
 
-      entries.push({ nodeId, kind, title, filePath: `wiki/concepts/${f}`, sourceIds, tags, confidence, updatedAt });
+      entries.push({ nodeId, kind, title, filePath, sourceIds, tags, confidence, updatedAt });
     }
 
     const jsonPath = join(this.config.wikiDir, "index.json");
@@ -390,4 +394,14 @@ export class KnowledgeStore {
     writeFileSync(logPath, lines, { flag: "a" }); // append mode
     return logPath;
   }
+}
+
+function scalar(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function list(value: string | string[] | undefined): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  return value.split(/,\s*/).filter(Boolean);
 }

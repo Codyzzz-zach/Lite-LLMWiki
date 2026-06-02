@@ -11,7 +11,7 @@ import { loadFromTex } from "../../ingest/tex-loader.js";
 import { proIngest } from "../../ingest/listening.js";
 import { filterByPolicy } from "../../ingest/policy.js";
 import type { Policy } from "../../ingest/policy.js";
-import type { IngestOptions, Proposition, ConfirmedProposition, WikiPage } from "../../types.js";
+import type { IngestOptions, Proposition, ConfirmedProposition, WikiPage, WikiNodeDraft } from "../../types.js";
 
 export function registerIngestCommand(program: Command): void {
   program
@@ -25,15 +25,23 @@ export function registerIngestCommand(program: Command): void {
     .option("--json", "输出结构化 JSON 到 stdout")
     .option("--dry-run", "不写 wiki，只输出报告")
     .action(async (path: string, opts: { anchor?: string; thread?: string; auto?: boolean; policy?: string; json?: boolean; dryRun?: boolean }) => {
-      await runIngest({
-        file: path,
-        anchor: opts.anchor,
-        mode: opts.thread || undefined,
-        auto: opts.auto,
-        policy: opts.policy,
-        json: opts.json,
-        dryRun: opts.dryRun,
-      });
+      const originalLog = console.log;
+      if (opts.json) {
+        console.log = (...args: unknown[]) => console.error(...args);
+      }
+      try {
+        await runIngest({
+          file: path,
+          anchor: opts.anchor,
+          mode: opts.thread || undefined,
+          auto: opts.auto,
+          policy: opts.policy,
+          json: opts.json,
+          dryRun: opts.dryRun,
+        });
+      } finally {
+        console.log = originalLog;
+      }
     });
 }
 
@@ -65,7 +73,14 @@ function findMainTex(dir: string): string {
 
 async function runIngest(opts: IngestOptions): Promise<void> {
   const config = loadConfig();
-  if (!config.apiKey) { console.error("  ❌  DEEPSEEK_API_KEY not set."); process.exit(1); }
+  if (!config.apiKey) {
+    if (opts.json) {
+      printJsonError("DEEPSEEK_API_KEY not set");
+    } else {
+      console.error("  ❌  DEEPSEEK_API_KEY not set.");
+    }
+    process.exit(1);
+  }
 
   console.log(`\n  📥  ingesting: ${opts.file}`);
   if (opts.anchor) console.log(`  🎯  anchor:    "${opts.anchor}"`);
@@ -95,7 +110,29 @@ async function runIngest(opts: IngestOptions): Promise<void> {
 
   // ——— Phase 1: Extract ———
   console.log("  [2] Extract — Pro 初读...\n");
-  const br = await proIngest({ source, anchor: opts.anchor, config, client, mode: "extract" });
+  let br: Awaited<ReturnType<typeof proIngest>>;
+  try {
+    br = await proIngest({ source, anchor: opts.anchor, config, client, mode: "extract" });
+  } catch (err) {
+    const message = `Extract failed: ${(err as Error).message}`;
+    if (opts.json) {
+      printJsonResult({
+        ok: false,
+        sourceId: source.id,
+        created: [],
+        updated: [],
+        skipped: [],
+        coverage: {
+          coveredChunks: 0,
+          totalChunks: source.chunks.length,
+          uncoveredReasons: [message],
+        },
+      });
+    } else {
+      console.error(`  ❌  ${message}\n`);
+    }
+    process.exit(1);
+  }
 
   const threads = br.mainThreads ?? [];
   const allProps = br.propositions ?? [];
@@ -429,18 +466,8 @@ async function runIngest(opts: IngestOptions): Promise<void> {
     for (const draft of nodeDrafts) store.saveWikiNode(draft);
     for (const page of confirmedUpdates) store.saveWikiPage(page);
 
-    const ciList = toCompile.filter((c) => c.counterIntuitive && c.status === "confirmed");
-    if (ciList.length > 0) {
-      const daId = `_devils-advocate-${cr.materialId.slice(-8)}`;
-      const daBody = ciList.map(
-        (c) => `- ${c.claim}\n  → ${c.counterIntuitiveReason ?? "挑战了常见认知"}\n`
-      ).join("\n");
-      store.saveWikiPage({
-        nodeId: daId, filePath: `wiki/concepts/${daId}.md`,
-        frontmatter: { title: `反直觉视角: ${cr.title}`, source: cr.materialId, confidence: 0.4, createdAt: new Date().toISOString() },
-        body: `AI 从以下已确认的知识点中识别出反直觉信号：\n\n${daBody}`,
-      });
-    }
+    const counterNode = buildCounterNode(cr, toCompile);
+    if (counterNode) store.saveWikiNode(counterNode);
     if (cr.humanAnchor) {
       store.saveWikiPage({
         nodeId: cr.humanAnchor.id, filePath: `wiki/concepts/${cr.humanAnchor.id}.md`,
@@ -482,6 +509,51 @@ async function runIngest(opts: IngestOptions): Promise<void> {
   }
 }
 
+function buildCounterNode(
+  compileResult: { materialId: string; title: string },
+  propositions: ConfirmedProposition[],
+): WikiNodeDraft | null {
+  const ciList = propositions.filter((c) => c.counterIntuitive && c.status === "confirmed");
+  if (ciList.length === 0) return null;
+
+  const suffix = compileResult.materialId.slice(-8);
+  const nodeId = `counter-${suffix}`;
+  const chunkRefs = [...new Set(ciList.flatMap((c) => c.chunkRefs))].sort((a, b) => a - b);
+  const sourceChase = `raw/chase/${compileResult.materialId.replace(/[\/:]/g, "_")}.md`;
+  const evidenceSummary = ciList
+    .map((c) => `${c.claim} -> ${c.counterIntuitiveReason ?? "挑战了常见认知"}`)
+    .join("；");
+
+  return {
+    nodeId,
+    kind: "counter",
+    filePath: `wiki/counters/${nodeId}.md`,
+    frontmatter: {
+      nodeId,
+      kind: "counter",
+      title: `反直觉视角: ${compileResult.title}`,
+      sourceIds: [compileResult.materialId],
+      sourceChase: [sourceChase],
+      chunkRefs,
+      confidence: 0.55,
+      status: "verified",
+      tags: ["counter-intuitive"],
+      related: [],
+    },
+    claim: `这份材料中有 ${ciList.length} 个已确认知识点挑战了常见认知。`,
+    evidence: [{
+      sourceId: compileResult.materialId,
+      chunkRefs,
+      summary: evidenceSummary,
+    }],
+    interpretation: ciList.map(
+      (c) => `- ${c.claim}\n  - 反直觉原因: ${c.counterIntuitiveReason ?? "挑战了常见认知"}`,
+    ).join("\n"),
+    useFor: ["提醒 agent 在问答和启发时主动保留反直觉视角"],
+    limits: ["这是由已确认 proposition 聚合出的二阶视角，不应替代原始节点的证据链"],
+  };
+}
+
 // ─── --json / --dry-run helpers ────────────────────────────────────────
 
 interface IngestJsonOutput {
@@ -506,10 +578,16 @@ function computeCoverage(
   const totalChunks = source.chunks.length;
   const covered = new Set<number>();
   for (const p of allProps) {
-    for (const cr of p.chunkRefs) covered.add(cr);
+    for (const cr of p.chunkRefs) {
+      if (cr >= 1 && cr <= totalChunks) {
+        covered.add(cr);
+      } else if (cr >= 0 && cr < totalChunks) {
+        covered.add(cr + 1);
+      }
+    }
   }
   const uncovered: number[] = [];
-  for (let i = 0; i < totalChunks; i++) {
+  for (let i = 1; i <= totalChunks; i++) {
     if (!covered.has(i)) uncovered.push(i);
   }
   return {
@@ -519,4 +597,20 @@ function computeCoverage(
       ? [`${uncovered.length} chunks not referenced by any proposition: [${uncovered.join(", ")}]`]
       : [],
   };
+}
+
+function printJsonError(error: string): void {
+  process.stdout.write(JSON.stringify({
+    ok: false,
+    error,
+    sourceId: "",
+    created: [],
+    updated: [],
+    skipped: [],
+    coverage: {
+      coveredChunks: 0,
+      totalChunks: 0,
+      uncoveredReasons: [error],
+    },
+  }, null, 2) + "\n");
 }

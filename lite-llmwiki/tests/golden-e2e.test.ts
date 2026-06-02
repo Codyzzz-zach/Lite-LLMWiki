@@ -1,291 +1,272 @@
 /**
- * Golden E2E — e的基本画像 + graph-rag + arXiv 三格式全链路
+ * Golden E2E — filesystem-only second-brain contract.
  *
- * 覆盖：
- *   Phase 1: Chase 文件完整性（无需 LLM）
- *   Phase 2: Audit 全量检查（无需 LLM）
- *   Phase 3: Search 三格式检索（无需 LLM）
- *   Phase 4: Inspire 随机抽取（无需 LLM）
- *   Phase 5: Ingest + Query 端到端（需 API key，缺则 skip）
- *
- * 三种原始格式：
- *   - PDF: raw/original/pdf/e 的基本画像.pdf  →  chase: raw_pdf_e 的基本画像-101349df399af024.md
- *   - MD:  raw/original/md/graph-rag-paper.md →  chase: raw_md_graph-rag-paper-1a0fe6ff22d39a3b.md
- *   - TeX: raw/original/tex/arXiv-1503.02531v1 →  chase: raw_tex_main11-5112df995da90d5f.md
+ * This suite does not depend on the repository's gitignored raw/wiki folders.
+ * It builds a temporary project root with md/pdf/tex chase files and legacy wiki
+ * pages, then verifies the local non-LLM pipeline: store, audit, search, inspire,
+ * and index rebuild.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { loadConfig } from "../src/config.js";
-import { KnowledgeStore } from "../src/knowledge/store.js";
+import { beforeEach, describe, expect, it } from "vitest";
 import { auditWiki } from "../src/knowledge/audit.js";
-import { searchWiki } from "../src/query/search.js";
+import { KnowledgeStore } from "../src/knowledge/store.js";
 import { inspireWiki } from "../src/query/inspire.js";
-import type { AppConfig } from "../src/types.js";
+import { searchWiki } from "../src/query/search.js";
+import type { AppConfig, WikiNodeDraft } from "../src/types.js";
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-/**
- * 使用实际项目根目录的 config。
- * loadConfig 会从 cwd 向上查找含有 raw/ 或 wiki/ 的目录作为 projectRoot。
- * vitest 的 cwd 是 lite-llmwiki，向上就是 LiteWikiagent。
- */
-function realConfig(): AppConfig {
-  return loadConfig();
-}
-
-interface ChaseExpectation {
-  sourceType: "md" | "pdf" | "tex";
-  fingerprint: string;
-  /** frontmatter 中必须包含的文本片段 */
-  fmContains: string[];
-  /** body 中至少包含的文本片段 */
-  bodyContains: string[];
-  /** 是否有 sourceRoot（TeX 特有） */
-  hasSourceRoot: boolean;
-}
-
-// ─── Phase 1: Chase 文件完整性 ──────────────────────────────────────────────
-
-describe("Phase 1: Chase file integrity (三格式)", () => {
-  const config = realConfig();
-  const chaseDir = join(config.rawDir, "chase");
-  const originalDir = join(config.rawDir, "original");
-
-  const expectations: Record<string, ChaseExpectation> = {
-    "raw_pdf_e 的基本画像-101349df399af024.md": {
-      sourceType: "pdf",
-      fingerprint: "101349df399af024",
-      fmContains: [
-        "title: e 的基本画像",
-        "sourceType: pdf",
-        "fingerprint: 101349df399af024",
-      ],
-      bodyContains: [
-        "1/e",
-        "错位排列",
-        "秘书问题",
-      ],
-      hasSourceRoot: false,
-    },
-    "raw_md_graph-rag-paper-1a0fe6ff22d39a3b.md": {
-      sourceType: "md",
-      fingerprint: "1a0fe6ff22d39a3b",
-      fmContains: [
-        'title: "Graph-RAG 论文笔记"',
-        "sourceType: md",
-        "fingerprint: 1a0fe6ff22d39a3b",
-      ],
-      bodyContains: [
-        "Graph-RAG",
-        "Graph Indexing",
-        "Graph Retrieval",
-      ],
-      hasSourceRoot: false,
-    },
-    "raw_tex_main11-5112df995da90d5f.md": {
-      sourceType: "tex",
-      fingerprint: "5112df995da90d5f",
-      fmContains: [
-        "title: Distilling the Knowledge in a Neural Network",
-        "sourceType: tex",
-        "fingerprint: 5112df995da90d5f",
-      ],
-      bodyContains: [
-        "Distilling",
-        "knowledge",
-      ],
-      hasSourceRoot: true,
-    },
+function testConfig(root: string): AppConfig {
+  return {
+    apiKey: "",
+    baseUrl: "https://api.deepseek.com",
+    projectRoot: root,
+    rawDir: join(root, "raw"),
+    wikiDir: join(root, "wiki"),
+    model: "test-model",
+    chunkTokenTarget: 100,
+    chunkOverlapTokens: 10,
   };
+}
 
-  it.each(Object.entries(expectations))(
-    "%s — frontmatter + body 完整",
-    (fileName, exp) => {
-      const chasePath = join(chaseDir, fileName);
-      expect(existsSync(chasePath), `chase file should exist: ${chasePath}`).toBe(true);
+function writeChase(config: AppConfig, fileName: string, frontmatter: string[], body: string): void {
+  const chaseDir = join(config.rawDir, "chase");
+  mkdirSync(chaseDir, { recursive: true });
+  const markedBody = [
+    body,
+    "",
+    "<!-- chunk:1 id=test-chunk-1 charStart=0 charEnd=100 -->",
+    body,
+    "<!-- /chunk:1 -->",
+  ].join("\n");
+  writeFileSync(
+    join(chaseDir, fileName),
+    ["---", ...frontmatter, "---", "", markedBody].join("\n"),
+    "utf-8",
+  );
+}
 
-      const content = readFileSync(chasePath, "utf-8");
+function writeOriginalFixtures(config: AppConfig): void {
+  mkdirSync(join(config.rawDir, "original", "pdf"), { recursive: true });
+  mkdirSync(join(config.rawDir, "original", "md"), { recursive: true });
+  mkdirSync(join(config.rawDir, "original", "tex", "arXiv-1503.02531v1"), { recursive: true });
 
-      // frontmatter checks
-      for (const snippet of exp.fmContains) {
-        expect(content, `frontmatter should contain: ${snippet}`).toContain(snippet);
-      }
+  writeFileSync(join(config.rawDir, "original", "pdf", "e 的基本画像.pdf"), "PDF bytes", "utf-8");
+  writeFileSync(join(config.rawDir, "original", "md", "graph-rag-paper.md"), "Graph-RAG markdown", "utf-8");
+  writeFileSync(
+    join(config.rawDir, "original", "tex", "arXiv-1503.02531v1", "main11.tex"),
+    "\\documentclass{article}",
+    "utf-8",
+  );
+}
 
-      // body checks
-      for (const snippet of exp.bodyContains) {
-        expect(content, `body should contain: ${snippet}`).toContain(snippet);
-      }
+function writeLegacyPage(config: AppConfig, fileName: string, title: string, body: string): void {
+  const conceptsDir = join(config.wikiDir, "concepts");
+  mkdirSync(conceptsDir, { recursive: true });
+  writeFileSync(
+    join(conceptsDir, fileName),
+    [
+      "---",
+      `title: ${title}`,
+      "source: e 的基本画像",
+      "confidence: 0.9",
+      "---",
+      "",
+      `# ${title}`,
+      "",
+      body,
+    ].join("\n"),
+    "utf-8",
+  );
+}
 
-      // sourceRoot for TeX
-      if (exp.hasSourceRoot) {
-        expect(content).toContain("sourceRoot:");
-      }
+function createGoldenProject(): { root: string; config: AppConfig; store: KnowledgeStore } {
+  const root = mkdtempSync(join(tmpdir(), "litewiki-golden-"));
+  const config = testConfig(root);
+  const store = new KnowledgeStore(config);
 
-      // sourcePath should reference original
-      expect(content).toContain("sourcePath:");
-    },
+  writeOriginalFixtures(config);
+
+  writeChase(
+    config,
+    "raw_pdf_e 的基本画像-101349df399af024.md",
+    [
+      "title: e 的基本画像",
+      "sourcePath: raw/original/pdf/e 的基本画像.pdf",
+      "sourceType: pdf",
+      "fingerprint: 101349df399af024",
+    ],
+    [
+      "下面是一份围绕常数 1/e 的系统说明书。",
+      "错位排列中，没有任何人拿对帽子的概率随 n 增大趋近 1/e。",
+      "秘书问题中先观察约 37% 的候选人，然后选择第一个超过样本标尺的人。",
+      "RC 电路和一级化学反应中，时间常数对应 1/e 或 1-1/e。",
+    ].join("\n"),
   );
 
-  it("三格式均有 chase 文件", () => {
-    const fileNames = Object.keys(expectations);
-    for (const fn of fileNames) {
-      expect(existsSync(join(chaseDir, fn)), `missing: ${fn}`).toBe(true);
-    }
+  writeChase(
+    config,
+    "raw_md_graph-rag-paper-1a0fe6ff22d39a3b.md",
+    [
+      'title: "Graph-RAG 论文笔记"',
+      "sourcePath: raw/original/md/graph-rag-paper.md",
+      "sourceType: md",
+      "fingerprint: 1a0fe6ff22d39a3b",
+    ],
+    "Graph-RAG combines Graph Indexing and Graph Retrieval for multi-hop knowledge retrieval.",
+  );
+
+  writeChase(
+    config,
+    "raw_tex_main11-5112df995da90d5f.md",
+    [
+      "title: Distilling the Knowledge in a Neural Network",
+      "sourcePath: raw/original/tex/arXiv-1503.02531v1/main11.tex",
+      "sourceRoot: raw/original/tex/arXiv-1503.02531v1",
+      "sourceType: tex",
+      "fingerprint: 5112df995da90d5f",
+    ],
+    "Distilling the knowledge in a neural network transfers knowledge from ensemble models.",
+  );
+
+  writeLegacyPage(
+    config,
+    "1minus_e_probability_limit.md",
+    "1/e 的概率极限角色",
+    [
+      "## 极限与经典场景",
+      "1/e 是许多微小机会都失败的极限概率。错位排列和伯努利试验都指向这个失败概率基线。",
+      "",
+      "## 信息论视角",
+      "概率约 36.8% 的事件对总体不确定性的边际贡献最大。",
+    ].join("\n"),
+  );
+  writeLegacyPage(
+    config,
+    "1minus_e_exponential_decay.md",
+    "1/e 作为指数衰减的特征时间",
+    "指数分布、RC 电路和一级化学反应都使用 1/e 或 1-1/e 描述时间常数。",
+  );
+  writeLegacyPage(
+    config,
+    "1minus_e_decision_algorithm.md",
+    "1/e 与最优停止和贪心算法",
+    "秘书问题和 1/e 法则提供探索与利用的决策策略，贪心算法有 1-1/e 近似保证。",
+  );
+  writeLegacyPage(
+    config,
+    "_devils-advocate-6ed64c50.md",
+    "反直觉视角: e 的基本画像",
+    "大量机会叠加后，一无所获的概率仍可能稳定在 37%。",
+  );
+  writeLegacyPage(
+    config,
+    "anchor-3aa60acf40bc.md",
+    "1/e essence",
+    "## Anchor\n1/e 是失败概率、时间常数和探索利用策略的共同锚点。",
+  );
+
+  return { root, config, store };
+}
+
+let config: AppConfig;
+let store: KnowledgeStore;
+
+beforeEach(() => {
+  ({ config, store } = createGoldenProject());
+});
+
+describe("Phase 1: Chase file integrity (md/pdf/tex)", () => {
+  it("has three deterministic chase files and original source folders", () => {
+    expect(existsSync(join(config.rawDir, "chase", "raw_pdf_e 的基本画像-101349df399af024.md"))).toBe(true);
+    expect(existsSync(join(config.rawDir, "chase", "raw_md_graph-rag-paper-1a0fe6ff22d39a3b.md"))).toBe(true);
+    expect(existsSync(join(config.rawDir, "chase", "raw_tex_main11-5112df995da90d5f.md"))).toBe(true);
+
+    expect(existsSync(join(config.rawDir, "original", "pdf", "e 的基本画像.pdf"))).toBe(true);
+    expect(existsSync(join(config.rawDir, "original", "md", "graph-rag-paper.md"))).toBe(true);
+    expect(existsSync(join(config.rawDir, "original", "tex", "arXiv-1503.02531v1", "main11.tex"))).toBe(true);
   });
 
-  it("三格式均有原始文件", () => {
-    // PDF
-    expect(existsSync(join(originalDir, "pdf", "e 的基本画像.pdf"))).toBe(true);
-    // MD
-    expect(existsSync(join(originalDir, "md", "graph-rag-paper.md"))).toBe(true);
-    // TeX (project folder)
-    expect(existsSync(join(originalDir, "tex", "arXiv-1503.02531v1", "main11.tex"))).toBe(true);
+  it("keeps TeX as a project source unit in chase frontmatter", () => {
+    const tex = readFileSync(join(config.rawDir, "chase", "raw_tex_main11-5112df995da90d5f.md"), "utf-8");
+    expect(tex).toContain("sourceType: tex");
+    expect(tex).toContain("sourceRoot: raw/original/tex/arXiv-1503.02531v1");
   });
 });
 
-// ─── Phase 2: Audit 全量检查 ────────────────────────────────────────────────
-
-describe("Phase 2: Audit (全量检查)", () => {
-  const config = realConfig();
-
-  it("audit 能识别全部 5 个 legacy 页面", () => {
+describe("Phase 2: Audit legacy wiki", () => {
+  it("identifies all five existing pages as legacy warnings", () => {
     const result = auditWiki(config);
 
-    // 5 个页面全是 legacy → verifiedNodes=0
+    expect(result.ok).toBe(true);
     expect(result.summary.nodes).toBe(5);
     expect(result.summary.verifiedNodes).toBe(0);
     expect(result.summary.coverage).toBe(0);
-
-    // 每条 issue 都是 warning
-    const legacyIssues = result.issues.filter(
-      (i) => i.severity === "warning" && i.message.includes("Legacy page"),
-    );
-    expect(legacyIssues).toHaveLength(5);
-  });
-
-  it("audit 按 source 过滤 — e的基本画像 命中 5 个", () => {
-    const result = auditWiki(config, { source: "e 的基本画像" });
-    // 当前无 v5 节点 + 过滤可能不精确命中 legacy
-    expect(result.summary.nodes).toBeGreaterThanOrEqual(0);
-  });
-
-  it("audit 返回 ok: true（无 error 级别问题）", () => {
-    const result = auditWiki(config);
-    // ok 为 true 只要没有 error。当前全部是 warning（legacy）。
-    expect(result.ok).toBe(true);
-    expect(result.issues.filter((i) => i.severity === "error")).toHaveLength(0);
+    expect(result.issues.filter((i) => i.severity === "warning" && i.message.includes("Legacy page")))
+      .toHaveLength(5);
   });
 });
 
-// ─── Phase 3: Search 三格式检索 ─────────────────────────────────────────────
-
-describe("Phase 3: Search (三格式检索)", () => {
-  const config = realConfig();
-
-  it('search "1/e 失败概率" 召回 >= 3 个 e 相关节点', () => {
+describe("Phase 3: Search legacy and v5-readable pages", () => {
+  it('search "1/e 失败概率" recalls e-related pages', () => {
     const matches = searchWiki(config, "1/e 失败概率");
+
     expect(matches.length).toBeGreaterThanOrEqual(3);
-
-    // 概率极限节点应该排第一
-    const titles = matches.map((m) => m.title);
-    expect(titles.some((t) => t.includes("概率极限"))).toBe(true);
+    expect(matches.some((m) => m.title.includes("概率极限"))).toBe(true);
   });
 
-  it('search "Graph-RAG 图检索" 包含 graph-rag 相关内容', () => {
-    // graph-rag wiki 节点还未生成，但搜索应不崩溃
-    const matches = searchWiki(config, "Graph-RAG 图检索");
-    // 至少不抛异常，返回结果（可能为空，因为无 graph-rag wiki 节点）
-    expect(Array.isArray(matches)).toBe(true);
-  });
-
-  it('search "distillation knowledge" 容错无节点', () => {
-    // arXiv wiki 节点还未生成，应返回空数组不崩溃
-    const matches = searchWiki(config, "distillation knowledge neural network");
-    expect(Array.isArray(matches)).toBe(true);
-  });
-
-  it("search 返回结果有正确结构", () => {
+  it("returns a stable structured result shape", () => {
     const matches = searchWiki(config, "1/e");
-    for (const m of matches) {
-      expect(m).toHaveProperty("nodeId");
-      expect(m).toHaveProperty("kind");
-      expect(m).toHaveProperty("title");
-      expect(m).toHaveProperty("score");
-      expect(m).toHaveProperty("filePath");
-      expect(m).toHaveProperty("claim");
-      expect(m).toHaveProperty("evidence");
-      expect(typeof m.score).toBe("number");
-      expect(m.score).toBeGreaterThan(0);
+
+    expect(matches.length).toBeGreaterThan(0);
+    for (const match of matches) {
+      expect(match.nodeId).toBeTruthy();
+      expect(match.kind).toBeTruthy();
+      expect(match.title).toBeTruthy();
+      expect(match.filePath).toMatch(/^wiki\/concepts\//);
+      expect(match.score).toBeGreaterThan(0);
+      expect(typeof match.claim).toBe("string");
+      expect(Array.isArray(match.evidence)).toBe(true);
     }
   });
 });
 
-// ─── Phase 4: Inspire 随机抽取 ──────────────────────────────────────────────
+describe("Phase 4: Inspire local page sampling", () => {
+  it("returns a page without requiring an API key", () => {
+    const result = inspireWiki(config, { seed: 1 });
 
-describe("Phase 4: Inspire (随机抽取)", () => {
-  const config = realConfig();
-
-  it("inspireWiki 返回一个有效页面", () => {
-    const result = inspireWiki(config);
     expect(result).not.toBeNull();
     expect(result!.nodeId).toBeTruthy();
     expect(result!.title).toBeTruthy();
-    expect(result!.filePath).toBeTruthy();
+    expect(result!.filePath).toMatch(/^wiki\/concepts\//);
   });
 
-  it("inspireWiki 多次调用返回结果结构一致", () => {
-    for (let i = 0; i < 5; i++) {
-      const result = inspireWiki(config);
-      expect(result).not.toBeNull();
-      expect(result!.nodeId).toBeTruthy();
-      expect(typeof result!.kind).toBe("string");
-      expect(typeof result!.claim).toBe("string");
-      expect(Array.isArray(result!.evidence)).toBe(true);
-    }
-  });
+  it("can filter by concept kind for legacy pages", () => {
+    const result = inspireWiki(config, { kind: "concept", seed: 2 });
 
-  it('inspireWiki --kind concept 返回正确 kind', () => {
-    const result = inspireWiki(config, { kind: "concept" });
-    if (result) {
-      expect(result.kind).toBe("concept");
-    }
+    expect(result).not.toBeNull();
+    expect(result!.kind).toBe("concept");
   });
 });
 
-// ─── Phase 5: KnowledgeStore 操作（无需 LLM）────────────────────────────────
-
-describe("Phase 5: KnowledgeStore 读写", () => {
-  const config = realConfig();
-  const store = new KnowledgeStore(config);
-
-  it("readRaw 能读取三种 chase 文件", () => {
-    const pdfContent = store.readRaw("raw_pdf_e 的基本画像-101349df399af024");
-    expect(pdfContent).toBeTruthy();
-    expect(pdfContent!).toContain("sourceType: pdf");
-
-    const mdContent = store.readRaw("raw_md_graph-rag-paper-1a0fe6ff22d39a3b");
-    expect(mdContent).toBeTruthy();
-    expect(mdContent!).toContain("sourceType: md");
-
-    const texContent = store.readRaw("raw_tex_main11-5112df995da90d5f");
-    expect(texContent).toBeTruthy();
-    expect(texContent!).toContain("sourceType: tex");
+describe("Phase 5: KnowledgeStore filesystem operations", () => {
+  it("readRaw reads all three chase files by raw id", () => {
+    expect(store.readRaw("raw_pdf_e 的基本画像-101349df399af024")).toContain("sourceType: pdf");
+    expect(store.readRaw("raw_md_graph-rag-paper-1a0fe6ff22d39a3b")).toContain("sourceType: md");
+    expect(store.readRaw("raw_tex_main11-5112df995da90d5f")).toContain("sourceType: tex");
   });
 
-  it("getStats 返回 source 数和 wiki 节点数", () => {
+  it("reports source and node counts for the fixture", () => {
     const stats = store.getStats();
+
     expect(stats.totalSources).toBe(3);
     expect(stats.totalNodes).toBe(5);
   });
 
-  it("listWikiPages 返回 5 个文件", () => {
+  it("lists legacy wiki pages and rebuilds markdown/json index", () => {
     const pages = store.listWikiPages();
-    expect(pages.length).toBe(5);
-    expect(pages.every((p) => p.startsWith("wiki/concepts/"))).toBe(true);
-  });
+    expect(pages).toHaveLength(5);
 
-  it("rebuildIndex 生成 index.md 和 index.json", () => {
     const indexPath = store.rebuildIndex();
     expect(existsSync(indexPath)).toBe(true);
 
@@ -295,8 +276,120 @@ describe("Phase 5: KnowledgeStore 读写", () => {
 
     const jsonPath = join(config.wikiDir, "index.json");
     expect(existsSync(jsonPath)).toBe(true);
-    const jsonContent = JSON.parse(readFileSync(jsonPath, "utf-8"));
-    expect(Array.isArray(jsonContent)).toBe(true);
-    expect(jsonContent.length).toBeGreaterThanOrEqual(3);
+    const jsonContent = JSON.parse(readFileSync(jsonPath, "utf-8")) as unknown[];
+    expect(jsonContent.length).toBe(5);
+  });
+});
+
+describe("Phase 6: v5 verified node contract", () => {
+  it("saves a schema-complete v5 node that audit can verify", () => {
+    const draft: WikiNodeDraft = {
+      nodeId: "concept/one-over-e-probability-limit",
+      kind: "concept",
+      filePath: "wiki/concepts/one-over-e-probability-limit.md",
+      frontmatter: {
+        title: "1/e 的概率极限角色",
+        sourceIds: ["raw_pdf_e 的基本画像-101349df399af024"],
+        sourceChase: ["raw/chase/raw_pdf_e 的基本画像-101349df399af024.md"],
+        chunkRefs: [1],
+        confidence: 0.86,
+        status: "verified",
+        tags: ["probability", "one-over-e"],
+        related: [],
+      },
+      claim: "1/e 经常作为许多微小机会都失败的极限概率出现。",
+      evidence: [{
+        sourceId: "raw_pdf_e 的基本画像-101349df399af024",
+        chunkRefs: [1],
+        summary: "错位排列和多次小概率试验都指向 1/e 失败概率。",
+        excerpt: "错位排列中，没有任何人拿对帽子的概率随 n 增大趋近 1/e。",
+      }],
+      interpretation: "它可以作为风险判断中的失败概率基线。",
+      useFor: ["评估多次小概率尝试的一无所获概率"],
+      limits: ["依赖独立性和小概率试验结构"],
+    };
+
+    store.saveWikiNode(draft);
+    const saved = readFileSync(join(config.wikiDir, "concepts", "one-over-e-probability-limit.md"), "utf-8");
+
+    expect(saved).toContain("nodeId: concept/one-over-e-probability-limit");
+    expect(saved).toContain("kind: concept");
+    expect(saved).toContain("sourceChase:");
+    expect(saved).toContain("chunkRefs:");
+    expect(saved).toContain("Summary: 错位排列和多次小概率试验都指向 1/e 失败概率。");
+
+    const result = auditWiki(config);
+    expect(result.ok).toBe(true);
+    expect(result.summary.verifiedNodes).toBe(1);
+  });
+
+  it("saves a v5 counter node that audit can verify", () => {
+    const draft: WikiNodeDraft = {
+      nodeId: "counter-399af024",
+      kind: "counter",
+      filePath: "wiki/counters/counter-399af024.md",
+      frontmatter: {
+        title: "反直觉视角: e 的基本画像",
+        sourceIds: ["raw_pdf_e 的基本画像-101349df399af024"],
+        sourceChase: ["raw/chase/raw_pdf_e 的基本画像-101349df399af024.md"],
+        chunkRefs: [1],
+        confidence: 0.55,
+        status: "verified",
+        tags: ["counter-intuitive"],
+        related: [],
+      },
+      claim: "这份材料中有已确认知识点挑战了常见认知。",
+      evidence: [{
+        sourceId: "raw_pdf_e 的基本画像-101349df399af024",
+        chunkRefs: [1],
+        summary: "大量机会叠加后，一无所获的概率仍可能稳定在 37%。",
+      }],
+      interpretation: "- 多次机会并不保证成功，失败概率可以稳定收敛到 1/e。",
+      useFor: ["提醒 agent 保留反直觉视角"],
+      limits: ["这是聚合视角，不替代原始节点证据"],
+    };
+
+    store.saveWikiNode(draft);
+    store.rebuildIndex();
+
+    const saved = readFileSync(join(config.wikiDir, "counters", "counter-399af024.md"), "utf-8");
+    expect(saved).toContain("kind: counter");
+
+    const result = auditWiki(config);
+    expect(result.ok).toBe(true);
+    expect(result.summary.verifiedNodes).toBe(1);
+
+    const index = JSON.parse(readFileSync(join(config.wikiDir, "index.json"), "utf-8")) as Array<{ kind: string; filePath: string }>;
+    expect(index.some((entry) => entry.kind === "counter" && entry.filePath === "wiki/counters/counter-399af024.md")).toBe(true);
+  });
+
+  it("fails audit for a v5 node with broken sourceChase", () => {
+    const draft: WikiNodeDraft = {
+      nodeId: "concept/broken",
+      kind: "concept",
+      filePath: "wiki/concepts/broken.md",
+      frontmatter: {
+        title: "Broken",
+        sourceIds: ["missing-source"],
+        sourceChase: ["raw/chase/missing-source.md"],
+        chunkRefs: [1],
+        confidence: 0.8,
+        status: "verified",
+        tags: [],
+        related: [],
+      },
+      claim: "Broken claim",
+      evidence: [{
+        sourceId: "missing-source",
+        chunkRefs: [1],
+        summary: "Missing source.",
+      }],
+    };
+
+    store.saveWikiNode(draft);
+    const result = auditWiki(config);
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((issue) => issue.message.includes("sourceChase file not found"))).toBe(true);
   });
 });

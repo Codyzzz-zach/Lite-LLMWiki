@@ -19,7 +19,19 @@ export function registerQueryCommand(program: Command): void {
         const maxNodes = parseInt(options.max ?? "5", 10) || 5;
 
         if (!config.apiKey) {
-          console.error("  ❌  DEEPSEEK_API_KEY not set");
+          if (options.json) {
+            console.log(JSON.stringify({
+              ok: false,
+              error: "DEEPSEEK_API_KEY not set",
+              answer: "",
+              sources: [],
+              inferences: [],
+              missingEvidence: [],
+              usage: null,
+            }, null, 2));
+          } else {
+            console.error("  ❌  DEEPSEEK_API_KEY not set");
+          }
           process.exit(1);
         }
 
@@ -94,7 +106,19 @@ export function registerQueryCommand(program: Command): void {
             );
           }
         } catch (err) {
-          console.error(`  ❌  Query failed: ${(err as Error).message}`);
+          if (options.json) {
+            console.log(JSON.stringify({
+              ok: false,
+              error: `Query failed: ${(err as Error).message}`,
+              answer: "",
+              sources: [],
+              inferences: [],
+              missingEvidence: [],
+              usage: null,
+            }, null, 2));
+          } else {
+            console.error(`  ❌  Query failed: ${(err as Error).message}`);
+          }
           process.exit(1);
         }
       },

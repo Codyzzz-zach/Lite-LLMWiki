@@ -115,6 +115,10 @@ export interface Evidence {
   chunkRefs: number[];
   /** 原文摘录（可选）*/
   excerpt?: string;
+  /** 原文短引用（兼容 spec 命名） */
+  quote?: string;
+  /** 证据摘要，供 agent 快速理解 */
+  summary?: string;
 }
 
 /** extract 阶段：proposition 与已有 wiki 的覆盖关系 */
@@ -137,13 +141,27 @@ export interface CoverageItem {
 
 /** wiki 页面 frontmatter 结构化类型 */
 export interface WikiFrontmatter {
+  /** 稳定节点 ID，未来 graph node primary key */
+  nodeId?: string;
   title: string;
   /** 来源材料 ID */
   source?: string;
+  /** v5 多来源 ID */
+  sourceIds?: string[];
+  /** v5 清洗后输入层路径 */
+  sourceChase?: string[];
+  /** v5 证据 chunk 引用 */
+  chunkRefs?: number[];
   /** 置信度 0-1 */
   confidence?: number;
+  /** v5 节点状态 */
+  status?: "draft" | "verified" | "needs_review" | "legacy";
   /** 创建时间 ISO 字符串 */
   createdAt?: string;
+  /** 更新时间 ISO 字符串 */
+  updatedAt?: string;
+  /** v5 检索/聚类标签 */
+  tags?: string[];
   /** 关联假设 id */
   hypothesis?: string;
   /** 关联假设标题 */
@@ -154,6 +172,20 @@ export interface WikiFrontmatter {
   kind?: WikiKind;
   /** 本条目的证据链 */
   evidence?: Evidence[];
+}
+
+export interface ValidatedWikiFrontmatter extends WikiFrontmatter {
+  nodeId: string;
+  kind: WikiKind;
+  sourceIds: string[];
+  sourceChase: string[];
+  chunkRefs: number[];
+  confidence: number;
+  status: "draft" | "verified" | "needs_review" | "legacy";
+  tags: string[];
+  related: string[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface WikiNodeDraft {

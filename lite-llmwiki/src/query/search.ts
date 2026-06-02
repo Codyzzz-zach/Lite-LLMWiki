@@ -8,6 +8,8 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AppConfig } from "../types.js";
 
+const WIKI_NODE_DIRS = ["concepts", "methods", "cases", "equations", "questions", "insights", "anchors", "counters"];
+
 // ─── 公开类型 ────────────────────────────────────────────────────────
 
 export interface SearchMatch {
@@ -43,6 +45,8 @@ interface ParsedWikiPage {
   /** 全文（用于 legacy fallback） */
   fullText: string;
 }
+
+type ParsedFrontmatter = Record<string, string | string[]>;
 
 // ─── 字段权重 ────────────────────────────────────────────────────────
 
@@ -109,16 +113,17 @@ export function searchWiki(
 // ─── 页面加载 ────────────────────────────────────────────────────────
 
 function loadAllPages(config: AppConfig): ParsedWikiPage[] {
-  const dir = join(config.wikiDir, "concepts");
-  if (!existsSync(dir)) return [];
-
-  const files = readdirSync(dir).filter((f) => f.endsWith(".md"));
   const results: ParsedWikiPage[] = [];
 
-  for (const file of files) {
-    const content = readFileSync(join(dir, file), "utf-8");
-    const parsed = parseWikiPage(file, content);
-    if (parsed) results.push(parsed);
+  for (const dirName of WIKI_NODE_DIRS) {
+    const dir = join(config.wikiDir, dirName);
+    if (!existsSync(dir)) continue;
+    const files = readdirSync(dir).filter((f) => f.endsWith(".md"));
+    for (const file of files) {
+      const content = readFileSync(join(dir, file), "utf-8");
+      const parsed = parseWikiPage(dirName, file, content);
+      if (parsed) results.push(parsed);
+    }
   }
 
   return results;
@@ -126,17 +131,17 @@ function loadAllPages(config: AppConfig): ParsedWikiPage[] {
 
 // ─── 页面解析 ────────────────────────────────────────────────────────
 
-function parseWikiPage(fileName: string, content: string): ParsedWikiPage | null {
+function parseWikiPage(dirName: string, fileName: string, content: string): ParsedWikiPage | null {
   if (!content || content.trim().length === 0) return null;
 
-  const filePath = `wiki/concepts/${fileName}`;
+  const filePath = `wiki/${dirName}/${fileName}`;
 
   // ── 解析 frontmatter ──
   const fm = parseFrontmatter(content);
 
-  const nodeId = fm.nodeId || fileName.replace(/\.md$/, "");
-  const kind = fm.kind || "concept";
-  const title = fm.title || nodeId;
+  const nodeId = scalar(fm.nodeId) || fileName.replace(/\.md$/, "");
+  const kind = scalar(fm.kind) || "concept";
+  const title = scalar(fm.title) || nodeId;
   const tags: string[] = parseTags(fm.tags);
 
   // ── 解析 body section ──
@@ -164,34 +169,53 @@ function parseWikiPage(fileName: string, content: string): ParsedWikiPage | null
 }
 
 /** 解析 frontmatter（`---\n...\n---` 中的 key: value 行） */
-function parseFrontmatter(content: string): Record<string, string> {
-  const result: Record<string, string> = {};
+function parseFrontmatter(content: string): ParsedFrontmatter {
+  const result: ParsedFrontmatter = {};
   const match = content.match(/^---\n([\s\S]*?)\n---/);
   if (!match) return result;
 
+  let currentArrayKey: string | null = null;
   for (const line of match[1]!.split("\n")) {
+    const arrayItem = line.match(/^\s*-\s+(.+)$/);
+    if (arrayItem && currentArrayKey) {
+      const current = result[currentArrayKey];
+      result[currentArrayKey] = [...(Array.isArray(current) ? current : []), cleanScalar(arrayItem[1]!.trim())];
+      continue;
+    }
     const colon = line.indexOf(":");
     if (colon <= 0) continue;
     const key = line.slice(0, colon).trim();
-    // 只取简单标量值（跳过数组行如 `  - item`）
     const val = line.slice(colon + 1).trim();
-    if (val && !val.startsWith("- ")) {
-      // 去掉可能的引号
-      result[key] = val.replace(/^"(.*)"$/, "$1").replace(/^'(.*)'$/, "$1");
+    if (!key) continue;
+    if (val) {
+      result[key] = cleanScalar(val);
+      currentArrayKey = null;
+    } else {
+      result[key] = [];
+      currentArrayKey = key;
     }
   }
   return result;
 }
 
 /** 从 `tags:` 多行值中提取标签数组 */
-function parseTags(tagVal: string | undefined): string[] {
+function parseTags(tagVal: string | string[] | undefined): string[] {
   if (!tagVal) return [];
+  if (Array.isArray(tagVal)) return tagVal;
   // 逗号分隔
   if (tagVal.includes(",")) {
     return tagVal.split(/,\s*/).filter(Boolean);
   }
   // 单一标签
   return [tagVal].filter(Boolean);
+}
+
+function scalar(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function cleanScalar(value: string): string {
+  return value.replace(/^"(.*)"$/, "$1").replace(/^'(.*)'$/, "$1");
 }
 
 /** 提取 body（去掉 frontmatter 后的内容） */

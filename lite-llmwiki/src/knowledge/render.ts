@@ -6,12 +6,13 @@
  *   - body 固定 sections: Claim / Evidence / Interpretation / Use For / Limits / Links
  *   - 空 section 不输出; Evidence 为空则输出 `*(no direct evidence)*` 占位
  */
-import type { Evidence, WikiFrontmatter, WikiNodeDraft } from "../types.js";
+import type { Evidence, ValidatedWikiFrontmatter, WikiFrontmatter, WikiNodeDraft } from "../types.js";
 
 export function renderWikiNode(draft: WikiNodeDraft): string {
   const { frontmatter, claim, evidence, interpretation, useFor, limits, links } = draft;
 
-  const fmLines = serializeFrontmatter(frontmatter);
+  const normalizedFrontmatter = normalizeFrontmatter(draft);
+  const fmLines = serializeFrontmatter(normalizedFrontmatter);
   const bodyParts: string[] = [];
 
   // ── Claim ──
@@ -27,8 +28,12 @@ export function renderWikiNode(draft: WikiNodeDraft): string {
       const refs =
         ev.chunkRefs.length > 0 ? ` | Chunks: [${ev.chunkRefs.join(", ")}]` : "";
       bodyParts.push(`- **Source**: ${ev.sourceId}${refs}`);
-      if (ev.excerpt) {
-        bodyParts.push(`  > ${ev.excerpt}`);
+      if (ev.summary) {
+        bodyParts.push(`  - Summary: ${ev.summary}`);
+      }
+      const quote = ev.excerpt ?? ev.quote;
+      if (quote) {
+        bodyParts.push(`  > ${quote}`);
       }
     }
   }
@@ -68,6 +73,68 @@ export function renderWikiNode(draft: WikiNodeDraft): string {
 }
 
 // ─── 稳定 YAML 序列化 ───────────────────────────────────────────
+
+export function normalizeFrontmatter(draft: WikiNodeDraft): ValidatedWikiFrontmatter {
+  const evidence = draft.evidence ?? [];
+  const sourceIds = unique([
+    ...(draft.frontmatter.sourceIds ?? []),
+    ...(draft.frontmatter.source ? [draft.frontmatter.source] : []),
+    ...evidence.map((ev) => ev.sourceId),
+  ]);
+  const chunkRefs = uniqueNumbers([
+    ...(draft.frontmatter.chunkRefs ?? []),
+    ...evidence.flatMap((ev) => ev.chunkRefs),
+  ]);
+  const sourceChase = unique(draft.frontmatter.sourceChase ?? []);
+  const now = new Date().toISOString();
+  const confidence = draft.frontmatter.confidence ?? (evidence.length > 0 ? 0.7 : 0.3);
+  const status = draft.frontmatter.status
+    ?? (evidence.length > 0 && sourceChase.length > 0 && chunkRefs.length > 0 ? "verified" : "needs_review");
+
+  const normalized: ValidatedWikiFrontmatter = {
+    ...draft.frontmatter,
+    nodeId: draft.frontmatter.nodeId ?? draft.nodeId,
+    kind: draft.frontmatter.kind ?? draft.kind,
+    title: draft.frontmatter.title,
+    sourceIds,
+    sourceChase,
+    chunkRefs,
+    confidence,
+    status,
+    tags: draft.frontmatter.tags ?? [],
+    related: draft.frontmatter.related ?? [],
+    createdAt: draft.frontmatter.createdAt ?? now,
+    updatedAt: draft.frontmatter.updatedAt ?? draft.frontmatter.createdAt ?? now,
+  };
+
+  validateFrontmatter(normalized, draft);
+  return normalized;
+}
+
+function validateFrontmatter(fm: ValidatedWikiFrontmatter, draft: WikiNodeDraft): void {
+  const errors: string[] = [];
+  if (!fm.nodeId) errors.push("nodeId is required");
+  if (!fm.kind) errors.push("kind is required");
+  if (!fm.title) errors.push("title is required");
+  if (fm.sourceIds.length === 0) errors.push("sourceIds must not be empty");
+  if (fm.sourceChase.length === 0) errors.push("sourceChase must not be empty");
+  if (fm.chunkRefs.length === 0) errors.push("chunkRefs must not be empty");
+  if (!draft.claim || draft.claim.trim().length === 0) errors.push("claim must not be empty");
+  if (draft.evidence.length === 0 && fm.status === "verified") {
+    errors.push("verified nodes require evidence");
+  }
+  if (errors.length > 0) {
+    throw new Error(`Invalid WikiNodeDraft "${draft.nodeId}": ${errors.join("; ")}`);
+  }
+}
+
+function unique(values: string[]): string[] {
+  return [...new Set(values.filter((value) => value.trim().length > 0))];
+}
+
+function uniqueNumbers(values: number[]): number[] {
+  return [...new Set(values.filter((value) => Number.isFinite(value)))].sort((a, b) => a - b);
+}
 
 /** 跳过 evidence（进入 body section）和空值 */
 const SKIP_KEYS = new Set(["evidence"]);
