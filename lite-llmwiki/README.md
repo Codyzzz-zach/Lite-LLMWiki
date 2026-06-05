@@ -6,19 +6,22 @@ DeepSeek-native filesystem second-brain CLI.
 
 ## Current Goal
 
-The product is moving toward v5:
+The product is moving toward **v6 (board-driven agent substrate)**:
 
 ```text
-raw/original -> loader/cleaning -> raw/chase -> extract -> policy confirm -> compile -> wiki -> audit/search/query/inspire
+raw/original -> loader/cleaning -> raw/chase -> extract -> policy confirm
+            -> compile -> wiki -> audit/semantic-audit/board/query/inspire
 ```
 
-The important contract is not only "generate notes". The wiki must remain tied to source material:
+The contract is not only "generate notes". The wiki must remain tied to source material AND be inspectable by agent flows:
 
 - raw files are preserved by format;
-- cleaned Markdown is preserved in `raw/chase`;
+- cleaned Markdown is preserved in `raw/chase` with stable chunk markers (v5 `<!-- chunk:N -->` and v6 `<!-- chunk N -->` both supported);
 - wiki nodes point back to `sourceChase` and `chunkRefs`;
-- audit can verify whether a node is evidence-backed;
-- query output can separate sourced answers from inferred claims.
+- `audit` 结构审查 verifies nodes are evidence-backed;
+- `audit --semantic` adds LLM-judge semantic faithfulness check;
+- `query --mode <board-mode>` assembles a QueryBoard (ask/trace/expand/compare/challenge/inspire) deterministically before any LLM call;
+- output is layered: `fromWiki` (sourced) / `modelSynthesis` (inferred) / `missingEvidence`.
 
 ## Install
 
@@ -95,7 +98,7 @@ Meaning:
 
 ## Wiki Node Contract
 
-v5 wiki nodes use Markdown frontmatter plus fixed body sections.
+v5 + v6 wiki nodes use Markdown frontmatter plus fixed body sections. v6 adds optional audit + board-context fields; v5 nodes are still valid.
 
 Required frontmatter fields:
 
@@ -115,6 +118,16 @@ tags:
   - example
 createdAt: "2026-06-02T00:00:00.000Z"
 updatedAt: "2026-06-02T00:00:00.000Z"
+# v6 optional fields (auto-computed by parser when possible)
+auditStatus: pending      # pending | passed | warning | failed (default: pending)
+auditScore: 0.92
+claimType: source_claim    # source_claim | interpretation | application | analogy | question | counter
+inferenceLevel: none       # none | light | medium | strong
+propRefs: []               # confirmed proposition ids
+claimHash: auto-computed   # sha256(normalized claim)[:16] — auto-filled by parser
+boardRoles:               # 该节点在 board 中的角色
+  - evidence
+  - concept
 ```
 
 Supported `kind` values:
@@ -132,9 +145,54 @@ Body sections:
 ## Use For
 ## Limits
 ## Links
+# v6 新增（spec 6.3）
+## Audit Notes   # semantic audit 的人类可读说明
+## Board Use     # 该节点适合的 query 局面
 ```
 
-`audit` verifies that `sourceChase` exists, `chunkRefs` are valid, and evidence exists.
+`audit` verifies that `sourceChase` exists, `chunkRefs` are valid, and evidence exists. `audit --semantic` adds an LLM-judge layer that scores each node's faithfulness to its chase excerpts.
+
+## Query Board (v6)
+
+`query --mode <mode>` assembles a deterministic `QueryBoard` before any LLM call. Six modes (aliases in parens):
+
+| Mode | Aliases | What it assembles |
+|---|---|---|
+| `ask` | — | top relevant nodes + minimal extras (default) |
+| `trace` | `exact` | ask + chase excerpts + source/chunkRefs |
+| `expand` | `explore` | seed + methods/cases/equations + anchors/questions |
+| `compare` | — | 2+ groups of seeds (per source) + bridges |
+| `challenge` | `counter` | target + limits + counters + gaps |
+| `inspire` | — | seed + insights/questions/counters/anchors + bridges |
+
+`QueryBoard.instructions` carries a `BoardInstruction` that tells the LLM:
+- mode name
+- `synthesisLevel`: `free` | `anchored` | `strict`
+- `outputBoundaries`: `{requireLayeredOutput, requireChunkRef, requireEvidenceBoundary}`
+
+`QueryResultV6` output shape:
+
+```json
+{
+  "ok": true,
+  "mode": "ask",
+  "question": "...",
+  "answer": "...",
+  "fromWiki": [{ "claim": "...", "nodeId": "...", "filePath": "...", "chunkRefs": [1] }],
+  "modelSynthesis": [{ "text": "...", "basedOn": ["node-a"], "confidence": "medium" }],
+  "missingEvidence": [{ "question": "...", "reason": "..." }],
+  "suggestedNextActions": [{ "action": "ingest more material", "reason": "..." }],
+  "board": { ... },
+  "boardSummary": { ... },
+  "usage": null
+}
+```
+
+Agent failure shape (spec 11.3):
+
+```json
+{ "ok": false, "stage": "semantic-audit", "error": "...", "blockingIssues": [], "suggestedNextActions": [] }
+```
 
 ## CLI Commands
 
@@ -164,10 +222,13 @@ llmwiki ingest <path> --auto --policy conservative --json
 ### Audit
 
 ```bash
-llmwiki audit --json
+llmwiki audit --json              # 结构 audit（不调 LLM）
+llmwiki audit --semantic --json   # 结构 + LLM judge 语义审查
+llmwiki audit --source <id> --json
+llmwiki audit --node <nodeId> --json
 ```
 
-Checks whether generated wiki nodes are traceable to chase and evidence-backed.
+Structure audit verifies `sourceChase` exists, `chunkRefs` are valid, and evidence exists. `--semantic` adds an LLM-judge pass on each node that scores faithfulness to the chase excerpts. Without `DEEPSEEK_API_KEY`, `--semantic` returns the agent failure shape with `stage: "semantic-audit"`.
 
 ### Search
 
@@ -175,29 +236,40 @@ Checks whether generated wiki nodes are traceable to chase and evidence-backed.
 llmwiki search "1/e 失败概率" --json
 ```
 
-Returns structured matches with node ID, kind, title, file path, claim, and evidence.
+Returns structured matches with `nodeId`, `kind`, `title`, `filePath`, `claim`, `evidence`, `interpretation`, `limits`, `useFor`, `sourceIds`, `sourceChase`, `chunkRefs`, `related`, `tags`, `auditStatus`, `auditScore` (v6 extension).
 
 ### Query
 
 ```bash
-llmwiki query "为什么 1/e 可以作为失败概率基线？" --json
+llmwiki query "为什么 1/e 可以作为失败概率基线？" --mode ask --json
+llmwiki query "这个判断从哪来？" --mode trace --with-source --json
+llmwiki query "基于这个观点还能怎么理解？" --mode expand --json
 ```
 
-Uses wiki search results as context and returns:
+Output (v6 `QueryResultV6`):
 
-- `answer`
-- `sources`
-- `inferences`
-- `missingEvidence`
-- `usage`
+- `board` (deterministic QueryBoard)
+- `boardSummary` (lightweight counts)
+- `fromWiki` (sourced claims)
+- `modelSynthesis` (LLM inference, with `basedOn`)
+- `missingEvidence` (gaps)
+- `suggestedNextActions` (heuristic)
+- `usage` (token counts, or `null` for board-only)
 
 ### Inspire
 
 ```bash
-llmwiki inspire --json
+llmwiki inspire --json                        # 随机抽一个
+llmwiki inspire --seed "1/e" --json            # 文本 seed
+llmwiki inspire --node <nodeId> --json        # 强制 anchor
+llmwiki inspire --kind concept --tags math --json
 ```
 
-Current state: basic node-based inspiration/sampling.
+Output:
+
+- `seed` (anchor)
+- `connections` / `hypotheses` / `questions` / `actions` / `missingEvidence` (each item has `basedOn` + `evidenceBoundary`)
+- `anchors` (filtered)
 
 Planned v5 target: structured inspiration with seed, related nodes, tensions, counter angles, analogies, next actions, and missing evidence.
 
@@ -218,22 +290,20 @@ npm run test
 npm run build
 ```
 
-Current validated baseline:
+Current validated baseline (v6):
 
 ```text
 typecheck passed
-26 tests passed
+204 tests passed
 build passed
 ```
 
-## v5 Process Notes
+## v6 Spec & Process
 
-See:
+- Spec: `../spec/lite_llmwiki_v6.0.md`
+- Plan: `../spec_process/v6-optimization-plan.md`
 
-- `../spec_process/2026-06-02-v5-process-review.md`
-- `../spec_process/v5-roadmap.md`
-
-Current v5 direction completion is estimated at roughly `65% - 70%`.
+v6 ships: shared parser/chase resolver, v6 frontmatter (auto-filled `claimHash` + default `auditStatus: pending`), `audit --semantic`, 6-mode Query Board, `QueryResultV6` layered output, board-driven inspire, agent failure JSON contract, graph-ready `IndexEntryV6`.
 
 Working now:
 

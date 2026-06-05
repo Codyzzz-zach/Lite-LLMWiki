@@ -464,8 +464,12 @@ export function App() {
         if (!args) { add({ kind: "error", content: "需要问题" }); break; }
         try {
           add({ kind: "system", content: "🔍 ..." });
-          const r = await queryKnowledge({ question: args, config });
-          add({ kind: "ai", content: r.answer, sources: r.sources.map((p) => p.filePath) });
+          const r = await queryKnowledge({ question: args, config, mode: "ask" });
+          add({
+            kind: "ai",
+            content: r.answer,
+            sources: r.fromWiki.map((p) => p.filePath),
+          });
         } catch (e) { add({ kind: "error", content: `${(e as Error).message}` }); }
         break;
       }

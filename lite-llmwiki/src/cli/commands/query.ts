@@ -1,126 +1,105 @@
 import type { Command } from "commander";
 import { loadConfig } from "../../config.js";
+import { buildQueryBoard, type BuildQueryBoardOptions } from "../../query/board.js";
 import { queryKnowledge } from "../../query/engine.js";
+import type { QueryBoard } from "../../types.js";
+
+export interface RunQueryCliOptions {
+  mode?: string;
+  max?: string;
+  includeLegacy?: boolean;
+  json?: boolean;
+  /** 注入 board builder（便于测试） */
+  buildBoard?: (config: typeof loadConfig extends () => infer R ? R : never, question: string, options: BuildQueryBoardOptions) => Promise<QueryBoard>;
+  /** 注入 LLM caller（生产环境用 queryKnowledge，测试可 mock） */
+  llmCaller?: (args: { question: string; board: QueryBoard; config: unknown }) => Promise<{ answer: string; fromWiki: unknown[]; modelSynthesis: unknown[]; missingEvidence: unknown[] }>;
+  stdout?: (line: string) => void;
+}
+
+export interface RunQueryCliResult {
+  ok: boolean;
+  board: QueryBoard;
+  answer: string;
+  exitCode: number;
+}
+
+/**
+ * 纯函数版 query CLI 逻辑。
+ *
+ * 行为（plan 9.1 / 10.4）：
+ * - buildQueryBoard 装配 QueryBoard（确定性）
+ * - queryKnowledge 装配 board + 调 LLM caller + 输出分层
+ * - 输出 JSON 含 board / boardSummary / fromWiki / modelSynthesis / missingEvidence / suggestedNextActions
+ * - 返回 exit code
+ */
+export async function runQueryCli(
+  config: ReturnType<typeof loadConfig>,
+  question: string,
+  options: RunQueryCliOptions = {},
+): Promise<RunQueryCliResult> {
+  const out = options.stdout ?? ((line: string) => console.log(line));
+  const maxNodes = parseInt(options.max ?? "5", 10) || 5;
+
+  // ── 1. 装配 board（保留完整 board 用于 result.board）──
+  const builder = options.buildBoard ?? buildQueryBoard;
+  const board = await builder(config, question, {
+    mode: options.mode ?? "ask",
+    maxNodes,
+    includeLegacy: !!options.includeLegacy,
+  });
+
+  // ── 2. 调 queryKnowledge（自动处理 LLM caller / board-only）──
+  const result = await queryKnowledge({
+    question,
+    config,
+    mode: options.mode ?? "ask",
+    maxNodes,
+    includeLegacy: !!options.includeLegacy,
+    llmCaller: options.llmCaller
+      ? async (_b, q) => {
+          // CLI 注入的 llmCaller 签名是 (board, question) → { answer, fromWiki, modelSynthesis, missingEvidence }
+          const r = await options.llmCaller!({ question: q, board: _b, config });
+          return { answer: r.answer };
+        }
+      : undefined,
+  });
+
+  // ── 3. JSON 输出 ──
+  const out_json = {
+    ok: result.ok,
+    mode: result.mode,
+    question: result.question,
+    board,
+    boardSummary: result.boardSummary,
+    answer: result.answer,
+    fromWiki: result.fromWiki,
+    modelSynthesis: result.modelSynthesis,
+    missingEvidence: result.missingEvidence,
+    suggestedNextActions: result.suggestedNextActions,
+  };
+  out(JSON.stringify(out_json, null, 2));
+
+  return { ok: true, board, answer: result.answer, exitCode: 0 };
+}
 
 export function registerQueryCommand(program: Command): void {
   program
     .command("query")
-    .description("Query the knowledge base with a natural language question")
+    .description("Query the knowledge base with a natural language question (v6 board)")
     .argument("<question>", "your question")
     .option("-j, --json", "output JSON")
-    .option("-n, --max <number>", "max source nodes to retrieve", "5")
+    .option("-n, --max <number>", "max seed nodes", "5")
+    .option("--mode <mode>", "board mode: ask|trace|expand|compare|challenge|inspire (alias: exact→trace, explore→expand, counter→challenge)", "ask")
+    .option("--node <nodeId>", "force a specific node as seed")
+    .option("--source <sourceId>", "filter by source")
+    .option("--tags <tags>", "filter by tags (comma-separated)")
+    .option("--with-source", "include chase excerpts (default: only for trace)")
     .option("--include-legacy", "include legacy pages without evidence", false)
     .action(
-      async (
-        question: string,
-        options: { json?: boolean; max?: string; includeLegacy?: boolean },
-      ) => {
+      async (question: string, options: RunQueryCliOptions) => {
         const config = loadConfig();
-        const maxNodes = parseInt(options.max ?? "5", 10) || 5;
-
-        if (!config.apiKey) {
-          if (options.json) {
-            console.log(JSON.stringify({
-              ok: false,
-              error: "DEEPSEEK_API_KEY not set",
-              answer: "",
-              sources: [],
-              inferences: [],
-              missingEvidence: [],
-              usage: null,
-            }, null, 2));
-          } else {
-            console.error("  ❌  DEEPSEEK_API_KEY not set");
-          }
-          process.exit(1);
-        }
-
-        try {
-          const result = await queryKnowledge({
-            question,
-            config,
-            maxNodes,
-            includeLegacy: !!options.includeLegacy,
-          });
-
-          if (options.json) {
-            console.log(
-              JSON.stringify(
-                {
-                  answer: result.answer,
-                  sources: result.sources,
-                  inferences: result.inferences,
-                  missingEvidence: result.missingEvidence,
-                  usage: result.usage,
-                },
-                null,
-                2,
-              ),
-            );
-            return;
-          }
-
-          // Human-readable output
-          console.log("");
-          console.log(`  🔍  query: "${question}"`);
-          console.log("");
-
-          console.log(`  ${result.answer}`);
-          console.log("");
-
-          if (result.sources.length > 0) {
-            console.log(`  Sources (${result.sources.length}):`);
-            for (const s of result.sources) {
-              console.log(`    • [${s.kind}] ${s.title}`);
-              console.log(`      node: ${s.nodeId}`);
-              console.log(`      file: ${s.filePath}`);
-              if (s.evidence.length > 0) {
-                const first = s.evidence[0]!;
-                const snippet =
-                  first.length > 80 ? first.slice(0, 80) + "…" : first;
-                console.log(`      evidence: ${snippet}`);
-              }
-            }
-            console.log("");
-          }
-
-          if (result.inferences.length > 0) {
-            console.log(`  Inferences (${result.inferences.length}):`);
-            for (const inf of result.inferences) {
-              console.log(`    • ${inf}`);
-            }
-            console.log("");
-          }
-
-          if (result.missingEvidence.length > 0) {
-            console.log(`  Missing evidence (${result.missingEvidence.length}):`);
-            for (const m of result.missingEvidence) {
-              console.log(`    • ${m}`);
-            }
-            console.log("");
-          }
-
-          if (result.usage) {
-            console.log(
-              `  Tokens: ${result.usage.promptTokens} in / ${result.usage.completionTokens} out`,
-            );
-          }
-        } catch (err) {
-          if (options.json) {
-            console.log(JSON.stringify({
-              ok: false,
-              error: `Query failed: ${(err as Error).message}`,
-              answer: "",
-              sources: [],
-              inferences: [],
-              missingEvidence: [],
-              usage: null,
-            }, null, 2));
-          } else {
-            console.error(`  ❌  Query failed: ${(err as Error).message}`);
-          }
-          process.exit(1);
-        }
+        const result = await runQueryCli(config, question, options);
+        process.exit(result.exitCode);
       },
     );
 }

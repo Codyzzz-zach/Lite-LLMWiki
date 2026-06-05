@@ -4,9 +4,22 @@ raw/
 wiki/
 db/
 .env
+.env.*
+!.env.example
 *.db
 *.db-journal
 *.db-wal
 *.db-shm
 .DS_Store
 *.log
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# AI tool artifacts
+.claude/
+.codebase-memory/
+.opencode/

@@ -129,6 +129,64 @@ export interface CoverageInfo {
   relatedPages?: string[];
 }
 
+// ─── v6 审计与 Board 类型 ──────────────────────────────────────────
+
+export type AuditStatus = "pending" | "passed" | "warning" | "failed";
+export type ClaimType =
+  | "source_claim"
+  | "interpretation"
+  | "application"
+  | "analogy"
+  | "question"
+  | "counter";
+export type InferenceLevel = "none" | "light" | "medium" | "strong";
+export type BoardRole =
+  | "evidence"
+  | "concept"
+  | "method"
+  | "case"
+  | "limit"
+  | "counter"
+  | "question"
+  | "anchor"
+  | "bridge";
+export type BoardMode =
+  | "ask"
+  | "trace"
+  | "expand"
+  | "compare"
+  | "challenge"
+  | "inspire";
+
+/**
+ * v5 → v6 模式别名（spec 8.2）。
+ * 在 CLI / engine 入口处归一化，类型层只保留 v6 命名。
+ */
+export const BOARD_MODE_ALIASES: Readonly<Record<string, BoardMode>> = {
+  exact: "trace",
+  explore: "expand",
+  counter: "challenge",
+};
+
+const BOARD_MODE_VALUES: readonly BoardMode[] = [
+  "ask",
+  "trace",
+  "expand",
+  "compare",
+  "challenge",
+  "inspire",
+];
+
+/** 把任意输入归一化为合法 BoardMode；无法识别时回退到 `ask`。 */
+export function normalizeBoardMode(input: string | undefined | null): BoardMode {
+  if (!input) return "ask";
+  const lower = input.toLowerCase();
+  if ((BOARD_MODE_VALUES as readonly string[]).includes(lower)) {
+    return lower as BoardMode;
+  }
+  return BOARD_MODE_ALIASES[lower] ?? "ask";
+}
+
 /** 覆盖记录：跟踪 proposition 已被哪些 wiki 页面覆盖 */
 export interface CoverageItem {
   /** proposition 编号 */
@@ -139,7 +197,7 @@ export interface CoverageItem {
   coveredAt: Date;
 }
 
-/** wiki 页面 frontmatter 结构化类型 */
+/** wiki 页面 frontmatter 结构化类型（v5 + v6 扩展） */
 export interface WikiFrontmatter {
   /** 稳定节点 ID，未来 graph node primary key */
   nodeId?: string;
@@ -172,6 +230,14 @@ export interface WikiFrontmatter {
   kind?: WikiKind;
   /** 本条目的证据链 */
   evidence?: Evidence[];
+  // v6 字段（可选，向后兼容）
+  auditStatus?: AuditStatus;
+  auditScore?: number;
+  claimType?: ClaimType;
+  inferenceLevel?: InferenceLevel;
+  propRefs?: string[];
+  claimHash?: string;
+  boardRoles?: BoardRole[];
 }
 
 export interface ValidatedWikiFrontmatter extends WikiFrontmatter {
@@ -186,6 +252,14 @@ export interface ValidatedWikiFrontmatter extends WikiFrontmatter {
   related: string[];
   createdAt: string;
   updatedAt: string;
+  // v6 字段（全部保留，缺省时由 normalizeFrontmatter 给出合理默认值）
+  auditStatus: AuditStatus;
+  auditScore?: number;
+  claimType?: ClaimType;
+  inferenceLevel?: InferenceLevel;
+  propRefs?: string[];
+  claimHash?: string;
+  boardRoles?: BoardRole[];
 }
 
 export interface WikiNodeDraft {
@@ -199,6 +273,11 @@ export interface WikiNodeDraft {
   useFor?: string[];
   limits?: string[];
   links?: string[];
+  // v6 sections (spec 6.3)
+  /** semantic audit 的人类可读说明（## Audit Notes） */
+  auditNotes?: string;
+  /** 该节点适合在什么 query 局面中被召回（## Board Use） */
+  boardUse?: string[];
 }
 
 export interface WikiPage {
@@ -216,6 +295,242 @@ export interface HypothesisOption {
   relevantNodes: string[];
   logic: string;
   actionability?: string;
+}
+
+// ─── v6 Query Output (spec 9.1) ────────────────────────────────────
+
+/** wiki claim 引用（spec 9.1 fromWiki） */
+export interface WikiClaimRef {
+  claim: string;
+  nodeId: string;
+  filePath: string;
+  chunkRefs: number[];
+  /** 该 claim 对应的 board role（evidence / concept / method / ...） */
+  boardRole?: BoardRole;
+}
+
+/** 模型综合（spec 9.1 modelSynthesis） */
+export interface ModelSynthesis {
+  text: string;
+  /** 基于的 node id 列表 */
+  basedOn: string[];
+  /** 模型自评的置信度（low / medium / high） */
+  confidence: "low" | "medium" | "high";
+}
+
+/** 缺失证据（spec 9.1 missingEvidence） */
+export interface MissingEvidence {
+  question: string;
+  reason: string;
+}
+
+/** 建议的下一步动作 */
+export interface SuggestedNextAction {
+  action: string;
+  reason: string;
+}
+
+/** Board 摘要（v6 输出用，不含 full BoardNode 详情） */
+export interface QueryBoardSummary {
+  mode: BoardMode;
+  question: string;
+  seedCount: number;
+  evidenceCount: number;
+  relatedCount: number;
+  limitCount: number;
+  counterCount: number;
+  questionCount: number;
+  sourceExcerptCount: number;
+  gapCount: number;
+  seedNodeIds: string[];
+}
+
+/** token 用量（v6 标准化） */
+export interface Usage {
+  promptTokens: number;
+  completionTokens: number;
+}
+
+/** v6 query 输出（spec 9.1） */
+export interface QueryResultV6 {
+  ok: boolean;
+  mode: BoardMode;
+  question: string;
+  /** LLM 自由综合的回答（board-only 时为标注） */
+  answer: string;
+  /** 输出分层：来自 wiki 的内容 */
+  fromWiki: WikiClaimRef[];
+  /** 输出分层：模型综合 */
+  modelSynthesis: ModelSynthesis[];
+  /** 输出分层：缺失依据 */
+  missingEvidence: MissingEvidence[];
+  /** 建议的下一步动作（heuristic） */
+  suggestedNextActions: SuggestedNextAction[];
+  /** 完整 Board（确定性装配层，含所有 BoardNode 详情） */
+  board: QueryBoard;
+  /** Board 摘要（轻量版，给日志/调试用） */
+  boardSummary: QueryBoardSummary;
+  /** token 用量（无 LLM 时为 null） */
+  usage: Usage | null;
+}
+
+// ─── v6 Query Board ────────────────────────────────────────────────
+
+export interface BoardNode {
+  nodeId: string;
+  kind: WikiKind;
+  title: string;
+  filePath: string;
+  claim: string;
+  evidence: string[];
+  interpretation: string;
+  limits: string[];
+  tags: string[];
+  sourceIds: string[];
+  sourceChase: string[];
+  chunkRefs: number[];
+  auditStatus?: AuditStatus;
+  auditScore?: number;
+  /** v5 节点不要求带 boardRoles；v6 节点应至少含一项。可选以保留 v5 兼容。 */
+  boardRoles?: BoardRole[];
+  score: number;
+}
+
+export interface SourceExcerpt {
+  sourceId: string;
+  sourceChase: string;
+  chunkRefs: number[];
+  text: string;
+}
+
+export interface BoardGap {
+  question: string;
+  reason: string;
+}
+
+/**
+ * 给 LLM 的局面说明（spec 8.1）。
+ * 不规定推理路线，只声明当前局面有什么 + 输出要标注哪些边界。
+ */
+export interface BoardInstruction {
+  /** 模式名（v6 BoardMode） */
+  mode: BoardMode;
+  /** 当前摆出的节点摘要（人类可读） */
+  boardSummary: string;
+  /** 允许的综合方向（如 "free synthesis" / "strict citation"） */
+  synthesisLevel: "free" | "anchored" | "strict";
+  /** 输出边界要求 */
+  outputBoundaries: {
+    /** 是否要求输出 fromWiki / modelSynthesis / missingEvidence 三段 */
+    requireLayeredOutput: boolean;
+    /** 是否要求每条结论都引用 chunkRef */
+    requireChunkRef: boolean;
+    /** 是否要求 explicit 标注 wiki / inference 边界 */
+    requireEvidenceBoundary: boolean;
+  };
+  /** 当前局面对用户问题的覆盖评估（human-readable） */
+  coverageNote?: string;
+}
+
+export interface QueryBoard {
+  mode: BoardMode;
+  question: string;
+  seedNodes: BoardNode[];
+  evidenceNodes: BoardNode[];
+  relatedNodes: BoardNode[];
+  limitNodes: BoardNode[];
+  counterNodes: BoardNode[];
+  questionNodes: BoardNode[];
+  sourceExcerpts: SourceExcerpt[];
+  gaps: BoardGap[];
+  /** spec 8.1 要求的局面说明 */
+  instructions: BoardInstruction;
+}
+
+export type SemanticVerdict = "aligned" | "stretched" | "unsupported";
+export type AuditDimension = "support" | "addition" | "inference" | "limits" | "citation";
+
+export interface SemanticAuditIssue {
+  nodeId: string;
+  filePath: string;
+  severity: "warning" | "error";
+  dimension: AuditDimension;
+  claim: string;
+  evidenceExcerpt: string;
+  reason: string;
+  suggestedFix?: string;
+}
+
+export interface SemanticAuditResult {
+  ok: boolean;
+  summary: {
+    nodes: number;
+    passed: number;
+    warning: number;
+    failed: number;
+    averageScore: number;
+  };
+  issues: SemanticAuditIssue[];
+}
+
+export interface SemanticJudgeVerdict {
+  nodeId: string;
+  verdict: "passed" | "warning" | "failed";
+  score: number;
+  support: SemanticVerdict;
+  addition: "none" | "minor" | "major";
+  inference: "ok" | "warning" | "failed";
+  limits: "ok" | "warning" | "failed";
+  citation: "ok" | "warning" | "failed";
+  issues: string[];
+}
+
+// ─── v6 共享解析器类型 ─────────────────────────────────────────────
+
+export interface ParsedWikiNode {
+  nodeId: string;
+  kind: WikiKind;
+  title: string;
+  filePath: string;
+  frontmatter: WikiFrontmatter;
+  sections: {
+    claim: string;
+    evidence: string[];
+    interpretation: string;
+    useFor: string[];
+    limits: string[];
+    links: string[];
+    auditNotes: string;
+    boardUse: string[];
+  };
+  fullText: string;
+  isLegacy: boolean;
+}
+
+export interface SearchMatchV6 {
+  nodeId: string;
+  kind: WikiKind;
+  title: string;
+  score: number;
+  filePath: string;
+  claim: string;
+  evidence: string[];
+  interpretation: string;
+  limits: string[];
+  useFor: string[];
+  sourceIds: string[];
+  sourceChase: string[];
+  chunkRefs: number[];
+  related: string[];
+  tags: string[];
+  auditStatus?: AuditStatus;
+  auditScore?: number;
+}
+
+export interface ChaseChunk {
+  index: number;
+  text: string;
+  marker: string;
 }
 
 // ─── Pro 统一输出 ─────────────────────────────────────────────────

@@ -2,12 +2,13 @@
  * inspire — 随机从 wiki 中抽取一条概念页，提供灵感
  *
  * 不依赖 LLM，纯本地文件随机选取。
+ *
+ * v6 后续将升级为 board-driven（spec Phase 4），当前保持 v5 行为。
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { AppConfig } from "../types.js";
-
-const WIKI_NODE_DIRS = ["concepts", "methods", "cases", "equations", "questions", "insights", "anchors", "counters"];
+import { WIKI_NODE_DIRS, parseWikiContent } from "../knowledge/wiki-parser.js";
 
 // ─── 公开类型 ────────────────────────────────────────────────────────
 
@@ -16,7 +17,7 @@ export interface InspireResult {
   kind: string;
   title: string;
   filePath: string;
-  /** tags 列表 */
+  /** tags 列表（已归一化：逗号字符串被拆分） */
   tags: string[];
   /** claim 全文（如果有） */
   claim: string;
@@ -84,8 +85,6 @@ interface RawPage {
   mtimeMs: number;
 }
 
-type ParsedFrontmatter = Record<string, string | string[]>;
-
 function loadAllPages(config: AppConfig, opts: InspireOptions = {}): InspireResult[] {
   const files = WIKI_NODE_DIRS.flatMap((dirName) => {
     const dir = join(config.wikiDir, dirName);
@@ -130,140 +129,19 @@ function parse(raw: RawPage): InspireResult | null {
   const content = raw.content;
   if (!content || content.trim().length === 0) return null;
 
-  const fm = parseFrontmatter(content);
-  const nodeId = scalar(fm.nodeId) || raw.filePath.replace(/^wiki\/concepts\//, "").replace(/\.md$/, "");
-  const kind = scalar(fm.kind) || "concept";
-  const title = scalar(fm.title) || nodeId;
-  const tags = parseTags(fm.tags);
-
-  const body = extractBody(content);
-  const sections = parseBodySections(body);
+  const parsed = parseWikiContent(content, raw.filePath);
 
   return {
-    nodeId,
-    kind,
-    title,
+    nodeId: parsed.nodeId || raw.filePath.replace(/^wiki\/concepts\//, "").replace(/\.md$/, ""),
+    kind: parsed.kind,
+    title: parsed.title,
     filePath: raw.filePath,
-    tags,
-    claim: sections.claim,
-    evidence: sections.evidence,
-    interpretation: sections.interpretation,
-    useFor: sections.useFor,
+    tags: parsed.frontmatter.tags ?? [],
+    claim: parsed.sections.claim,
+    evidence: parsed.sections.evidence,
+    interpretation: parsed.sections.interpretation,
+    useFor: parsed.sections.useFor,
     mtimeMs: raw.mtimeMs,
-  };
-}
-
-/** 解析 frontmatter */
-function parseFrontmatter(content: string): ParsedFrontmatter {
-  const result: ParsedFrontmatter = {};
-  const match = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!match) return result;
-
-  let currentArrayKey: string | null = null;
-  for (const line of match[1]!.split("\n")) {
-    const arrayItem = line.match(/^\s*-\s+(.+)$/);
-    if (arrayItem && currentArrayKey) {
-      const current = result[currentArrayKey];
-      result[currentArrayKey] = [...(Array.isArray(current) ? current : []), cleanScalar(arrayItem[1]!.trim())];
-      continue;
-    }
-    const colon = line.indexOf(":");
-    if (colon <= 0) continue;
-    const key = line.slice(0, colon).trim();
-    const val = line.slice(colon + 1).trim();
-    if (!key) continue;
-    if (val) {
-      result[key] = cleanScalar(val);
-      currentArrayKey = null;
-    } else {
-      result[key] = [];
-      currentArrayKey = key;
-    }
-  }
-  return result;
-}
-
-/** 提取 tags 数组 */
-function parseTags(tagVal: string | string[] | undefined): string[] {
-  if (!tagVal) return [];
-  if (Array.isArray(tagVal)) return tagVal;
-  if (tagVal.includes(",")) {
-    return tagVal.split(/,\s*/).filter(Boolean);
-  }
-  return [tagVal].filter(Boolean);
-}
-
-function scalar(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-function cleanScalar(value: string): string {
-  return value.replace(/^"(.*)"$/, "$1").replace(/^'(.*)'$/, "$1");
-}
-
-/** 提取 body（去掉 frontmatter） */
-function extractBody(content: string): string {
-  const match = content.match(/^---\n[\s\S]*?\n---\n\n?([\s\S]*)$/);
-  return match ? match[1]!.trim() : content.trim();
-}
-
-/** 从 body 中提取命名 section */
-function parseBodySections(body: string): {
-  claim: string;
-  evidence: string[];
-  interpretation: string;
-  useFor: string[];
-} {
-  const sections: Record<string, string[]> = {};
-  const sectionRegex = /^##\s+(.+?)\s*$\n?([\s\S]*?)(?=^##\s|\n*$)/gm;
-  let match: RegExpExecArray | null;
-  while ((match = sectionRegex.exec(body)) !== null) {
-    const name = match[1]!.trim().toLowerCase();
-    const content = match[2]!.trim();
-    sections[name] = sections[name] || [];
-    sections[name].push(content);
-  }
-
-  // 从 evidence section 提取 bullet / blockquote
-  const evidenceText = sections["evidence"] || [];
-  const evidence: string[] = [];
-  for (const block of evidenceText) {
-    for (const line of block.split("\n")) {
-      const trimmed = line.trim();
-      if (trimmed.startsWith("- ") || trimmed.startsWith("> ")) {
-        const cleaned = trimmed.replace(/^[->\s]+/, "").trim();
-        if (cleaned && cleaned.length > 3) {
-          evidence.push(cleaned);
-        }
-      }
-    }
-  }
-
-  const claim = (sections["claim"] || []).join("\n");
-
-  // 如果没有结构化 section，fallback 到 body 前 500 字符
-  const fallbackClaim = !claim
-    ? body.replace(/^#\s+.*$/m, "").trim().slice(0, 500)
-    : "";
-
-  const interpretation = (sections["interpretation"] || []).join("\n");
-
-  const useForBlocks = sections["use for"] || [];
-  const useFor: string[] = [];
-  for (const block of useForBlocks) {
-    for (const line of block.split("\n")) {
-      const trimmed = line.trim();
-      if (trimmed.startsWith("- ")) {
-        useFor.push(trimmed.slice(2).trim());
-      }
-    }
-  }
-
-  return {
-    claim: claim || fallbackClaim,
-    evidence,
-    interpretation,
-    useFor,
   };
 }
 

@@ -21,9 +21,6 @@
   },
   "files": [
     "dist",
-    "raw",
-    "wiki",
-    "db",
     "README.md"
   ],
   "scripts": {

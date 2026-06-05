@@ -3,25 +3,27 @@
  *
  * 从 wiki/ 读取 v5 / v4 页面，解析 frontmatter 和 body sections，
  * 按字段权重打分返回匹配节点。
+ *
+ * v6 扩展（plan 8.7）：返回 SearchMatchV6，包含 interpretation / limits / useFor /
+ * sourceIds / sourceChase / chunkRefs / related / tags / auditStatus / auditScore。
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { AppConfig } from "../types.js";
-
-const WIKI_NODE_DIRS = ["concepts", "methods", "cases", "equations", "questions", "insights", "anchors", "counters"];
+import type {
+  AppConfig,
+  AuditStatus,
+  SearchMatchV6,
+  WikiKind,
+} from "../types.js";
+import { WIKI_NODE_DIRS, parseWikiContent } from "../knowledge/wiki-parser.js";
 
 // ─── 公开类型 ────────────────────────────────────────────────────────
 
-export interface SearchMatch {
-  nodeId: string;
-  kind: string;
-  title: string;
-  score: number;
-  filePath: string;
-  claim: string;
-  /** evidence 摘要列表 */
-  evidence: string[];
-}
+/**
+ * v6 搜索匹配。
+ * 旧 `SearchMatch` 是其子集；为避免外部破坏，类型上等同于 SearchMatchV6。
+ */
+export type SearchMatch = SearchMatchV6;
 
 export interface SearchOptions {
   /** 最多返回多少条，默认 20 */
@@ -33,20 +35,10 @@ export interface SearchOptions {
 // ─── 内部解析类型 ────────────────────────────────────────────────────
 
 interface ParsedWikiPage {
-  nodeId: string;
-  kind: string;
-  title: string;
-  filePath: string;
-  tags: string[];
-  claim: string;
-  evidence: string[];
-  interpretation: string;
-  useFor: string[];
-  /** 全文（用于 legacy fallback） */
+  match: SearchMatchV6;
+  /** 全文（用于 legacy fallback + 全文打分） */
   fullText: string;
 }
-
-type ParsedFrontmatter = Record<string, string | string[]>;
 
 // ─── 字段权重 ────────────────────────────────────────────────────────
 
@@ -69,7 +61,7 @@ const MIN_KEYWORD_LENGTH = 1;
  * 本地搜索 wiki 知识库
  *
  * 流程：
- *  1. 读取 wiki/concepts/ 下所有 .md 文件
+ *  1. 读取 wiki/ 下所有 .md 文件
  *  2. 解析 frontmatter + body sections
  *  3. 按关键词命中 * 字段权重 打分
  *  4. 按分数降序返回
@@ -78,7 +70,7 @@ export function searchWiki(
   config: AppConfig,
   query: string,
   opts: SearchOptions = {},
-): SearchMatch[] {
+): SearchMatchV6[] {
   const { maxResults = 20, minScore = 0.01 } = opts;
 
   const pages = loadAllPages(config);
@@ -100,13 +92,8 @@ export function searchWiki(
   scored.sort((a, b) => b.score - a.score);
 
   return scored.slice(0, maxResults).map((s) => ({
-    nodeId: s.page.nodeId,
-    kind: s.page.kind,
-    title: s.page.title,
+    ...s.page.match,
     score: s.score,
-    filePath: s.page.filePath,
-    claim: s.page.claim,
-    evidence: s.page.evidence,
   }));
 }
 
@@ -129,153 +116,34 @@ function loadAllPages(config: AppConfig): ParsedWikiPage[] {
   return results;
 }
 
-// ─── 页面解析 ────────────────────────────────────────────────────────
-
 function parseWikiPage(dirName: string, fileName: string, content: string): ParsedWikiPage | null {
   if (!content || content.trim().length === 0) return null;
 
   const filePath = `wiki/${dirName}/${fileName}`;
+  const parsed = parseWikiContent(content, filePath);
+  const fm = parsed.frontmatter;
 
-  // ── 解析 frontmatter ──
-  const fm = parseFrontmatter(content);
-
-  const nodeId = scalar(fm.nodeId) || fileName.replace(/\.md$/, "");
-  const kind = scalar(fm.kind) || "concept";
-  const title = scalar(fm.title) || nodeId;
-  const tags: string[] = parseTags(fm.tags);
-
-  // ── 解析 body section ──
-  const body = extractBody(content);
-  const sections = parseBodySections(body);
-
-  const claim = sections.claim || "";
-  const evidence = sections.evidence;
-  const interpretation = sections.interpretation || "";
-  const useFor = sections.useFor;
-  const fullText = content;
-
-  return {
-    nodeId,
-    kind,
-    title,
+  const match: SearchMatchV6 = {
+    nodeId: parsed.nodeId || fileName.replace(/\.md$/, ""),
+    kind: parsed.kind as WikiKind,
+    title: parsed.title,
+    score: 0, // 由 searchWiki 计算
     filePath,
-    tags,
-    claim,
-    evidence,
-    interpretation,
-    useFor,
-    fullText,
+    claim: parsed.sections.claim,
+    evidence: parsed.sections.evidence,
+    interpretation: parsed.sections.interpretation,
+    limits: parsed.sections.limits,
+    useFor: parsed.sections.useFor,
+    sourceIds: fm.sourceIds ?? [],
+    sourceChase: fm.sourceChase ?? [],
+    chunkRefs: fm.chunkRefs ?? [],
+    related: fm.related ?? [],
+    tags: fm.tags ?? [],
+    auditStatus: fm.auditStatus as AuditStatus | undefined,
+    auditScore: fm.auditScore,
   };
-}
 
-/** 解析 frontmatter（`---\n...\n---` 中的 key: value 行） */
-function parseFrontmatter(content: string): ParsedFrontmatter {
-  const result: ParsedFrontmatter = {};
-  const match = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!match) return result;
-
-  let currentArrayKey: string | null = null;
-  for (const line of match[1]!.split("\n")) {
-    const arrayItem = line.match(/^\s*-\s+(.+)$/);
-    if (arrayItem && currentArrayKey) {
-      const current = result[currentArrayKey];
-      result[currentArrayKey] = [...(Array.isArray(current) ? current : []), cleanScalar(arrayItem[1]!.trim())];
-      continue;
-    }
-    const colon = line.indexOf(":");
-    if (colon <= 0) continue;
-    const key = line.slice(0, colon).trim();
-    const val = line.slice(colon + 1).trim();
-    if (!key) continue;
-    if (val) {
-      result[key] = cleanScalar(val);
-      currentArrayKey = null;
-    } else {
-      result[key] = [];
-      currentArrayKey = key;
-    }
-  }
-  return result;
-}
-
-/** 从 `tags:` 多行值中提取标签数组 */
-function parseTags(tagVal: string | string[] | undefined): string[] {
-  if (!tagVal) return [];
-  if (Array.isArray(tagVal)) return tagVal;
-  // 逗号分隔
-  if (tagVal.includes(",")) {
-    return tagVal.split(/,\s*/).filter(Boolean);
-  }
-  // 单一标签
-  return [tagVal].filter(Boolean);
-}
-
-function scalar(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-function cleanScalar(value: string): string {
-  return value.replace(/^"(.*)"$/, "$1").replace(/^'(.*)'$/, "$1");
-}
-
-/** 提取 body（去掉 frontmatter 后的内容） */
-function extractBody(content: string): string {
-  const match = content.match(/^---\n[\s\S]*?\n---\n\n?([\s\S]*)$/);
-  return match ? match[1]!.trim() : content.trim();
-}
-
-/** 从 body 中提取命名 section 的内容 */
-function parseBodySections(body: string): {
-  claim: string;
-  evidence: string[];
-  interpretation: string;
-  useFor: string[];
-} {
-  const sections: Record<string, string[]> = {};
-  // 匹配 `## SectionName`，后面跟到下一个 `## ` 或文件尾
-  const sectionRegex = /^##\s+(.+?)\s*$\n?([\s\S]*?)(?=^##\s|\n*$)/gm;
-  let match: RegExpExecArray | null;
-  while ((match = sectionRegex.exec(body)) !== null) {
-    const name = match[1]!.trim().toLowerCase();
-    const content = match[2]!.trim();
-    sections[name] = sections[name] || [];
-    sections[name].push(content);
-  }
-
-  // 提取 evidence 摘要：每行 `- ...` 或 `> ...`
-  const evidenceText = sections["evidence"] || [];
-  const evidence: string[] = [];
-  for (const block of evidenceText) {
-    // 提取 bullet 行和 blockquote 行
-    const lines = block.split("\n");
-    for (const line of lines) {
-      const trimmed = line.trim();
-      // 匹配 `- **Source**: ...` 或 `  > excerpt` 或 `- item`
-      if (trimmed.startsWith("- ") || trimmed.startsWith("> ")) {
-        const cleaned = trimmed.replace(/^[->\s]+/, "").trim();
-        if (cleaned && cleaned.length > 3) {
-          evidence.push(cleaned);
-        }
-      }
-    }
-  }
-
-  const claim = (sections["claim"] || []).join("\n");
-  const interpretation = (sections["interpretation"] || []).join("\n");
-
-  // Use For: 提取 bullet 项
-  const useForBlocks = sections["use for"] || [];
-  const useFor: string[] = [];
-  for (const block of useForBlocks) {
-    for (const line of block.split("\n")) {
-      const trimmed = line.trim();
-      if (trimmed.startsWith("- ")) {
-        useFor.push(trimmed.slice(2).trim());
-      }
-    }
-  }
-
-  return { claim, evidence, interpretation, useFor };
+  return { match, fullText: content };
 }
 
 // ─── 关键词提取 ──────────────────────────────────────────────────────
@@ -283,7 +151,7 @@ function parseBodySections(body: string): {
 function extractKeywords(query: string): string[] {
   return query
     .toLowerCase()
-    .split(/[\s,，。？、；：()（）\[\]【】"'"「」]+/)
+    .split(/[\s,，。？、；：()（）\[\]【】"'`!?;：「」.]+/)
     .map((w) => w.trim())
     .filter((w) => w.length > MIN_KEYWORD_LENGTH);
 }
@@ -292,10 +160,10 @@ function extractKeywords(query: string): string[] {
 
 function computeScore(page: ParsedWikiPage, keywords: string[]): number {
   let totalScore = 0;
+  const m = page.match;
 
-  // 对每个字段计算关键词匹配数 * 权重
   for (const [field, weight] of Object.entries(FIELD_WEIGHTS)) {
-    const text = getFieldText(page, field);
+    const text = getFieldText(m, page.fullText, field);
     if (!text) continue;
 
     const lower = text.toLowerCase();
@@ -312,22 +180,22 @@ function computeScore(page: ParsedWikiPage, keywords: string[]): number {
 }
 
 /** 获取指定字段的文本内容（用于打分） */
-function getFieldText(page: ParsedWikiPage, field: string): string {
+function getFieldText(m: SearchMatchV6, fullText: string, field: string): string {
   switch (field) {
     case "title":
-      return page.title;
+      return m.title;
     case "tags":
-      return page.tags.join(" ");
+      return m.tags.join(" ");
     case "claim":
-      return page.claim;
+      return m.claim;
     case "evidence":
-      return page.evidence.join("\n");
+      return m.evidence.join("\n");
     case "interpretation":
-      return page.interpretation;
+      return m.interpretation;
     case "useFor":
-      return page.useFor.join("\n");
+      return m.useFor.join("\n");
     case "fullText":
-      return page.fullText;
+      return fullText;
     default:
       return "";
   }

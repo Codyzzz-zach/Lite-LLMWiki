@@ -1,15 +1,29 @@
 /**
  * renderWikiNode — 将 WikiNodeDraft 渲染为固定格式 Markdown
  *
- * 输出结构:
- *   - frontmatter（稳定 YAML 序列化，空值/空数组跳过）
- *   - body 固定 sections: Claim / Evidence / Interpretation / Use For / Limits / Links
- *   - 空 section 不输出; Evidence 为空则输出 `*(no direct evidence)*` 占位
+ * v6 输出结构:
+ *   - frontmatter（稳定 YAML 序列化；v5 + v6 字段，空值/空数组跳过）
+ *   - body sections:
+ *       ## Claim
+ *       ## Evidence          (空则输出 `*(no direct evidence)*` 占位)
+ *       ## Interpretation
+ *       ## Use For
+ *       ## Limits
+ *       ## Links
+ *       ## Audit Notes       (v6 新增；spec 6.3)
+ *       ## Board Use         (v6 新增；spec 6.3)
+ *   - v6 默认值：auditStatus 缺失时给 "pending"（plan 6.7）
+ *   - 不再自动推断 status（B1：v6 节点应显式声明）
  */
-import type { Evidence, ValidatedWikiFrontmatter, WikiFrontmatter, WikiNodeDraft } from "../types.js";
+import type {
+  Evidence,
+  ValidatedWikiFrontmatter,
+  WikiFrontmatter,
+  WikiNodeDraft,
+} from "../types.js";
 
 export function renderWikiNode(draft: WikiNodeDraft): string {
-  const { frontmatter, claim, evidence, interpretation, useFor, limits, links } = draft;
+  const { claim, evidence, interpretation, useFor, limits, links, auditNotes, boardUse } = draft;
 
   const normalizedFrontmatter = normalizeFrontmatter(draft);
   const fmLines = serializeFrontmatter(normalizedFrontmatter);
@@ -68,12 +82,33 @@ export function renderWikiNode(draft: WikiNodeDraft): string {
     }
   }
 
+  // ── Audit Notes (v6) ──
+  if (auditNotes && auditNotes.trim().length > 0) {
+    bodyParts.push("\n## Audit Notes\n");
+    bodyParts.push(auditNotes.trim());
+  }
+
+  // ── Board Use (v6) ──
+  if (boardUse && boardUse.length > 0) {
+    bodyParts.push("\n## Board Use\n");
+    for (const item of boardUse) {
+      bodyParts.push(`- ${item}`);
+    }
+  }
+
   const body = bodyParts.join("\n") + "\n";
   return `---\n${fmLines.join("\n")}\n---\n\n${body}`;
 }
 
 // ─── 稳定 YAML 序列化 ───────────────────────────────────────────
 
+/**
+ * 归一化 frontmatter：
+ * - v5 必填字段从 draft 推导出合理默认值（sourceIds、sourceChase、chunkRefs、tags、related、createdAt、updatedAt）
+ * - v6 字段透传（如有）
+ * - B1: status 不再自动推断；v6 节点应显式声明
+ * - 保留 v5 兼容：caller 已显式给的 status 不会被覆盖
+ */
 export function normalizeFrontmatter(draft: WikiNodeDraft): ValidatedWikiFrontmatter {
   const evidence = draft.evidence ?? [];
   const sourceIds = unique([
@@ -87,9 +122,6 @@ export function normalizeFrontmatter(draft: WikiNodeDraft): ValidatedWikiFrontma
   ]);
   const sourceChase = unique(draft.frontmatter.sourceChase ?? []);
   const now = new Date().toISOString();
-  const confidence = draft.frontmatter.confidence ?? (evidence.length > 0 ? 0.7 : 0.3);
-  const status = draft.frontmatter.status
-    ?? (evidence.length > 0 && sourceChase.length > 0 && chunkRefs.length > 0 ? "verified" : "needs_review");
 
   const normalized: ValidatedWikiFrontmatter = {
     ...draft.frontmatter,
@@ -99,8 +131,12 @@ export function normalizeFrontmatter(draft: WikiNodeDraft): ValidatedWikiFrontma
     sourceIds,
     sourceChase,
     chunkRefs,
-    confidence,
-    status,
+    // v5 兼容：confidence 缺失时给个保守默认
+    confidence: draft.frontmatter.confidence ?? (evidence.length > 0 ? 0.7 : 0.3),
+    // v5 兼容：status 缺失时给 needs_review（B1：不再自动推断为 verified）
+    status: draft.frontmatter.status ?? "needs_review",
+    // v6：auditStatus 必填（plan 6.7 + X1），缺省给 "pending"
+    auditStatus: draft.frontmatter.auditStatus ?? "pending",
     tags: draft.frontmatter.tags ?? [],
     related: draft.frontmatter.related ?? [],
     createdAt: draft.frontmatter.createdAt ?? now,
@@ -120,9 +156,6 @@ function validateFrontmatter(fm: ValidatedWikiFrontmatter, draft: WikiNodeDraft)
   if (fm.sourceChase.length === 0) errors.push("sourceChase must not be empty");
   if (fm.chunkRefs.length === 0) errors.push("chunkRefs must not be empty");
   if (!draft.claim || draft.claim.trim().length === 0) errors.push("claim must not be empty");
-  if (draft.evidence.length === 0 && fm.status === "verified") {
-    errors.push("verified nodes require evidence");
-  }
   if (errors.length > 0) {
     throw new Error(`Invalid WikiNodeDraft "${draft.nodeId}": ${errors.join("; ")}`);
   }

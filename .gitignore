@@ -1,11 +1,52 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
+*.tsbuildinfo
+
+# Environment & secrets
 .env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Local runtime data
+raw/
+wiki/
+db/
 *.db
 *.db-journal
 *.db-wal
 *.db-shm
-*.log
+
+# Tool-generated caches / indices
+.codebase-memory/
+.claude/
+.cache/
+
+# Editor / OS
 .DS_Store
-raw/
-wiki/
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Logs
+*.log
+npm-debug.log*
+db/
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# AI tool artifacts
+.claude/
+.codebase-memory/
+.opencode/

@@ -2,9 +2,9 @@ import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync,
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import type { AppConfig, Chunk, Source, WikiNodeDraft, WikiPage } from "../types.js";
 import { estimateTokens } from "../ingest/loader.js";
+import { readChaseChunks, ChaseNotFoundError } from "./chase.js";
 import { renderWikiNode } from "./render.js";
-
-const WIKI_NODE_DIRS = ["concepts", "methods", "cases", "equations", "questions", "insights", "anchors", "counters"];
+import { WIKI_NODE_DIRS, parseWikiContent } from "./wiki-parser.js";
 
 /**
  * KnowledgeStore — 纯文件存储
@@ -14,7 +14,10 @@ const WIKI_NODE_DIRS = ["concepts", "methods", "cases", "equations", "questions"
  * - raw/chase/              清洗后的 Markdown 中间层
  * - wiki/   编译产物（Markdown）
  *
- * 不再依赖 SQLite 图谱。
+ * v6 改造（plan 6.3）：
+ * - 复用 wiki-parser.ts 解析所有 wiki 页面（消除自带的 frontmatter / chunk parser）
+ * - 复用 chase.ts 解析 chunk marker（兼容 v5 冒号 + v6 空格格式）
+ * - 复用 wiki-parser.ts 的 WIKI_NODE_DIRS 常量
  */
 export class KnowledgeStore {
   private config: AppConfig;
@@ -96,30 +99,58 @@ export class KnowledgeStore {
     return null;
   }
 
-  /** 从 chase 文件解析 chunk 边界（解析 HTML 注释标记） */
+  /**
+   * 从 chase 文件解析 chunk 边界
+   *
+   * 委托给 chase.ts（兼容 v5 `<!-- chunk:N -->` + v6 `<!-- chunk N -->`）。
+   * 走 v5 闭合注释 `<!-- /chunk:N -->` 提取 text 区间。
+   * 无闭合注释时回退到 chase.ts 的 `readChaseChunks`（按 marker 切分）。
+   */
   readChunks(rawId: string): Chunk[] | null {
     const content = this.readRaw(rawId);
     if (!content) return null;
 
+    // 1. 尝试 v5 闭合注释格式（保留旧行为：保留 id/charStart/charEnd）
+    const closedRe = /<!--\s*chunk:(\d+)([^>]*?)-->\s*\n?([\s\S]*?)\n?\s*<!--\s*\/chunk:\1\s*-->/g;
     const chunks: Chunk[] = [];
-    const re = /<!--\s*chunk:(\d+)(?:\s+[^>]*)?\s*-->\s*\n?([\s\S]*?)\n?\s*<!--\s*\/chunk:\1\s*-->/g;
     let match: RegExpExecArray | null;
-
-    while ((match = re.exec(content)) !== null) {
+    while ((match = closedRe.exec(content)) !== null) {
       const index = parseInt(match[1]!, 10);
-      const text = match[2]!;
+      const attrs = match[2] ?? "";
+      const text = match[3] ?? "";
+      const idMatch = attrs.match(/id=([^\s]+)/);
+      const charStartMatch = attrs.match(/charStart=(\d+)/);
+      const charEndMatch = attrs.match(/charEnd=(\d+)/);
       const cleanId = rawId.replace(/[\/:]/g, "_");
       chunks.push({
-        id: `${cleanId}-chunk${index}`,
+        id: idMatch?.[1] ?? `${cleanId}-chunk${index}`,
         index,
         text,
         tokenEstimate: estimateTokens(text),
-        charStart: 0,
-        charEnd: 0,
+        charStart: charStartMatch ? parseInt(charStartMatch[1]!, 10) : 0,
+        charEnd: charEndMatch ? parseInt(charEndMatch[1]!, 10) : 0,
       });
     }
+    if (chunks.length > 0) {
+      return chunks.sort((a, b) => a.index - b.index);
+    }
 
-    return chunks.length > 0 ? chunks.sort((a, b) => a.index - b.index) : null;
+    // 2. 回退：使用 chase.ts 的 readChaseChunks（v6 空格格式 / 任意 chunk marker）
+    try {
+      const chaseChunks = readChaseChunks(this.config, [`${rawId.replace(/[\/:]/g, "_")}.md`]);
+      const cleanId = rawId.replace(/[\/:]/g, "_");
+      return chaseChunks.map((c) => ({
+        id: `${cleanId}-chunk${c.index}`,
+        index: c.index,
+        text: c.text,
+        tokenEstimate: estimateTokens(c.text),
+        charStart: 0,
+        charEnd: 0,
+      }));
+    } catch (e) {
+      if (e instanceof ChaseNotFoundError) return null;
+      throw e;
+    }
   }
 
   // ─── Wiki Layer ──────────────────────────────────────────────────
@@ -157,7 +188,7 @@ export class KnowledgeStore {
     return fullPath;
   }
 
-  /** 渲染并保存 wiki 节点（v5 固定格式：frontmatter + Claim/Evidence/Interpretation/Use For/Limits/Links sections） */
+  /** 渲染并保存 wiki 节点（v5 + v6 frontmatter + v6 sections） */
   saveWikiNode(draft: WikiNodeDraft): string {
     const content = renderWikiNode({
       ...draft,
@@ -187,7 +218,7 @@ export class KnowledgeStore {
     return readFileSync(fullPath, "utf-8");
   }
 
-  /** 列出所有 wiki 文件 */
+  /** 列出所有 wiki 文件（扫 8 个目录） */
   listWikiPages(): string[] {
     return WIKI_NODE_DIRS.flatMap((dirName) => {
       const dir = join(this.config.wikiDir, dirName);
@@ -198,46 +229,11 @@ export class KnowledgeStore {
     });
   }
 
-  /** 搜索 wiki 文件内容（通过文件名/摘要行匹配） */
-  searchWikiPages(query: string): Array<{ filePath: string; title: string }> {
-    const dir = join(this.config.wikiDir, "concepts");
-    if (!existsSync(dir)) return [];
-
-    const keywords = query.toLowerCase().split(/[\s,，。？、；：]+/).filter((w) => w.length > 0);
-    if (keywords.length === 0) return [];
-
-    const results: Array<{ filePath: string; title: string }> = [];
-    const files = readdirSync(dir).filter((f) => f.endsWith(".md"));
-
-    for (const file of files) {
-      const content = readFileSync(join(dir, file), "utf-8");
-      const lower = content.toLowerCase();
-
-      // 检查是否匹配任意关键词
-      const matched = keywords.filter((k) => lower.includes(k));
-      if (matched.length > 0) {
-        // 从 frontmatter 提取标题
-        const titleMatch = content.match(/^---\n.*?title:\s*(.+)\n.*?---/s);
-        const title = titleMatch ? titleMatch[1]!.trim() : file.replace(/\.md$/, "");
-        results.push({
-          filePath: `wiki/concepts/${file}`,
-          title,
-        });
-      }
-    }
-
-    return results;
-  }
-
   /** 找到与给定命题相关的已有 wiki 页面（用于 compile 阶段的 cross-page update）*/
   findRelatedPages(propositions: Array<{ claim: string }>): Array<{ filePath: string; title: string; summary: string }> {
-    const dir = join(this.config.wikiDir, "concepts");
-    if (!existsSync(dir)) return [];
-
     const results: Array<{ filePath: string; title: string; summary: string }> = [];
-    const files = readdirSync(dir).filter((f) => f.endsWith(".md") && !f.startsWith("_devils-") && !f.startsWith("anchor-"));
 
-    // 从 proposition 中提取关键词：英文分词 + 中文 2-gram
+    // 提取关键词
     const propText = propositions.map((p) => p.claim).join(" ");
     const keywords = new Set<string>();
     for (const term of propText.split(/[\s,，。！？、；：""''（）\(\)\[\]【】]+/)) {
@@ -257,17 +253,29 @@ export class KnowledgeStore {
     const kwList = [...keywords].filter((w) => w.length > 1);
     if (kwList.length === 0) return [];
 
-    for (const file of files) {
-      const content = readFileSync(join(dir, file), "utf-8");
-      const lower = content.toLowerCase();
-      const hits = kwList.filter((w) => lower.includes(w)).length;
-      if (hits >= 2) {
-        // title: 只在 frontmatter 块内匹配
-        const fm = content.match(/^---\n([\s\S]*?)\n---/);
-        const titleMatch = fm ? fm[1]!.match(/^title:\s*(.+)$/m) : null;
-        const title = titleMatch ? titleMatch[1]!.trim() : file;
-        const summary = content.split("---").pop()?.trim().slice(0, 200) ?? "";
-        results.push({ filePath: `wiki/concepts/${file}`, title, summary });
+    // 扫所有 wiki 目录（用 parseWikiContent 解析）
+    for (const dirName of WIKI_NODE_DIRS) {
+      const dir = join(this.config.wikiDir, dirName);
+      if (!existsSync(dir)) continue;
+      const files = readdirSync(dir).filter(
+        (f) => f.endsWith(".md") && !f.startsWith("_devils-") && !f.startsWith("anchor-"),
+      );
+      for (const file of files) {
+        const fullPath = join(dir, file);
+        const content = readFileSync(fullPath, "utf-8");
+        const lower = content.toLowerCase();
+        const hits = kwList.filter((w) => lower.includes(w)).length;
+        if (hits >= 2) {
+          // 复用 parseWikiContent 提取 title
+          const parsed = parseWikiContent(content, fullPath);
+          const summary = parsed.sections.claim.slice(0, 200) ||
+            parsed.sections.evidence.join(" ").slice(0, 200);
+          results.push({
+            filePath: `wiki/${dirName}/${file}`,
+            title: parsed.title,
+            summary,
+          });
+        }
       }
     }
 
@@ -290,84 +298,87 @@ export class KnowledgeStore {
 
   // ─── Index & Log ──────────────────────────────────────────────────
 
-  /** 重建 wiki/index.md + wiki/index.json — 所有页面的目录和机器 manifest */
+  /**
+   * 重建 wiki/index.md + wiki/index.json
+   * v6 改造：使用 parseWikiContent 统一解析（plan 6.3 漏改项 S1）
+   */
   rebuildIndex(): string {
     const conceptsDir = join(this.config.wikiDir, "concepts");
     if (!existsSync(conceptsDir)) mkdirSync(conceptsDir, { recursive: true });
     const pagePaths = this.listWikiPages();
-    // ── index.md ──
-    let md = "# Wiki Index\n\n";
 
+    // ── index.md（人类可读） ──
+    let md = "# Wiki Index\n\n";
     md += `## Nodes (${pagePaths.length})\n`;
     for (const filePath of pagePaths) {
-      const content = this.readWikiPage(filePath) ?? "";
-      const t = content.match(/^title:\s*(.+)/m);
-      const c = content.match(/^confidence:\s*(.+)/m);
+      const fullPath = this.resolveWikiFullPath(filePath);
+      const content = fullPath ? readFileSyncSafe(fullPath) : null;
+      const t = content ? content.match(/^title:\s*(.+)/m) : null;
+      const c = content ? content.match(/^confidence:\s*(.+)/m) : null;
       const title = t ? t[1]!.trim() : filePath.replace(/\.md$/, "");
       const conf = c ? parseFloat(c[1]!) : 0;
       md += `- [${title}](${filePath.replace(/^wiki\//, "")}) — conf: ${conf.toFixed(1)}\n`;
     }
-
     md += `\n*Last updated: ${new Date().toISOString()}*\n`;
 
     const indexPath = join(this.config.wikiDir, "index.md");
     writeFileSync(indexPath, md, "utf-8");
 
-    // ── index.json (机器 manifest) ──
+    // ── index.json（机器 manifest，v6 字段） ──
     type IndexEntry = {
       nodeId: string;
       kind: string;
       title: string;
       filePath: string;
       sourceIds: string[];
+      sourceChase: string[];
+      chunkRefs: number[];
       tags: string[];
+      related: string[];
       confidence: number;
+      status: string;
       updatedAt: string;
+      // v6 字段（Phase 2 IndexEntryV6 的种子）
+      auditStatus?: string;
+      auditScore?: number;
+      claimType?: string;
+      inferenceLevel?: string;
+      propRefs?: string[];
+      claimHash?: string;
+      boardRoles?: string[];
     };
 
     const entries: IndexEntry[] = [];
-
     for (const filePath of pagePaths) {
-      const content = this.readWikiPage(filePath) ?? "";
+      const fullPath = this.resolveWikiFullPath(filePath);
+      if (!fullPath) continue;
+      const content = readFileSyncSafe(fullPath);
+      if (content === null) continue;
+      const parsed = parseWikiContent(content, fullPath);
+      const fm = parsed.frontmatter;
 
-      // 解析 frontmatter
-      const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-      const fm: Record<string, string | string[]> = {};
-      if (fmMatch) {
-        let currentArrayKey: string | null = null;
-        for (const line of fmMatch[1]!.split("\n")) {
-          const arrayItem = line.match(/^\s*-\s+(.+)$/);
-          if (arrayItem && currentArrayKey) {
-            const current = fm[currentArrayKey];
-            fm[currentArrayKey] = [...(Array.isArray(current) ? current : []), arrayItem[1]!.trim().replace(/^"(.*)"$/, "$1")];
-            continue;
-          }
-          const colon = line.indexOf(":");
-          if (colon > 0) {
-            const key = line.slice(0, colon).trim();
-            const value = line.slice(colon + 1).trim();
-            if (value) {
-              fm[key] = value.replace(/^"(.*)"$/, "$1");
-              currentArrayKey = null;
-            } else {
-              fm[key] = [];
-              currentArrayKey = key;
-            }
-          }
-        }
-      }
-
-      const nodeId = scalar(fm["nodeId"]) ?? filePath.replace(/^wiki\//, "").replace(/\.md$/, "");
-      const kind = scalar(fm["kind"]) ?? filePath.split("/").at(-2) ?? "concept";
-      const title = scalar(fm["title"]) || nodeId;
-      const sourceIds: string[] = list(fm["sourceIds"]).length > 0
-        ? list(fm["sourceIds"])
-        : scalar(fm["source"]) ? [scalar(fm["source"])!] : [];
-      const tags: string[] = list(fm["tags"]);
-      const confidence = scalar(fm["confidence"]) ? parseFloat(scalar(fm["confidence"])!) : 0;
-      const updatedAt = scalar(fm["updatedAt"]) || scalar(fm["createdAt"]) || new Date().toISOString();
-
-      entries.push({ nodeId, kind, title, filePath, sourceIds, tags, confidence, updatedAt });
+      entries.push({
+        nodeId: parsed.nodeId || filePath.replace(/^wiki\//, "").replace(/\.md$/, ""),
+        kind: parsed.kind,
+        title: parsed.title,
+        filePath,
+        sourceIds: fm.sourceIds ?? [],
+        sourceChase: fm.sourceChase ?? [],
+        chunkRefs: fm.chunkRefs ?? [],
+        tags: fm.tags ?? [],
+        related: fm.related ?? [],
+        confidence: fm.confidence ?? 0,
+        status: fm.status ?? "needs_review",
+        updatedAt: fm.updatedAt ?? fm.createdAt ?? new Date().toISOString(),
+        // v6 字段（如有）
+        auditStatus: fm.auditStatus,
+        auditScore: fm.auditScore,
+        claimType: fm.claimType,
+        inferenceLevel: fm.inferenceLevel,
+        propRefs: fm.propRefs,
+        claimHash: fm.claimHash,
+        boardRoles: fm.boardRoles,
+      });
     }
 
     const jsonPath = join(this.config.wikiDir, "index.json");
@@ -391,17 +402,25 @@ export class KnowledgeStore {
     ].filter(Boolean).join("\n") + "\n";
 
     mkdirSync(dirname(logPath), { recursive: true });
-    writeFileSync(logPath, lines, { flag: "a" }); // append mode
+    writeFileSync(logPath, lines, { encoding: "utf-8", flag: "a" });
     return logPath;
+  }
+
+  // ─── 内部工具 ────────────────────────────────────────────────────
+
+  private resolveWikiFullPath(filePath: string): string | null {
+    const relPath = filePath.startsWith("wiki/") ? filePath.slice(5) : filePath;
+    const fullPath = relPath.startsWith("/")
+      ? relPath
+      : join(this.config.wikiDir, relPath);
+    return existsSync(fullPath) ? fullPath : null;
   }
 }
 
-function scalar(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-function list(value: string | string[] | undefined): string[] {
-  if (!value) return [];
-  if (Array.isArray(value)) return value;
-  return value.split(/,\s*/).filter(Boolean);
+function readFileSyncSafe(p: string): string | null {
+  try {
+    return readFileSync(p, "utf-8");
+  } catch {
+    return null;
+  }
 }
