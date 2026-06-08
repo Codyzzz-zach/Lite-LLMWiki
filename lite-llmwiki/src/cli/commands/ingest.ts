@@ -12,6 +12,9 @@ import { proIngest } from "../../ingest/listening.js";
 import { filterByPolicy } from "../../ingest/policy.js";
 import type { Policy } from "../../ingest/policy.js";
 import type { IngestOptions, Proposition, ConfirmedProposition, WikiPage, WikiNodeDraft } from "../../types.js";
+import { auditWiki, writeAuditResults } from "../../knowledge/audit.js";
+import { writeSemanticAuditResults } from "../../knowledge/semantic-audit.js";
+import { loadApiKey } from "../../config.js";
 
 export function registerIngestCommand(program: Command): void {
   program
@@ -24,7 +27,8 @@ export function registerIngestCommand(program: Command): void {
     .option("--policy <name>", "自动确认策略: conservative | balanced | expansive", "balanced")
     .option("--json", "输出结构化 JSON 到 stdout")
     .option("--dry-run", "不写 wiki，只输出报告")
-    .action(async (path: string, opts: { anchor?: string; thread?: string; auto?: boolean; policy?: string; json?: boolean; dryRun?: boolean }) => {
+    .option("--no-audit", "跳过自动 audit（默认在 --auto 模式下自动执行）")
+    .action(async (path: string, opts: { anchor?: string; thread?: string; auto?: boolean; policy?: string; json?: boolean; dryRun?: boolean; audit?: boolean }) => {
       const originalLog = console.log;
       if (opts.json) {
         console.log = (...args: unknown[]) => console.error(...args);
@@ -38,6 +42,7 @@ export function registerIngestCommand(program: Command): void {
           policy: opts.policy,
           json: opts.json,
           dryRun: opts.dryRun,
+          noAudit: opts.audit === false,
         });
       } finally {
         console.log = originalLog;
@@ -484,6 +489,51 @@ async function runIngest(opts: IngestOptions): Promise<void> {
       newPages: nodeDrafts.length, updatedPages: confirmedUpdates.length,
     });
 
+    // ── Auto-audit: 结构 audit + 语义 audit（有 API key 时） ──
+    let auditSummary: { structure: { ok: boolean; nodes: number; passed: number; failed: number }; semantic?: { ok: boolean; averageScore: number; passed: number; warning: number; failed: number } } | undefined;
+
+    if (!opts.noAudit) {
+      const structureResult = auditWiki(config);
+      writeAuditResults(config, structureResult);
+      auditSummary = {
+        structure: {
+          ok: structureResult.ok,
+          nodes: structureResult.summary.nodes,
+          passed: structureResult.summary.verifiedNodes,
+          failed: structureResult.summary.nodes - structureResult.summary.verifiedNodes,
+        },
+      };
+
+      if (config.apiKey) {
+        try {
+          const { DeepSeekClient } = await import("../../core/client.js");
+          const auditClient = new DeepSeekClient(config);
+          const semanticResult = await import("../../knowledge/semantic-audit.js").then(
+            (m) => m.runSemanticAudit(config, {
+              llmJudge: async (prompt: string) => auditClient.chat({
+                model: config.model,
+                systemPrompt: "",
+                messages: [{ role: "user", content: prompt }],
+              }).then((r) => r.content),
+            }),
+          );
+          writeSemanticAuditResults(config, semanticResult);
+          auditSummary.semantic = {
+            ok: semanticResult.ok,
+            averageScore: semanticResult.summary.averageScore,
+            passed: semanticResult.summary.passed,
+            warning: semanticResult.summary.warning,
+            failed: semanticResult.summary.failed,
+          };
+          console.log(`  🔍  audit: ${semanticResult.ok ? "passed" : "issues found"} (semantic score: ${semanticResult.summary.averageScore})`);
+        } catch {
+          console.log("  🔍  audit: structure passed, semantic skipped (API error)");
+        }
+      } else {
+        console.log("  🔍  audit: structure passed, semantic skipped (no API key)");
+      }
+    }
+
     const s = store.getStats();
     console.log(`\n  ✅  Done  |  sources: ${s.totalSources}  |  nodes: ${s.totalNodes}\n`);
 
@@ -497,6 +547,7 @@ async function runIngest(opts: IngestOptions): Promise<void> {
         updated: updatedPaths,
         skipped: skippedReasons,
         coverage: computeCoverage(source, allProps, confirmed),
+        audit: auditSummary,
       });
     }
   } catch (err) {
@@ -564,6 +615,10 @@ interface IngestJsonOutput {
   updated: string[];
   skipped: Array<{ propId: number; reason: string }>;
   coverage: { coveredChunks: number; totalChunks: number; uncoveredReasons: string[] };
+  audit?: {
+    structure: { ok: boolean; nodes: number; passed: number; failed: number };
+    semantic?: { ok: boolean; averageScore: number; passed: number; warning: number; failed: number };
+  };
 }
 
 function printJsonResult(out: IngestJsonOutput): void {
