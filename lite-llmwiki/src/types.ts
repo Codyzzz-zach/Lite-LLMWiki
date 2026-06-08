@@ -441,6 +441,8 @@ export interface QueryBoard {
   limitNodes: BoardNode[];
   counterNodes: BoardNode[];
   questionNodes: BoardNode[];
+  /** 语义失败但有 claim 的节点 — inspire 的张力素材 */
+  tensionNodes: BoardNode[];
   sourceExcerpts: SourceExcerpt[];
   gaps: BoardGap[];
   /** spec 8.1 要求的局面说明 */
@@ -577,12 +579,9 @@ export interface IngestOptions {
   file: string;
   anchor?: string;
   mode?: string;
-  /** --auto: 非交互自动确认 */
   auto?: boolean;
-  /** --policy: conservative | balanced | expansive (默认 balanced) */
   policy?: string;
-  /** --json: 输出结构化 JSON 到 stdout */
   json?: boolean;
-  /** --dry-run: 不写 wiki，只输出报告 */
   dryRun?: boolean;
+  noAudit?: boolean;
 }

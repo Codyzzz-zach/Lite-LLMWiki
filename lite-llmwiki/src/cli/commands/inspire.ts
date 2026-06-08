@@ -155,17 +155,35 @@ export async function runInspireCli(
       }
     }
   } else {
-    // board-only heuristic（spec 10.5）
+    // board-only heuristic（spec 10.5 / plan Task 4）
+
+    // ── tag 共享节点对 → connection ──
     for (const related of board.relatedNodes.slice(0, 3)) {
+      const sharedTags = related.tags.filter((t) => anchor && board.seedNodes.some((s) => s.tags.includes(t)));
+      const tagHint = sharedTags.length > 0 ? `（共享标签: ${sharedTags.join(", ")}）` : "";
       connections.push({
         type: "connection",
-        text: `${anchor?.title ?? "this"} 与 ${related.title} 共享 wiki 上下文`,
+        text: `${anchor?.title ?? "this"} 与 ${related.title} 可能有关联${tagHint}`,
         basedOn: [anchor?.nodeId ?? "", related.nodeId].filter(Boolean),
         confidence: "medium",
         evidenceBoundary: "这是 board 自动基于 tag/source 共享的连接，不是 LLM 综合",
       });
     }
-    for (const counter of board.counterNodes.slice(0, 2)) {
+
+    // ── 跨 source 同 tag → connection with evidenceBoundary ──
+    const seedSourceIds = new Set(board.seedNodes.flatMap((s) => s.sourceIds));
+    for (const evidence of board.evidenceNodes.filter((n) => n.sourceIds.some((s) => !seedSourceIds.has(s))).slice(0, 2)) {
+      connections.push({
+        type: "connection",
+        text: `${evidence.title} 来自不同材料但共享上下文，可能形成跨源视角`,
+        basedOn: [evidence.nodeId],
+        confidence: "low",
+        evidenceBoundary: "跨 source 的弱连接，需进一步验证",
+      });
+    }
+
+    // ── counter 节点对 seed → question ──
+    for (const counter of board.counterNodes.slice(0, 3)) {
       questions.push({
         type: "question",
         text: `${counter.title} 是否挑战 ${anchor?.title ?? "this"}？`,
@@ -174,6 +192,19 @@ export async function runInspireCli(
         evidenceBoundary: "heuristic: counter kind 的节点",
       });
     }
+
+    // ── tension nodes（语义失败但有 claim）→ hypothesis ──
+    for (const tension of board.tensionNodes) {
+      hypotheses.push({
+        type: "hypothesis",
+        text: `${tension.title} 的 claim 缺少完整证据支撑，可能的方向：重新审查 evidence 或补充 chase 来源`,
+        basedOn: [tension.nodeId],
+        confidence: "low",
+        evidenceBoundary: "此 claim 审查失败（auditStatus=failed），hypothesis 基于 board 张力启发",
+      });
+    }
+
+    // ── gaps → missingEvidence ──
     for (const gap of board.gaps) {
       missingEvidence.push({
         type: "missingEvidence",
@@ -181,6 +212,17 @@ export async function runInspireCli(
         basedOn: [],
         confidence: "high",
         evidenceBoundary: "wiki 没有覆盖此面",
+      });
+    }
+
+    // ── question nodes → action ──
+    for (const qNode of board.questionNodes.slice(0, 2)) {
+      actions.push({
+        type: "action",
+        text: `研究问题: ${qNode.title}`,
+        basedOn: [qNode.nodeId],
+        confidence: "medium",
+        evidenceBoundary: "来自 wiki 中的 question 节点",
       });
     }
   }

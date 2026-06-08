@@ -37,10 +37,10 @@ export interface BuildQueryBoardOptions {
   mode: BoardMode | string;
   maxNodes?: number;
   includeLegacy?: boolean;
+  includeFailed?: boolean;
   nodeId?: string;
   source?: string;
   tags?: string[];
-  /** trace 模式默认 true；其他模式默认 false */
   withSource?: boolean;
 }
 
@@ -58,9 +58,8 @@ export async function buildQueryBoard(
   const seedNodes = await findSeedNodes(config, question, options, mode, maxNodes);
 
   // ── 2. 收集所有 wiki 节点（按 mode 过滤 kind）──
-  const allParsed: ParsedWikiNode[] = options.nodeId
-    ? [] // --node 模式：seed 是显式指定，不需要扫全库
-    : collectAllNodes(config, options.includeLegacy ?? false);
+  // 即使指定了 --node，仍需收集所有节点用于 board 装配（evidence/related/counter/question/tension）
+  const allParsed: ParsedWikiNode[] = collectAllNodes(config, options.includeLegacy ?? false, options.includeFailed ?? false);
 
   // ── 3. 按 mode 装配各类 node 集合 ──
   const boardNodes = await assembleBoard(config, mode, seedNodes, allParsed, options);
@@ -85,6 +84,7 @@ export async function buildQueryBoard(
     limitNodes: boardNodes.limitNodes,
     counterNodes: boardNodes.counterNodes,
     questionNodes: boardNodes.questionNodes,
+    tensionNodes: boardNodes.tensionNodes,
     sourceExcerpts,
     gaps,
     instructions,
@@ -128,7 +128,7 @@ async function findSeedNodes(
   return seeds;
 }
 
-function collectAllNodes(config: AppConfig, includeLegacy: boolean): ParsedWikiNode[] {
+function collectAllNodes(config: AppConfig, includeLegacy: boolean, includeFailed = false): ParsedWikiNode[] {
   const nodes: ParsedWikiNode[] = [];
   for (const dir of WIKI_NODE_DIRS) {
     const dirPath = join(config.wikiDir, dir);
@@ -144,6 +144,7 @@ function collectAllNodes(config: AppConfig, includeLegacy: boolean): ParsedWikiN
       }
       const node = parseWikiContent(content, fullPath);
       if (!includeLegacy && node.isLegacy) continue;
+      if (!includeFailed && node.frontmatter.auditStatus === "failed") continue;
       nodes.push(node);
     }
   }
@@ -179,6 +180,7 @@ interface AssembledBoard {
   limitNodes: BoardNode[];
   counterNodes: BoardNode[];
   questionNodes: BoardNode[];
+  tensionNodes: BoardNode[];
 }
 
 async function assembleBoard(
@@ -199,7 +201,7 @@ async function assembleBoard(
       const limitNodes = seeds.filter((n) => n.limits.length > 0);
       const counterNodes = allBoardNodes.filter((n) => n.kind === "counter" && !seedIds.has(n.nodeId)).slice(0, 2);
       const questionNodes = allBoardNodes.filter((n) => n.kind === "question" && !seedIds.has(n.nodeId)).slice(0, 2);
-      return { seedNodes: seeds, evidenceNodes, relatedNodes, limitNodes, counterNodes, questionNodes };
+      return { seedNodes: seeds, evidenceNodes, relatedNodes, limitNodes, counterNodes, questionNodes, tensionNodes: [] };
     }
 
     case "trace": {
@@ -209,7 +211,7 @@ async function assembleBoard(
       const limitNodes = seeds.filter((n) => n.limits.length > 0);
       const counterNodes = allBoardNodes.filter((n) => n.kind === "counter" && !seedIds.has(n.nodeId)).slice(0, 3);
       const questionNodes = allBoardNodes.filter((n) => n.kind === "question" && !seedIds.has(n.nodeId)).slice(0, 3);
-      return { seedNodes: seeds, evidenceNodes, relatedNodes, limitNodes, counterNodes, questionNodes };
+      return { seedNodes: seeds, evidenceNodes, relatedNodes, limitNodes, counterNodes, questionNodes, tensionNodes: [] };
     }
 
     case "expand": {
@@ -226,7 +228,7 @@ async function assembleBoard(
       const questionNodes = allBoardNodes.filter((n) => n.kind === "question" || n.kind === "anchor").slice(0, 4);
       const limitNodes = seeds.filter((n) => n.limits.length > 0).slice(0, 2);
       const counterNodes: BoardNode[] = []; // expand 不引入 counter（让用户保持开放）
-      return { seedNodes: seeds, evidenceNodes, relatedNodes, limitNodes, counterNodes, questionNodes };
+      return { seedNodes: seeds, evidenceNodes, relatedNodes, limitNodes, counterNodes, questionNodes, tensionNodes: [] };
     }
 
     case "compare": {
@@ -236,7 +238,7 @@ async function assembleBoard(
       const limitNodes = seeds.filter((n) => n.limits.length > 0);
       const counterNodes: BoardNode[] = [];
       const questionNodes: BoardNode[] = [];
-      return { seedNodes: seeds, evidenceNodes, relatedNodes, limitNodes, counterNodes, questionNodes };
+      return { seedNodes: seeds, evidenceNodes, relatedNodes, limitNodes, counterNodes, questionNodes, tensionNodes: [] };
     }
 
     case "challenge": {
@@ -246,12 +248,35 @@ async function assembleBoard(
       const limitNodes = allBoardNodes.filter((n) => n.limits.length > 0).slice(0, 10);
       const counterNodes = allBoardNodes.filter((n) => n.kind === "counter").slice(0, 5);
       const questionNodes = allBoardNodes.filter((n) => n.kind === "question").slice(0, 3);
-      return { seedNodes: seeds, evidenceNodes, relatedNodes, limitNodes, counterNodes, questionNodes };
+      return { seedNodes: seeds, evidenceNodes, relatedNodes, limitNodes, counterNodes, questionNodes, tensionNodes: [] };
     }
 
-    case "inspire":
-      // Phase 4 完整实现；MVP fallback
-      return { seedNodes: seeds, evidenceNodes: [], relatedNodes: [], limitNodes: [], counterNodes: [], questionNodes: [] };
+    case "inspire": {
+      // inspire: seed + evidence + related (cross-kind) + counters + questions + tension nodes
+      // spec 8.8: seed + weakly related + insights + questions + counters + anchors + bridges + recent
+      const evidenceNodes = pickEvidence(seeds, allBoardNodes, seedIds, 5);
+
+      // cross-kind related: insight/question/counter/anchor (by tag/source shared)
+      const inspireKinds: WikiKind[] = ["insight", "question", "counter", "anchor"];
+      const seedTags = new Set(seeds.flatMap((s) => s.tags));
+      const seedSourceIds = new Set(seeds.flatMap((s) => s.sourceIds));
+      const relatedNodes = allBoardNodes
+        .filter((n) => inspireKinds.includes(n.kind) && !seedIds.has(n.nodeId))
+        .filter((n) => n.tags.some((t) => seedTags.has(t)) || n.sourceIds.some((s) => seedSourceIds.has(s)))
+        .slice(0, 6);
+
+      const limitNodes = seeds.filter((n) => n.limits.length > 0).slice(0, 3);
+      const counterNodes = allBoardNodes.filter((n) => n.kind === "counter").slice(0, 5);
+      const questionNodes = allBoardNodes.filter((n) => n.kind === "question").slice(0, 4);
+
+      // tension nodes: 语义失败但有 claim 的节点 — inspire 的张力素材
+      // 区分"语义失败"（有 claim，超 evidence → tension）vs"结构失败"（无 chase/evidence → 不参与）
+      const tensionNodes = allBoardNodes
+        .filter((n) => n.auditStatus === "failed" && n.claim.length > 0)
+        .slice(0, 5);
+
+      return { seedNodes: seeds, evidenceNodes, relatedNodes, limitNodes, counterNodes, questionNodes, tensionNodes };
+    }
   }
 }
 
@@ -369,7 +394,7 @@ function buildInstruction(
   allNodes: ParsedWikiNode[],
 ): BoardInstruction {
   const totalNodes = allNodes.length;
-  const summary = `seed=${board.seedNodes.length}, evidence=${board.evidenceNodes.length}, related=${board.relatedNodes.length}, counter=${board.counterNodes.length}`;
+  const summary = `seed=${board.seedNodes.length}, evidence=${board.evidenceNodes.length}, related=${board.relatedNodes.length}, counter=${board.counterNodes.length}, tension=${board.tensionNodes.length}`;
 
   let synthesisLevel: BoardInstruction["synthesisLevel"] = "anchored";
   const boundaries: BoardInstruction["outputBoundaries"] = {
