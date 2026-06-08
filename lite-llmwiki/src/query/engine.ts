@@ -56,6 +56,7 @@ export async function queryKnowledge(
     mode: opts.mode,
     maxNodes: opts.maxNodes,
     includeLegacy: opts.includeLegacy,
+    includeFailed: opts.includeFailed,
     nodeId: opts.nodeId,
     source: opts.source,
     tags: opts.tags,

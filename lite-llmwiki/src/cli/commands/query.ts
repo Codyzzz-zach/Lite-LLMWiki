@@ -8,6 +8,7 @@ export interface RunQueryCliOptions {
   mode?: string;
   max?: string;
   includeLegacy?: boolean;
+  includeFailed?: boolean;
   json?: boolean;
   /** 注入 board builder（便于测试） */
   buildBoard?: (config: typeof loadConfig extends () => infer R ? R : never, question: string, options: BuildQueryBoardOptions) => Promise<QueryBoard>;
@@ -46,6 +47,7 @@ export async function runQueryCli(
     mode: options.mode ?? "ask",
     maxNodes,
     includeLegacy: !!options.includeLegacy,
+    includeFailed: !!options.includeFailed,
   });
 
   // ── 2. 调 queryKnowledge（自动处理 LLM caller / board-only）──
@@ -55,6 +57,7 @@ export async function runQueryCli(
     mode: options.mode ?? "ask",
     maxNodes,
     includeLegacy: !!options.includeLegacy,
+    includeFailed: !!options.includeFailed,
     llmCaller: options.llmCaller
       ? async (_b, q) => {
           // CLI 注入的 llmCaller 签名是 (board, question) → { answer, fromWiki, modelSynthesis, missingEvidence }
@@ -95,6 +98,7 @@ export function registerQueryCommand(program: Command): void {
     .option("--tags <tags>", "filter by tags (comma-separated)")
     .option("--with-source", "include chase excerpts (default: only for trace)")
     .option("--include-legacy", "include legacy pages without evidence", false)
+    .option("--include-failed", "include auditStatus=failed nodes", false)
     .action(
       async (question: string, options: RunQueryCliOptions) => {
         const config = loadConfig();

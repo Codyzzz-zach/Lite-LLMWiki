@@ -9,11 +9,12 @@ export function registerSearchCommand(program: Command): void {
     .argument("<query>", "search keywords")
     .option("-j, --json", "output JSON")
     .option("-n, --max <number>", "max results", "20")
-    .action(async (query: string, options: { json?: boolean; max?: string }) => {
+    .option("--include-failed", "include auditStatus=failed nodes", false)
+    .action(async (query: string, options: { json?: boolean; max?: string; includeFailed?: boolean }) => {
       const config = loadConfig();
       const maxResults = parseInt(options.max ?? "20", 10) || 20;
 
-      const results = searchWiki(config, query, { maxResults });
+      const results = searchWiki(config, query, { maxResults, includeFailed: !!options.includeFailed });
 
       if (options.json) {
         console.log(JSON.stringify({ matches: results }, null, 2));

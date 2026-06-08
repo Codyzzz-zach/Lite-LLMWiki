@@ -26,10 +26,9 @@ import { WIKI_NODE_DIRS, parseWikiContent } from "../knowledge/wiki-parser.js";
 export type SearchMatch = SearchMatchV6;
 
 export interface SearchOptions {
-  /** 最多返回多少条，默认 20 */
   maxResults?: number;
-  /** 最低分数阈值，默认 0.01（只返回有匹配的结果） */
   minScore?: number;
+  includeFailed?: boolean;
 }
 
 // ─── 内部解析类型 ────────────────────────────────────────────────────
@@ -71,9 +70,9 @@ export function searchWiki(
   query: string,
   opts: SearchOptions = {},
 ): SearchMatchV6[] {
-  const { maxResults = 20, minScore = 0.01 } = opts;
+  const { maxResults = 20, minScore = 0.01, includeFailed = false } = opts;
 
-  const pages = loadAllPages(config);
+  const pages = loadAllPages(config, includeFailed);
   if (pages.length === 0) return [];
 
   const keywords = extractKeywords(query);
@@ -99,7 +98,7 @@ export function searchWiki(
 
 // ─── 页面加载 ────────────────────────────────────────────────────────
 
-function loadAllPages(config: AppConfig): ParsedWikiPage[] {
+function loadAllPages(config: AppConfig, includeFailed = false): ParsedWikiPage[] {
   const results: ParsedWikiPage[] = [];
 
   for (const dirName of WIKI_NODE_DIRS) {
@@ -109,7 +108,9 @@ function loadAllPages(config: AppConfig): ParsedWikiPage[] {
     for (const file of files) {
       const content = readFileSync(join(dir, file), "utf-8");
       const parsed = parseWikiPage(dirName, file, content);
-      if (parsed) results.push(parsed);
+      if (!parsed) continue;
+      if (!includeFailed && parsed.match.auditStatus === "failed") continue;
+      results.push(parsed);
     }
   }
 
