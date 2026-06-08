@@ -19,6 +19,7 @@ import {
   WIKI_NODE_DIRS,
   extractRawId,
   parseWikiContent,
+  updateFrontmatter,
 } from "./wiki-parser.js";
 
 // ─── 公开类型 ─────────────────────────────────────────────────────────
@@ -229,4 +230,37 @@ function readFileSyncSafe(p: string): string | null {
   } catch {
     return null;
   }
+}
+
+// ─── Audit 结果写回 ────────────────────────────────────────────────
+
+/** 将结构 audit 结果写回 wiki 节点 frontmatter（auditStatus 字段） */
+export function writeAuditResults(config: AppConfig, result: AuditResult): void {
+  const errorFiles = new Set<string>();
+  const passedFiles = new Set<string>();
+
+  for (const issue of result.issues) {
+    if (issue.severity === "error" && issue.filePath) {
+      errorFiles.add(issue.filePath);
+    }
+  }
+
+  for (const { filePath, fullPath } of filesFromConfig(config)) {
+    if (errorFiles.has(filePath)) {
+      updateFrontmatter(fullPath, { auditStatus: "failed" });
+    } else {
+      passedFiles.add(filePath);
+      updateFrontmatter(fullPath, { auditStatus: "passed" });
+    }
+  }
+}
+
+function filesFromConfig(config: AppConfig): { filePath: string; fullPath: string }[] {
+  return WIKI_NODE_DIRS.flatMap((dirName) => {
+    const dir = join(config.wikiDir, dirName);
+    if (!existsSync(dir)) return [];
+    return readdirSync(dir)
+      .filter((f) => f.endsWith(".md"))
+      .map((f) => ({ filePath: `wiki/${dirName}/${f}`, fullPath: join(dir, f) }));
+  });
 }

@@ -12,7 +12,7 @@
  *   供 audit 等模块复用，避免重新实现。
  */
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type {
   AuditStatus,
@@ -367,6 +367,68 @@ function parseBodySections(body: string): Record<string, string> {
   if (curSec) sections[curSec] = buf.join("\n").trim();
 
   return sections;
+}
+
+// ─── Frontmatter 写回 ─────────────────────────────────────────────
+
+/** 更新 wiki 文件的 frontmatter 字段，不修改 body 内容。 */
+export function updateFrontmatter(filePath: string, updates: Record<string, unknown>): void {
+  const content = readFileSync(filePath, "utf-8");
+  const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!fmMatch) {
+    const newFm = serializeFrontmatterBlock(updates);
+    writeFileSync(filePath, `---\n${newFm}---\n${content}`, "utf-8");
+    return;
+  }
+
+  const existingLines = fmMatch[1]!.split("\n");
+  const existingKeys = new Set<string>();
+  const updatedLines: string[] = [];
+
+  for (const line of existingLines) {
+    const colon = line.indexOf(":");
+    if (colon <= 0) {
+      updatedLines.push(line);
+      continue;
+    }
+    const key = line.slice(0, colon).trim();
+    existingKeys.add(key);
+    if (key in updates) {
+      updatedLines.push(formatFmLine(key, updates[key]!));
+    } else {
+      updatedLines.push(line);
+    }
+  }
+
+  for (const [key, value] of Object.entries(updates)) {
+    if (!existingKeys.has(key)) {
+      updatedLines.push(formatFmLine(key, value));
+    }
+  }
+
+  const newFm = updatedLines.join("\n");
+  const body = content.slice(fmMatch[0]!.length);
+  writeFileSync(filePath, `---\n${newFm}\n---${body}`, "utf-8");
+}
+
+function serializeFrontmatterBlock(updates: Record<string, unknown>): string {
+  return Object.entries(updates).map(([k, v]) => formatFmLine(k, v)).join("\n") + "\n";
+}
+
+function formatFmLine(key: string, value: unknown): string {
+  if (value === null || value === undefined) return `${key}:`;
+  if (typeof value === "number") return `${key}: ${value}`;
+  if (typeof value === "boolean") return `${key}: ${value}`;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return `${key}:`;
+    const items = value.map((v) => `  - ${String(v)}`).join("\n");
+    return `${key}:\n${items}`;
+  }
+  const s = String(value);
+  if (/[:"#',{}[\]]/.test(s) || s.includes("\n")) {
+    return `${key}: "${s.replace(/"/g, '\\"')}"`;
+  }
+  return `${key}: ${s}`;
 }
 
 // ─── 工具 ──────────────────────────────────────────────────────────

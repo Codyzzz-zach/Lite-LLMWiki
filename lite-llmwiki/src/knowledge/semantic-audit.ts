@@ -16,7 +16,7 @@
  *
  * LLM judge 通过 options.llmJudge 注入，便于 mock 测试。
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   ChaseNotFoundError,
@@ -31,6 +31,7 @@ import {
 import {
   WIKI_NODE_DIRS,
   parseWikiContent,
+  updateFrontmatter,
 } from "./wiki-parser.js";
 import type {
   AppConfig,
@@ -311,7 +312,6 @@ function collectNodes(config: AppConfig, options: SemanticAuditOptions): ParsedW
 
 // ─── 占位 LLM judge（spec 7.7：API key 缺失 → 整体 error） ──────
 
-/** 占位实现：仅当 `llmJudge` 明确传入时才会被调用；不传时由 CLI 层抛错 */
 async function placeholderJudge(_prompt: string): Promise<string> {
   return JSON.stringify({
     nodeId: "",
@@ -324,4 +324,52 @@ async function placeholderJudge(_prompt: string): Promise<string> {
     citation: "ok",
     issues: ["llmJudge not provided — placeholder returned warning"],
   });
+}
+
+// ─── Semantic Audit 结果写回 ─────────────────────────────────────
+
+/** 将语义 audit 结果写回 wiki 节点 frontmatter（auditStatus + auditScore） */
+export function writeSemanticAuditResults(config: AppConfig, result: SemanticAuditResult): void {
+  const failedNodeIds = new Set<string>();
+  const warningNodeIds = new Set<string>();
+
+  for (const issue of result.issues) {
+    if (!issue.nodeId) continue;
+    if (issue.severity === "error") failedNodeIds.add(issue.nodeId);
+    else if (issue.severity === "warning") warningNodeIds.add(issue.nodeId);
+  }
+
+  const allNodeFiles = collectNodeFiles(config);
+  const passedNodeIds = new Set<string>();
+
+  for (const { nodeId, fullPath } of allNodeFiles) {
+    if (failedNodeIds.has(nodeId)) {
+      updateFrontmatter(fullPath, { auditStatus: "failed" });
+    } else if (warningNodeIds.has(nodeId)) {
+      updateFrontmatter(fullPath, { auditStatus: "warning" });
+    } else {
+      passedNodeIds.add(nodeId);
+      updateFrontmatter(fullPath, { auditStatus: "passed", auditScore: result.summary.averageScore });
+    }
+  }
+}
+
+interface NodeFileEntry { nodeId: string; filePath: string; fullPath: string }
+
+function collectNodeFiles(config: AppConfig): NodeFileEntry[] {
+  const entries: NodeFileEntry[] = [];
+  for (const dir of WIKI_NODE_DIRS) {
+    const dirPath = join(config.wikiDir, dir);
+    if (!existsSync(dirPath)) continue;
+    for (const f of readdirSync(dirPath)) {
+      if (!f.endsWith(".md")) continue;
+      const fullPath = join(dirPath, f);
+      try {
+        const content = readFileSync(fullPath, "utf-8");
+        const node = parseWikiContent(content, fullPath);
+        entries.push({ nodeId: node.nodeId, filePath: `wiki/${dir}/${f}`, fullPath });
+      } catch { continue; }
+    }
+  }
+  return entries;
 }
