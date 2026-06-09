@@ -130,8 +130,8 @@ export function loadFromFile(filePath: string, options?: {
   const fingerprint = createHash("sha256").update(body).digest("hex").slice(0, 16);
   const id = `raw/md/${filename.replace(/\.md$/, "")}-${fingerprint}`;
 
-  const targetTokens = options?.chunkTokenTarget ?? 256;
-  const overlapTokens = options?.chunkOverlapTokens ?? 32;
+  const targetTokens = options?.chunkTokenTarget ?? 2000;
+  const overlapTokens = options?.chunkOverlapTokens ?? 200;
   const rawChunks = chunkText(body, targetTokens, overlapTokens);
 
   let charPos = 0;

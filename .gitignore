@@ -50,3 +50,6 @@ db/
 .claude/
 .codebase-memory/
 .opencode/
+
+# E2E temporary workspaces (baseline files are tracked)
+e2e-workspace-*/

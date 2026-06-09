@@ -44,6 +44,7 @@ export class DeepSeekClient {
       apiKey: config.apiKey,
       baseURL: config.baseUrl,
       maxRetries: 3,
+      timeout: 120_000, // 2 分钟超时 — Pro extract/compile 可能较长
     });
   }
 

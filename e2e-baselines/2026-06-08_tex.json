@@ -1,0 +1,12 @@
+{
+  "scenario": "tex",
+  "timestamp": "2026-06-08T04:15:00Z",
+  "source": "/Users/mixi/Desktop/LiteWikiagent/raw/original/tex/arXiv-1503.02531v1",
+  "steps": {
+    "ingest":  { "exitCode": 0,  "ms": 320966,  "nodeCount": N/A, "sourceId": "N/A" },
+    "audit":   { "exitCode": 2,   "ms": 1102,   "avgScore": 0, "passed": 0, "failed": 0 },
+    "query":   { "exitCode": 0,   "ms": 808,   "seedCount": 5 },
+    "inspire": { "exitCode": 0, "ms": 819, "connections": 3, "hypotheses": 0 }
+  },
+  "totalMs": 323695
+}

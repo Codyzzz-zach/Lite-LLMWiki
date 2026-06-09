@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { AppConfig, Evidence, MainThread, Proposition, ProMode, ProResult, Source, WikiFrontmatter, WikiKind, WikiPage } from "../types.js";
 import { DeepSeekClient } from "../core/client.js";
-import { buildIngestPrefix } from "../core/prefix.js";
+import { buildIngestPrefix, buildThinkStepPrefix, buildFormatStepPrefix } from "../core/prefix.js";
 
 export interface IngestOpts {
   source: Source;
@@ -26,12 +26,19 @@ export interface IngestOpts {
   existingPages?: Array<{ filePath: string; title: string; summary: string }>;
 }
 
+// ─── 模型选择 ──────────────────────────────────────────────────────
+// 两步调用：Pro（reasoning）深度思考 → Flash 结构化输出
+// 单步调用（reread）：用 config 里的默认模型
+
+const THINK_MODEL = "deepseek-v4-pro";
+const FORMAT_MODEL = "deepseek-v4-flash";
+
 /**
  * Pro Ingest — 三模式
  *
- * extract: 输出 mainThreads + propositions（含 evidence/kind/coverage）
- * reread:  针对特定 chunk 按 human 新角度重新解读
- * compile: 基于已确认 proposition → wiki pages
+ * extract: 两步 — Pro 深度思考 → Flash 结构化提取 mainThreads + propositions
+ * compile: 两步 — Pro 深度思考 → Flash 结构化输出 nodeDrafts + updatedPages
+ * reread:  单步 — Flash 按 human 新角度重新解读
  */
 export async function proIngest(opts: IngestOpts): Promise<ProResult> {
   const { source, anchor, config, existingNodes, onDelta, signal, mode,
@@ -42,23 +49,91 @@ export async function proIngest(opts: IngestOpts): Promise<ProResult> {
     ? `anchor-${createHash("sha256").update(anchor).digest("hex").slice(0, 12)}`
     : null;
 
-  const { systemPrompt, userMessage } = buildIngestPrefix({
+  const prefixOpts = {
     config, source, anchor, existingNodes,
     confirmedPropositionsJson, claim, humanAngle, targetChunkRefs, existingPages,
-  });
+  };
 
-  console.error(`  [Pro] ${mode} — sending...`);
-  const result = await client.chat({
-    model: config.model,
-    systemPrompt,
-    messages: [{ role: "user", content: userMessage }],
-    responseFormat: "json_object",
-    maxTokens: mode === "extract" ? 16384 : mode === "compile" ? 32768 : 4096,
-    onStream: onDelta,
-    signal,
-  });
+  // ── reread: 单步调用（简单，不需要拆分） ──
+  if (mode === "reread") {
+    const { systemPrompt, userMessage } = buildIngestPrefix(prefixOpts);
+    console.error("  [Pro] reread — sending...");
+    const result = await client.chat({
+      model: FORMAT_MODEL,
+      systemPrompt,
+      messages: [{ role: "user", content: userMessage }],
+      responseFormat: "json_object",
+      maxTokens: 4096,
+      onStream: onDelta,
+      signal,
+    });
+    return parseProResult(result.content, source, anchorId, anchor, mode);
+  }
 
-  return parseProResult(result.content, source, anchorId, anchor, mode);
+  // ── extract: 两步调用 ──
+  if (mode === "extract") {
+    // Step 1: Pro 深度思考（自由文本，无 JSON 约束）
+    const thinkPrompt = buildThinkStepPrefix(prefixOpts, "think-extract");
+    console.error("  [Pro] extract — step 1/2: deep think (pro)...");
+    const thinkResult = await client.chat({
+      model: THINK_MODEL,
+      systemPrompt: thinkPrompt.systemPrompt,
+      messages: [{ role: "user", content: thinkPrompt.userMessage }],
+      responseFormat: "text",
+      maxTokens: 8192,
+      signal,
+    });
+    console.error(`  [Pro] extract — step 1 done (${thinkResult.usage?.completionTokens ?? "?"} tokens)`);
+
+    // Step 2: Flash 结构化提取（严格 JSON）
+    const formatPrompt = buildFormatStepPrefix(prefixOpts, "format-extract", thinkResult.content);
+    console.error("  [Pro] extract — step 2/2: format (flash)...");
+    const formatResult = await client.chat({
+      model: FORMAT_MODEL,
+      systemPrompt: formatPrompt.systemPrompt,
+      messages: [{ role: "user", content: formatPrompt.userMessage }],
+      responseFormat: "json_object",
+      maxTokens: 16384,
+      onStream: onDelta,
+      signal,
+    });
+    console.error("  [Pro] extract — done");
+    return parseProResult(formatResult.content, source, anchorId, anchor, mode);
+  }
+
+  // ── compile: 两步调用 ──
+  if (mode === "compile") {
+    // Step 1: Pro 深度思考
+    const thinkPrompt = buildThinkStepPrefix(prefixOpts, "think-compile");
+    console.error("  [Pro] compile — step 1/2: deep think (pro)...");
+    const thinkResult = await client.chat({
+      model: THINK_MODEL,
+      systemPrompt: thinkPrompt.systemPrompt,
+      messages: [{ role: "user", content: thinkPrompt.userMessage }],
+      responseFormat: "text",
+      maxTokens: 8192,
+      signal,
+    });
+    console.error(`  [Pro] compile — step 1 done (${thinkResult.usage?.completionTokens ?? "?"} tokens)`);
+
+    // Step 2: Flash 结构化输出
+    const formatPrompt = buildFormatStepPrefix(prefixOpts, "format-compile", thinkResult.content);
+    console.error("  [Pro] compile — step 2/2: format (flash)...");
+    const formatResult = await client.chat({
+      model: FORMAT_MODEL,
+      systemPrompt: formatPrompt.systemPrompt,
+      messages: [{ role: "user", content: formatPrompt.userMessage }],
+      responseFormat: "json_object",
+      maxTokens: 32768,
+      onStream: onDelta,
+      signal,
+    });
+    console.error("  [Pro] compile — done");
+    return parseProResult(formatResult.content, source, anchorId, anchor, mode);
+  }
+
+  // fallback（不应该到达）
+  throw new Error(`proIngest: unknown mode "${mode}"`);
 }
 
 function parseProResult(
@@ -119,7 +194,6 @@ function parseProResult(
   }
 
   if (mode === "reread") {
-    // reread 返回单条修订 proposition
     const p = parsed.proposition as Record<string, unknown> | undefined;
     const prop: Proposition = {
       id: (p?.id as number) ?? 0,
@@ -138,7 +212,7 @@ function parseProResult(
 
   // compile
   const rawNodeDrafts = Array.isArray(parsed.nodeDrafts) ? (parsed.nodeDrafts as Record<string, unknown>[]) : [];
-  const fallbackSlug = source.title.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, "-").replace(/-+/g, "-").toLowerCase().slice(0, 40).replace(/^-|-$/g, "");
+  const fallbackSlug = source.title.replace(/[^a-zA-Z0-9一-鿿]/g, "-").replace(/-+/g, "-").toLowerCase().slice(0, 40).replace(/^-|-$/g, "");
   const parsedNodeDrafts: import("../types.js").WikiNodeDraft[] = rawNodeDrafts.map((d) => {
     const rawFm = isRecord(d.frontmatter) ? d.frontmatter : {};
     const nodeId = (d.nodeId as string) ?? (rawFm.nodeId as string) ?? `concept/${fallbackSlug}`;
@@ -212,7 +286,7 @@ function fallbackResult(
   };
 
   if (mode === "compile") {
-    const fbSlug = source.title.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, "-").replace(/-+/g, "-").toLowerCase().slice(0, 40).replace(/^-|-$/g, "");
+    const fbSlug = source.title.replace(/[^a-zA-Z0-9一-鿿]/g, "-").replace(/-+/g, "-").toLowerCase().slice(0, 40).replace(/^-|-$/g, "");
     return { ...base, mode: "compile", pages: [], nodeDrafts: [{
       nodeId: `concept/${fbSlug}`, kind: "concept" as const,
       filePath: `wiki/concepts/${fbSlug}.md`,
@@ -364,7 +438,7 @@ function normalizeWikiFilePath(value: unknown, kind: WikiKind, nodeId: string): 
     anchor: "anchors",
     counter: "counters",
   };
-  const fallbackSlug = nodeId.replace(/^[^/]+\//, "").replace(/[^a-zA-Z0-9\u4e00-\u9fff_-]/g, "-");
+  const fallbackSlug = nodeId.replace(/^[^/]+\//, "").replace(/[^a-zA-Z0-9一-鿿_-]/g, "-");
   const fallback = `wiki/${directoryByKind[kind]}/${fallbackSlug}.md`;
   if (typeof value !== "string" || value.trim().length === 0) return fallback;
 

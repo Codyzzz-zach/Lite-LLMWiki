@@ -2,7 +2,7 @@ import { existsSync, readFileSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { AppConfig } from "./types.js";
 
-export const DEFAULT_MODEL = "deepseek-v4-pro";
+export const DEFAULT_MODEL = "deepseek-v4-flash";
 // 设计目标 4000 tokens/chunk（§5.5），当前 2000 用于 MVP 单轮模式。
 // 引入多轮 listening 后调整到 4000。
 export const DEFAULT_CHUNK_TOKEN_TARGET = 2000;
