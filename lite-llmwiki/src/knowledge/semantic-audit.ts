@@ -283,8 +283,7 @@ function collectNodes(config: AppConfig, options: SemanticAuditOptions): ParsedW
   for (const dir of WIKI_NODE_DIRS) {
     const dirPath = join(config.wikiDir, dir);
     if (!existsSync(dirPath)) continue;
-    const fs = require("node:fs") as typeof import("node:fs");
-    for (const f of fs.readdirSync(dirPath)) {
+    for (const f of readdirSync(dirPath)) {
       if (f.endsWith(".md")) paths.push(join(dirPath, f));
     }
   }

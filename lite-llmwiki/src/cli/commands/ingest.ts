@@ -71,7 +71,20 @@ export function registerIngestCommand(program: Command): void {
         });
         process.exit(result.exitCode);
       } catch (err) {
-        console.error(`  ❌  ${(err as Error).message}\n`);
+        // spec 11.3: 核心命令失败必须输出结构化 JSON
+        const message = (err as Error).message;
+        if (opts.json) {
+          const failure = {
+            ok: false,
+            stage: "ingest" as const,
+            error: message,
+            blockingIssues: ["ingest-failed"],
+            suggestedNextActions: ["check file path and format", "verify DEEPSEEK_API_KEY is set"],
+          };
+          console.log(JSON.stringify(failure, null, 2));
+        } else {
+          console.error(`  ❌  ${message}\n`);
+        }
         process.exit(1);
       }
     });
@@ -546,8 +559,17 @@ export async function runIngestPipeline(
             failed: semanticResult.summary.failed,
           };
           out(`  🔍  audit: ${semanticResult.ok ? "passed" : "issues found"} (semantic score: ${semanticResult.summary.averageScore})`);
-        } catch {
-          out("  🔍  audit: structure passed, semantic skipped (API error)");
+        } catch (semanticErr) {
+          // spec 11.3: 语义 audit 失败不阻止 ingest 整体成功，但记录错误
+          const semanticMessage = (semanticErr as Error).message;
+          out(`  🔍  audit: structure passed, semantic skipped (API error: ${semanticMessage.slice(0, 80)})`);
+          auditSummary.semantic = {
+            ok: false,
+            averageScore: 0,
+            passed: 0,
+            warning: 0,
+            failed: 0,
+          };
         }
       } else {
         out("  🔍  audit: structure passed, semantic skipped (no API key)");

@@ -149,12 +149,46 @@ function parseWikiPage(dirName: string, fileName: string, content: string): Pars
 
 // ─── 关键词提取 ──────────────────────────────────────────────────────
 
+/** Intl.Segmenter 实例（Node 22+ 内置，用于中文分词） */
+const segmenter = new Intl.Segmenter("zh-CN", { granularity: "word" });
+
+/** 数学表达式和特殊 token 正则：匹配 1/e, e^{-1}, 36.8%, (1-1/n)^n 等 */
+const MATH_TOKEN_RE = /[0-9]+[\/\\^][a-zA-Z0-9{}()\[\]+\-]+|[0-9]+\.?[0-9]*%/g;
+
 function extractKeywords(query: string): string[] {
-  return query
-    .toLowerCase()
-    .split(/[\s,，。？、；：()（）\[\]【】"'`!?;：「」.]+/)
-    .map((w) => w.trim())
-    .filter((w) => w.length > MIN_KEYWORD_LENGTH);
+  const keywords: string[] = [];
+
+  // ── Step 1: 提取数学表达式和特殊 token（保留整体，不分词） ──
+  const mathTokens = query.match(MATH_TOKEN_RE) ?? [];
+  const mathSet = new Set(mathTokens.map((t) => t.toLowerCase()));
+  // 从 query 中移除已提取的数学 token，避免重复分词
+  let stripped = query;
+  for (const mt of mathTokens) {
+    stripped = stripped.replace(mt, " ");
+  }
+
+  // ── Step 2: 使用 Intl.Segmenter 对剩余部分做分词 ──
+  const segments = segmenter.segment(stripped);
+  for (const { segment, isWordLike } of segments) {
+    if (isWordLike && segment.trim().length > MIN_KEYWORD_LENGTH) {
+      keywords.push(segment.toLowerCase());
+    }
+  }
+
+  // ── Step 3: 合入数学 token ──
+  for (const mt of mathSet) {
+    keywords.push(mt);
+  }
+
+  // fallback: 如果分词结果为空（极端情况），用旧逻辑
+  if (keywords.length === 0) {
+    return query
+      .toLowerCase()
+      .split(/[\s,，。？、；：()（）\[\]【】"'`!?;:「」.]+/)
+      .map((w) => w.trim())
+      .filter((w) => w.length > MIN_KEYWORD_LENGTH);
+  }
+  return keywords;
 }
 
 // ─── 分数计算 ────────────────────────────────────────────────────────

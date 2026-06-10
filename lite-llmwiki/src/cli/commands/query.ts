@@ -1,5 +1,7 @@
 import type { Command } from "commander";
 import { loadConfig } from "../../config.js";
+import { tryMakeLlmCaller } from "../cli-llm-init.js";
+import { checkAuditGate } from "../../knowledge/audit-gate.js";
 import { buildQueryBoard, type BuildQueryBoardOptions } from "../../query/board.js";
 import { queryKnowledge } from "../../query/engine.js";
 import type { QueryBoard } from "../../types.js";
@@ -11,7 +13,7 @@ export interface RunQueryCliOptions {
   includeFailed?: boolean;
   json?: boolean;
   /** 注入 board builder（便于测试） */
-  buildBoard?: (config: typeof loadConfig extends () => infer R ? R : never, question: string, options: BuildQueryBoardOptions) => Promise<QueryBoard>;
+  buildBoard?: (config: ReturnType<typeof loadConfig>, question: string, options: BuildQueryBoardOptions) => Promise<QueryBoard>;
   /** 注入 LLM caller（生产环境用 queryKnowledge，测试可 mock） */
   llmCaller?: (args: { question: string; board: QueryBoard; config: unknown }) => Promise<{ answer: string; fromWiki: unknown[]; modelSynthesis: unknown[]; missingEvidence: unknown[] }>;
   stdout?: (line: string) => void;
@@ -102,6 +104,28 @@ export function registerQueryCommand(program: Command): void {
     .action(
       async (question: string, options: RunQueryCliOptions) => {
         const config = loadConfig();
+        // spec 11.2: 检查审计关卡
+        const gate = checkAuditGate(config);
+        if (!gate.passed) {
+          if (options.json || true) { // query 默认 JSON 输出
+            console.log(JSON.stringify(gate.failure, null, 2));
+          }
+          process.exit(2);
+        }
+        if (gate.warning) {
+          console.warn(`  ⚠️  ${gate.warning}`);
+        }
+        // CLI 包装层：从 .env / 环境变量构造 llmCaller
+        if (!options.llmCaller) {
+          const caller = tryMakeLlmCaller(config);
+          if (caller) {
+            // 适配签名：CLI 的 llmCaller 签名与 engine 的不同
+            options.llmCaller = async ({ question: q, board: b, config: _c }) => {
+              const r = await caller(b, q);
+              return { answer: r.answer, fromWiki: [], modelSynthesis: [], missingEvidence: [] };
+            };
+          }
+        }
         const result = await runQueryCli(config, question, options);
         process.exit(result.exitCode);
       },

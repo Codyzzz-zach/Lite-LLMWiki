@@ -10,6 +10,7 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   dts: true,
+  platform: "node",
   // better-sqlite3 is a native addon — external so tsup doesn't bundle it
   external: ["better-sqlite3"],
 });

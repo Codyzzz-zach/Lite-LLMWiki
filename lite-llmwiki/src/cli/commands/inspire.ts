@@ -1,5 +1,7 @@
 import type { Command } from "commander";
 import { loadConfig } from "../../config.js";
+import { tryMakeLlmCaller } from "../cli-llm-init.js";
+import { checkAuditGate } from "../../knowledge/audit-gate.js";
 import { buildQueryBoard, type BuildQueryBoardOptions } from "../../query/board.js";
 import { inspireWiki } from "../../query/inspire.js";
 import type {
@@ -299,6 +301,25 @@ export function registerInspireCommand(program: Command): void {
     .option("-t, --tags <tags>", "filter by tags (comma-separated, any match)")
     .action(async (options: RunInspireCliOptions) => {
       const config = loadConfig();
+      // spec 11.2: 检查审计关卡
+      const gate = checkAuditGate(config);
+      if (!gate.passed) {
+        console.log(JSON.stringify(gate.failure, null, 2));
+        process.exit(2);
+      }
+      if (gate.warning) {
+        console.warn(`  ⚠️  ${gate.warning}`);
+      }
+      // CLI 包装层：从 .env / 环境变量构造 llmCaller
+      if (!options.llmCaller) {
+        const caller = tryMakeLlmCaller(config);
+        if (caller) {
+          options.llmCaller = async (board: QueryBoard) => {
+            const r = await caller(board, board.question);
+            return r.answer;
+          };
+        }
+      }
       const rawTags = (options as { tags?: unknown }).tags;
       const tags = typeof rawTags === "string"
         ? rawTags.split(",").map((t: string) => t.trim()).filter(Boolean)

@@ -1,8 +1,10 @@
 import type { Command } from "commander";
 import { loadConfig } from "../../config.js";
+import { tryMakeLlmJudge } from "../cli-llm-init.js";
 import { auditWiki, type AuditResult } from "../../knowledge/audit.js";
 import { runSemanticAudit } from "../../knowledge/semantic-audit.js";
 import { buildFailureJson } from "../../agent/contract.js";
+import { writeAuditGate } from "../../knowledge/audit-gate.js";
 import type {
   AppConfig,
   SemanticAuditResult,
@@ -87,6 +89,16 @@ export async function runAuditCli(
   out(JSON.stringify(jsonOutput, null, 2));
 
   const ok = structure.ok && (semantic?.ok ?? true);
+
+  // ── 写入审计关卡（spec 11.2 audit gate） ──
+  writeAuditGate(
+    config,
+    structure.ok,
+    semantic?.ok ?? null,
+    structure.summary.nodes,
+    semantic?.summary.averageScore ?? null,
+  );
+
   return { ok, structure, semantic, exitCode: ok ? 0 : 2 };
 }
 
@@ -100,6 +112,11 @@ export function registerAuditCommand(program: Command): void {
     .option("-j, --json", "Output JSON")
     .action(async (options: AuditCliOptions) => {
       const config = loadConfig();
+      // CLI 包装层：从 .env / 环境变量构造 llmJudge
+      if (options.semantic && !options.llmJudge) {
+        const judge = tryMakeLlmJudge(config);
+        if (judge) options.llmJudge = judge;
+      }
       const result = await runAuditCli(config, options);
       process.exit(result.exitCode);
     });
