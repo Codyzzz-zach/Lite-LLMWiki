@@ -50,6 +50,20 @@ db/
 .claude/
 .codebase-memory/
 .opencode/
+.playwright-mcp/
+.reasonix/
+.sisyphus/
+.workbuddy/
 
-# E2E temporary workspaces (baseline files are tracked)
+# E2E temporary workspaces & runtime baselines
 e2e-workspace-*/
+e2e-baselines/
+
+# Optimization measurement reports (regenerated per run)
+optimizer-md/
+
+# Non-core documents
+xiaohongshu-strategy.md
+
+# Library lock files (track only in app projects, not library packages)
+lite-llmwiki/package-lock.json
