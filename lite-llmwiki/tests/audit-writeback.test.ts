@@ -207,6 +207,7 @@ describe("Audit writeback — 语义 audit writeSemanticAuditResults", () => {
       ok: true,
       summary: { nodes: 2, passed: 2, warning: 0, failed: 0, averageScore: 0.95 },
       issues: [],
+      nodeScores: { "node-a": 0.95, "node-b": 0.95 },
     };
     writeSemanticAuditResults(config, result);
 

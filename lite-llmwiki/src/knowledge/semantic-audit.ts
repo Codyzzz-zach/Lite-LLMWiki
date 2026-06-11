@@ -75,6 +75,7 @@ export async function runSemanticAudit(
   let failed = 0;
   let totalScore = 0;
   let scoredCount = 0;
+  const nodeScores: Record<string, number> = {};
 
   for (const node of nodes) {
     const nodeResult = await auditOneNode(config, node, options, issues);
@@ -85,6 +86,7 @@ export async function runSemanticAudit(
     if (score !== undefined) {
       totalScore += score;
       scoredCount++;
+      nodeScores[node.nodeId] = score;
     }
   }
 
@@ -101,6 +103,7 @@ export async function runSemanticAudit(
       averageScore: Math.round(averageScore * 100) / 100,
     },
     issues,
+    nodeScores,
   };
 }
 
@@ -339,7 +342,6 @@ export function writeSemanticAuditResults(config: AppConfig, result: SemanticAud
   }
 
   const allNodeFiles = collectNodeFiles(config);
-  const passedNodeIds = new Set<string>();
 
   for (const { nodeId, fullPath } of allNodeFiles) {
     if (failedNodeIds.has(nodeId)) {
@@ -347,8 +349,12 @@ export function writeSemanticAuditResults(config: AppConfig, result: SemanticAud
     } else if (warningNodeIds.has(nodeId)) {
       updateFrontmatter(fullPath, { auditStatus: "warning" });
     } else {
-      passedNodeIds.add(nodeId);
-      updateFrontmatter(fullPath, { auditStatus: "passed", auditScore: result.summary.averageScore });
+      // 使用每个节点自己的 auditScore（而非整体平均分）
+      const nodeScore = result.nodeScores?.[nodeId];
+      updateFrontmatter(fullPath, {
+        auditStatus: "passed",
+        ...(nodeScore !== undefined ? { auditScore: Math.round(nodeScore * 100) / 100 } : {}),
+      });
     }
   }
 }

@@ -473,6 +473,8 @@ export interface SemanticAuditResult {
     averageScore: number;
   };
   issues: SemanticAuditIssue[];
+  /** 每个节点的语义审计分数（nodeId → score），用于写回 frontmatter */
+  nodeScores?: Record<string, number>;
 }
 
 export interface SemanticJudgeVerdict {

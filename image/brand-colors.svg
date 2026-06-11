@@ -1,0 +1,38 @@
+<svg viewBox="0 0 640 200" width="640" height="200" xmlns="http://www.w3.org/2000/svg">
+  <title>LiteWikiagent Brand Colors</title>
+  <style>
+    text { font-family: 'Geist Mono', 'SF Mono', monospace; }
+  </style>
+
+  <!-- Ink Black -->
+  <rect x="0" y="0" width="106" height="140" rx="10" fill="#0A0A0A"/>
+  <text x="53" y="162" font-size="10" fill="#52525b" text-anchor="middle">#0A0A0A</text>
+  <text x="53" y="177" font-size="10" fill="#71717a" text-anchor="middle">Ink Black</text>
+
+  <!-- Zinc 950 -->
+  <rect x="114" y="0" width="106" height="140" rx="10" fill="#18181B"/>
+  <text x="167" y="162" font-size="10" fill="#52525b" text-anchor="middle">#18181B</text>
+  <text x="167" y="177" font-size="10" fill="#71717a" text-anchor="middle">Zinc 950</text>
+
+  <!-- Forest Primary -->
+  <rect x="228" y="0" width="106" height="140" rx="10" fill="#0D5C41"/>
+  <text x="281" y="162" font-size="10" fill="#52525b" text-anchor="middle">#0D5C41</text>
+  <text x="281" y="177" font-size="10" fill="#71717a" text-anchor="middle">Forest Primary</text>
+
+  <!-- Compile Green -->
+  <rect x="342" y="0" width="106" height="140" rx="10" fill="#00D97E"/>
+  <text x="395" y="162" font-size="10" fill="#52525b" text-anchor="middle">#00D97E</text>
+  <text x="395" y="177" font-size="10" fill="#71717a" text-anchor="middle">Compile Green</text>
+
+  <!-- Surface Mint -->
+  <rect x="456" y="0" width="82" height="140" rx="10" fill="#F0FDF4" stroke="#D1FAE5" stroke-width="1"/>
+  <text x="497" y="162" font-size="10" fill="#52525b" text-anchor="middle">#F0FDF4</text>
+  <text x="497" y="177" font-size="10" fill="#71717a" text-anchor="middle">Surface Mint</text>
+
+  <!-- Off White -->
+  <rect x="546" y="0" width="82" height="140" rx="10" fill="#F9FAFB" stroke="#E5E7EB" stroke-width="1"/>
+  <text x="587" y="162" font-size="10" fill="#52525b" text-anchor="middle">#F9FAFB</text>
+  <text x="587" y="177" font-size="10" fill="#71717a" text-anchor="middle">Off White</text>
+
+  <text x="0" y="197" font-size="9" fill="#a1a1aa">LiteWikiagent Brand Identity v1.0</text>
+</svg>

@@ -14,6 +14,7 @@ import type { Policy } from "../../ingest/policy.js";
 import type { AppConfig, IngestOptions, Proposition, ConfirmedProposition, WikiPage, WikiNodeDraft } from "../../types.js";
 import { auditWiki, writeAuditResults } from "../../knowledge/audit.js";
 import { writeSemanticAuditResults } from "../../knowledge/semantic-audit.js";
+import { writeAuditGate } from "../../knowledge/audit-gate.js";
 
 // ─── 公共类型 ─────────────────────────────────────────────────────────
 
@@ -551,6 +552,14 @@ export async function runIngestPipeline(
             }),
           );
           writeSemanticAuditResults(config, semanticResult);
+          // spec 11.2: 写入审计关卡（结构+语义都完成）
+          writeAuditGate(
+            config,
+            structureResult.ok,
+            semanticResult.ok,
+            structureResult.summary.nodes,
+            semanticResult.summary.averageScore,
+          );
           auditSummary.semantic = {
             ok: semanticResult.ok,
             averageScore: semanticResult.summary.averageScore,
@@ -562,6 +571,14 @@ export async function runIngestPipeline(
         } catch (semanticErr) {
           // spec 11.3: 语义 audit 失败不阻止 ingest 整体成功，但记录错误
           const semanticMessage = (semanticErr as Error).message;
+          // 语义 audit 失败 → 写入 gate 标记 semanticOk=false
+          writeAuditGate(
+            config,
+            structureResult.ok,
+            false,
+            structureResult.summary.nodes,
+            null,
+          );
           out(`  🔍  audit: structure passed, semantic skipped (API error: ${semanticMessage.slice(0, 80)})`);
           auditSummary.semantic = {
             ok: false,
@@ -572,6 +589,14 @@ export async function runIngestPipeline(
           };
         }
       } else {
+        // 无 API key → 语义 audit 未执行，写入 gate 标记 semanticOk=null
+        writeAuditGate(
+          config,
+          structureResult.ok,
+          null,
+          structureResult.summary.nodes,
+          null,
+        );
         out("  🔍  audit: structure passed, semantic skipped (no API key)");
       }
     }

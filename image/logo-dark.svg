@@ -1,0 +1,20 @@
+<svg viewBox="0 0 320 80" width="320" height="80" xmlns="http://www.w3.org/2000/svg">
+  <title>LiteWikiagent Logo — Dark</title>
+  <rect x="0" y="0" width="320" height="80" rx="12" fill="#0a0a0a"/>
+  <!-- Icon Mark -->
+  <g transform="translate(20, 20)">
+    <rect x="0" y="0" width="40" height="40" rx="8" fill="#00D97E" fill-opacity="0.12"/>
+    <!-- W-shaped compiled node path -->
+    <path d="M8 28 L14 12 L20 22 L26 12 L32 28" fill="none" stroke="#00D97E" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Top node dot — "source" -->
+    <circle cx="20" cy="6" r="2.5" fill="#00D97E" fill-opacity="0.8"/>
+    <!-- Bottom edge nodes — "compiled outputs" -->
+    <circle cx="8" cy="30" r="1.5" fill="#00D97E" fill-opacity="0.45"/>
+    <circle cx="32" cy="30" r="1.5" fill="#00D97E" fill-opacity="0.45"/>
+  </g>
+  <!-- Wordmark -->
+  <text x="72" y="36" font-family="'Geist', 'SF Pro Display', -apple-system, system-ui, sans-serif" font-size="22" font-weight="500" fill="#fafafa" letter-spacing="-0.5">LiteWiki</text>
+  <text x="72" y="59" font-family="'Geist', 'SF Pro Display', -apple-system, system-ui, sans-serif" font-size="22" font-weight="500" fill="#00D97E" letter-spacing="-0.5">agent</text>
+  <!-- Tag line -->
+  <text x="72" y="74" font-family="'Geist Mono', 'SF Mono', monospace" font-size="9" font-weight="400" fill="#52525b" letter-spacing="2">KNOWLEDGE COMPILER</text>
+</svg>
