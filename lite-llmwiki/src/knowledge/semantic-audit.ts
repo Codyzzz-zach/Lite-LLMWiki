@@ -344,17 +344,15 @@ export function writeSemanticAuditResults(config: AppConfig, result: SemanticAud
   const allNodeFiles = collectNodeFiles(config);
 
   for (const { nodeId, fullPath } of allNodeFiles) {
+    const nodeScore = result.nodeScores?.[nodeId];
+    const scoreUpdate = nodeScore !== undefined ? { auditScore: Math.round(nodeScore * 100) / 100 } : {};
+
     if (failedNodeIds.has(nodeId)) {
-      updateFrontmatter(fullPath, { auditStatus: "failed" });
+      updateFrontmatter(fullPath, { auditStatus: "failed", ...scoreUpdate });
     } else if (warningNodeIds.has(nodeId)) {
-      updateFrontmatter(fullPath, { auditStatus: "warning" });
+      updateFrontmatter(fullPath, { auditStatus: "warning", ...scoreUpdate });
     } else {
-      // 使用每个节点自己的 auditScore（而非整体平均分）
-      const nodeScore = result.nodeScores?.[nodeId];
-      updateFrontmatter(fullPath, {
-        auditStatus: "passed",
-        ...(nodeScore !== undefined ? { auditScore: Math.round(nodeScore * 100) / 100 } : {}),
-      });
+      updateFrontmatter(fullPath, { auditStatus: "passed", ...scoreUpdate });
     }
   }
 }

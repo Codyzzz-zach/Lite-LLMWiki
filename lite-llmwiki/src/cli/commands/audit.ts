@@ -1,8 +1,8 @@
 import type { Command } from "commander";
 import { loadConfig } from "../../config.js";
 import { tryMakeLlmJudge } from "../cli-llm-init.js";
-import { auditWiki, type AuditResult } from "../../knowledge/audit.js";
-import { runSemanticAudit } from "../../knowledge/semantic-audit.js";
+import { auditWiki, writeAuditResults, type AuditResult } from "../../knowledge/audit.js";
+import { runSemanticAudit, writeSemanticAuditResults } from "../../knowledge/semantic-audit.js";
 import { buildFailureJson } from "../../agent/contract.js";
 import { writeAuditGate } from "../../knowledge/audit-gate.js";
 import type {
@@ -43,6 +43,8 @@ export async function runAuditCli(
   const out = options.stdout ?? ((line: string) => console.log(line));
 
   const structure = auditWiki(config, { source: options.source });
+  // 将结构审计结果写回 wiki frontmatter
+  writeAuditResults(config, structure);
   let semantic: SemanticAuditResult | null = null;
   if (options.semantic) {
     // spec 7.7：API key 缺失 → 整体 ok=false, stage=semantic-audit (spec 11.3 failure shape)
@@ -80,6 +82,8 @@ export async function runAuditCli(
       nodeId: options.node,
       llmJudge: options.llmJudge,
     });
+    // 将语义审计结果写回 wiki frontmatter（auditStatus + auditScore）
+    writeSemanticAuditResults(config, semantic);
   }
 
   // ── JSON 输出 ──

@@ -1,6 +1,6 @@
 import type { Command } from "commander";
 import { loadConfig } from "../../config.js";
-import { tryMakeLlmCaller } from "../cli-llm-init.js";
+import { tryMakeInspireCaller } from "../cli-llm-init.js";
 import { checkAuditGate } from "../../knowledge/audit-gate.js";
 import { buildQueryBoard, type BuildQueryBoardOptions } from "../../query/board.js";
 import { inspireWiki } from "../../query/inspire.js";
@@ -144,89 +144,38 @@ export async function runInspireCli(
   const actions: InspireItem[] = [];
   const missingEvidence: InspireItem[] = [];
 
+  // heuristic 生成函数（LLM 失败或无 API key 时使用）
+  const heuristicItems = generateHeuristicItems(board, anchor);
+
   if (options.llmCaller) {
     const r = await options.llmCaller(board);
     const items: InspireItem[] = typeof r === "string" ? parseInspireItems(r) : r;
-    for (const it of items) {
-      switch (it.type) {
-        case "connection": connections.push(it); break;
-        case "hypothesis": hypotheses.push(it); break;
-        case "question": questions.push(it); break;
-        case "action": actions.push(it); break;
-        case "missingEvidence": missingEvidence.push(it); break;
+    if (items.length > 0) {
+      // LLM 成功返回结构化启发项
+      for (const it of items) {
+        switch (it.type) {
+          case "connection": connections.push(it); break;
+          case "hypothesis": hypotheses.push(it); break;
+          case "question": questions.push(it); break;
+          case "action": actions.push(it); break;
+          case "missingEvidence": missingEvidence.push(it); break;
+        }
       }
+    } else {
+      // LLM 返回了无法解析的文本 → fallback 到 heuristic
+      connections.push(...heuristicItems.connections);
+      hypotheses.push(...heuristicItems.hypotheses);
+      questions.push(...heuristicItems.questions);
+      actions.push(...heuristicItems.actions);
+      missingEvidence.push(...heuristicItems.missingEvidence);
     }
   } else {
-    // board-only heuristic（spec 10.5 / plan Task 4）
-
-    // ── tag 共享节点对 → connection ──
-    for (const related of board.relatedNodes.slice(0, 3)) {
-      const sharedTags = related.tags.filter((t) => anchor && board.seedNodes.some((s) => s.tags.includes(t)));
-      const tagHint = sharedTags.length > 0 ? `（共享标签: ${sharedTags.join(", ")}）` : "";
-      connections.push({
-        type: "connection",
-        text: `${anchor?.title ?? "this"} 与 ${related.title} 可能有关联${tagHint}`,
-        basedOn: [anchor?.nodeId ?? "", related.nodeId].filter(Boolean),
-        confidence: "medium",
-        evidenceBoundary: "这是 board 自动基于 tag/source 共享的连接，不是 LLM 综合",
-      });
-    }
-
-    // ── 跨 source 同 tag → connection with evidenceBoundary ──
-    const seedSourceIds = new Set(board.seedNodes.flatMap((s) => s.sourceIds));
-    for (const evidence of board.evidenceNodes.filter((n) => n.sourceIds.some((s) => !seedSourceIds.has(s))).slice(0, 2)) {
-      connections.push({
-        type: "connection",
-        text: `${evidence.title} 来自不同材料但共享上下文，可能形成跨源视角`,
-        basedOn: [evidence.nodeId],
-        confidence: "low",
-        evidenceBoundary: "跨 source 的弱连接，需进一步验证",
-      });
-    }
-
-    // ── counter 节点对 seed → question ──
-    for (const counter of board.counterNodes.slice(0, 3)) {
-      questions.push({
-        type: "question",
-        text: `${counter.title} 是否挑战 ${anchor?.title ?? "this"}？`,
-        basedOn: [counter.nodeId],
-        confidence: "low",
-        evidenceBoundary: "heuristic: counter kind 的节点",
-      });
-    }
-
-    // ── tension nodes（语义失败但有 claim）→ hypothesis ──
-    for (const tension of board.tensionNodes) {
-      hypotheses.push({
-        type: "hypothesis",
-        text: `${tension.title} 的 claim 缺少完整证据支撑，可能的方向：重新审查 evidence 或补充 chase 来源`,
-        basedOn: [tension.nodeId],
-        confidence: "low",
-        evidenceBoundary: "此 claim 审查失败（auditStatus=failed），hypothesis 基于 board 张力启发",
-      });
-    }
-
-    // ── gaps → missingEvidence ──
-    for (const gap of board.gaps) {
-      missingEvidence.push({
-        type: "missingEvidence",
-        text: gap.reason,
-        basedOn: [],
-        confidence: "high",
-        evidenceBoundary: "wiki 没有覆盖此面",
-      });
-    }
-
-    // ── question nodes → action ──
-    for (const qNode of board.questionNodes.slice(0, 2)) {
-      actions.push({
-        type: "action",
-        text: `研究问题: ${qNode.title}`,
-        basedOn: [qNode.nodeId],
-        confidence: "medium",
-        evidenceBoundary: "来自 wiki 中的 question 节点",
-      });
-    }
+    // 无 LLM caller → heuristic fallback
+    connections.push(...heuristicItems.connections);
+    hypotheses.push(...heuristicItems.hypotheses);
+    questions.push(...heuristicItems.questions);
+    actions.push(...heuristicItems.actions);
+    missingEvidence.push(...heuristicItems.missingEvidence);
   }
 
   const result: InspireResult = {
@@ -264,12 +213,25 @@ function nodeToAnchor(n: BoardNode): InspireAnchor {
 function parseInspireItems(text: string): InspireItem[] {
   const trimmed = text.trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const json = fenced ? fenced[1]!.trim() : trimmed;
+  const jsonStr = fenced ? fenced[1]!.trim() : trimmed;
   let raw: unknown;
   try {
-    raw = JSON.parse(json);
+    raw = JSON.parse(jsonStr);
   } catch {
     return [];
+  }
+  // 支持 { items: [...] } 包装格式（response_format=json_object 时 LLM 可能返回）
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const obj = raw as Record<string, unknown>;
+    if (Array.isArray(obj.items)) raw = obj.items;
+    else if (Array.isArray(obj.connections)) {
+      // 有些 LLM 按类型分组返回
+      const merged: unknown[] = [];
+      for (const key of ["connections", "hypotheses", "questions", "actions", "missingEvidence"] as const) {
+        if (Array.isArray(obj[key])) merged.push(...(obj[key] as unknown[]));
+      }
+      raw = merged;
+    }
   }
   if (!Array.isArray(raw)) return [];
   const out: InspireItem[] = [];
@@ -287,6 +249,99 @@ function parseInspireItems(text: string): InspireItem[] {
     });
   }
   return out;
+}
+
+/**
+ * 生成基于 board 的 heuristic 启发项（LLM 不可用或解析失败时使用）。
+ *
+ * 提取为独立函数以便 LLM fallback 和 board-only 共享逻辑。
+ */
+function generateHeuristicItems(
+  board: QueryBoard,
+  anchor: InspireAnchor | null,
+): {
+  connections: InspireItem[];
+  hypotheses: InspireItem[];
+  questions: InspireItem[];
+  actions: InspireItem[];
+  missingEvidence: InspireItem[];
+} {
+  const connections: InspireItem[] = [];
+  const hypotheses: InspireItem[] = [];
+  const questions: InspireItem[] = [];
+  const actions: InspireItem[] = [];
+  const missingEvidence: InspireItem[] = [];
+
+  // ── tag 共享节点对 → connection ──
+  for (const related of board.relatedNodes.slice(0, 3)) {
+    const sharedTags = related.tags.filter((t) => anchor && board.seedNodes.some((s) => s.tags.includes(t)));
+    const tagHint = sharedTags.length > 0 ? `（共享标签: ${sharedTags.join(", ")}）` : "";
+    connections.push({
+      type: "connection",
+      text: `${anchor?.title ?? "this"} 与 ${related.title} 可能有关联${tagHint}`,
+      basedOn: [anchor?.nodeId ?? "", related.nodeId].filter(Boolean),
+      confidence: "medium",
+      evidenceBoundary: "这是 board 自动基于 tag/source 共享的连接，不是 LLM 综合",
+    });
+  }
+
+  // ── 跨 source 同 tag → connection with evidenceBoundary ──
+  const seedSourceIds = new Set(board.seedNodes.flatMap((s) => s.sourceIds));
+  for (const evidence of board.evidenceNodes.filter((n) => n.sourceIds.some((s) => !seedSourceIds.has(s))).slice(0, 2)) {
+    connections.push({
+      type: "connection",
+      text: `${evidence.title} 来自不同材料但共享上下文，可能形成跨源视角`,
+      basedOn: [evidence.nodeId],
+      confidence: "low",
+      evidenceBoundary: "跨 source 的弱连接，需进一步验证",
+    });
+  }
+
+  // ── counter 节点对 seed → question ──
+  for (const counter of board.counterNodes.slice(0, 3)) {
+    questions.push({
+      type: "question",
+      text: `${counter.title} 是否挑战 ${anchor?.title ?? "this"}？`,
+      basedOn: [counter.nodeId],
+      confidence: "low",
+      evidenceBoundary: "heuristic: counter kind 的节点",
+    });
+  }
+
+  // ── tension nodes（语义失败但有 claim）→ hypothesis ──
+  for (const tension of board.tensionNodes) {
+    hypotheses.push({
+      type: "hypothesis",
+      text: `${tension.title} 的 claim 缺少完整证据支撑，可能的方向：重新审查 evidence 或补充 chase 来源`,
+      basedOn: [tension.nodeId],
+      confidence: "low",
+      evidenceBoundary: "此 claim 审查失败（auditStatus=failed），hypothesis 基于 board 张力启发",
+    });
+  }
+
+  // ── gaps → missingEvidence ──
+  for (const gap of board.gaps) {
+    missingEvidence.push({
+      type: "missingEvidence",
+      text: gap.reason,
+      basedOn: [],
+      confidence: "high",
+      evidenceBoundary: "wiki 没有覆盖此面",
+    });
+  }
+
+  // ── question nodes → action ──
+  for (const qNode of board.questionNodes.slice(0, 2)) {
+    actions.push({
+      type: "action",
+      text: `研究问题: ${qNode.title}`,
+      basedOn: [qNode.nodeId],
+      confidence: "medium",
+      evidenceBoundary: "来自 wiki 中的 question 节点",
+    });
+  }
+
+  return { connections, hypotheses, questions, actions, missingEvidence };
 }
 
 export function registerInspireCommand(program: Command): void {
@@ -310,9 +365,10 @@ export function registerInspireCommand(program: Command): void {
       if (gate.warning) {
         console.warn(`  ⚠️  ${gate.warning}`);
       }
-      // CLI 包装层：从 .env / 环境变量构造 llmCaller
+      // CLI 包装层：从 .env / 环境变量构造 inspire 专用 LLM caller
+      // 使用 INSPIRE_SYSTEM_PROMPT + responseFormat=json_object 让 LLM 返回 JSON 数组
       if (!options.llmCaller) {
-        const caller = tryMakeLlmCaller(config);
+        const caller = tryMakeInspireCaller(config);
         if (caller) {
           options.llmCaller = async (board: QueryBoard) => {
             const r = await caller(board, board.question);

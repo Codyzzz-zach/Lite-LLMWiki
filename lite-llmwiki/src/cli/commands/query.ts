@@ -4,7 +4,7 @@ import { tryMakeLlmCaller } from "../cli-llm-init.js";
 import { checkAuditGate } from "../../knowledge/audit-gate.js";
 import { buildQueryBoard, type BuildQueryBoardOptions } from "../../query/board.js";
 import { queryKnowledge } from "../../query/engine.js";
-import type { QueryBoard } from "../../types.js";
+import type { ModelSynthesis, QueryBoard } from "../../types.js";
 
 export interface RunQueryCliOptions {
   mode?: string;
@@ -64,7 +64,7 @@ export async function runQueryCli(
       ? async (_b, q) => {
           // CLI 注入的 llmCaller 签名是 (board, question) → { answer, fromWiki, modelSynthesis, missingEvidence }
           const r = await options.llmCaller!({ question: q, board: _b, config });
-          return { answer: r.answer };
+          return { answer: r.answer, modelSynthesis: r.modelSynthesis as ModelSynthesis[] };
         }
       : undefined,
   });
@@ -122,7 +122,7 @@ export function registerQueryCommand(program: Command): void {
             // 适配签名：CLI 的 llmCaller 签名与 engine 的不同
             options.llmCaller = async ({ question: q, board: b, config: _c }) => {
               const r = await caller(b, q);
-              return { answer: r.answer, fromWiki: [], modelSynthesis: [], missingEvidence: [] };
+              return { answer: r.answer, fromWiki: [], modelSynthesis: r.modelSynthesis ?? [], missingEvidence: [] };
             };
           }
         }

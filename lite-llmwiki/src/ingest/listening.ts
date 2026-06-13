@@ -140,6 +140,8 @@ function parseProResult(
   rawJson: string, source: Source, anchorId: string | null,
   anchorText?: string, expectedMode?: ProMode,
 ): ProResult {
+  // chunkRefs 有效范围：1-based，[1, totalChunks]
+  const maxChunkRef = source.chunks.length;
   let parsed: Record<string, unknown>;
   try { parsed = JSON.parse(rawJson); }
   catch {
@@ -166,13 +168,13 @@ function parseProResult(
       id: (t.id as number) ?? 0,
       title: (t.title as string) ?? "",
       description: (t.description as string) ?? "",
-      chunkRefs: Array.isArray(t.chunkRefs) ? (t.chunkRefs as number[]) : [],
+      chunkRefs: clampChunkRefs(Array.isArray(t.chunkRefs) ? (t.chunkRefs as number[]) : [], maxChunkRef),
     }));
 
     const rawProps = Array.isArray(parsed.propositions)
       ? (parsed.propositions as Record<string, unknown>[]) : [];
     const propositions: Proposition[] = rawProps.map((p) => {
-      const chunkRefs = parseNumberArray(p.chunkRefs);
+      const chunkRefs = clampChunkRefs(parseNumberArray(p.chunkRefs), maxChunkRef);
       return {
         id: asNumber(p.id, 0),
         threadId: asNumber(p.threadId, 0),
@@ -183,7 +185,7 @@ function parseProResult(
         counterIntuitive: (p.counterIntuitive as boolean) ?? false,
         counterIntuitiveReason: (p.counterIntuitiveReason as string) ?? undefined,
         kind: parseWikiKind(p.kind),
-        evidence: normalizeEvidenceArray(p.evidence, source.id, chunkRefs),
+        evidence: normalizeEvidenceArray(p.evidence, source.id, chunkRefs, maxChunkRef),
         confidence: parseConfidence(p.confidence),
         sourceId: (p.sourceId as string) ?? source.id,
         coverage: (p.coverage as Proposition["coverage"]) ?? undefined,
@@ -195,15 +197,16 @@ function parseProResult(
 
   if (mode === "reread") {
     const p = parsed.proposition as Record<string, unknown> | undefined;
+    const rawChunkRefs = clampChunkRefs(parseNumberArray(p?.chunkRefs), maxChunkRef);
     const prop: Proposition = {
       id: (p?.id as number) ?? 0,
       threadId: (p?.threadId as number) ?? 0,
       claim: (p?.claim as string) ?? "",
       aiReading: (p?.aiReading as string) ?? "",
-      chunkRefs: parseNumberArray(p?.chunkRefs),
+      chunkRefs: rawChunkRefs,
       revision: (p?.revision as number) ?? 1,
       kind: parseWikiKind(p?.kind),
-      evidence: normalizeEvidenceArray(p?.evidence, source.id, parseNumberArray(p?.chunkRefs)),
+      evidence: normalizeEvidenceArray(p?.evidence, source.id, rawChunkRefs, maxChunkRef),
       confidence: parseConfidence(p?.confidence),
       sourceId: (p?.sourceId as string) ?? source.id,
     };
@@ -217,12 +220,12 @@ function parseProResult(
     const rawFm = isRecord(d.frontmatter) ? d.frontmatter : {};
     const nodeId = (d.nodeId as string) ?? (rawFm.nodeId as string) ?? `concept/${fallbackSlug}`;
     const kind = parseWikiKind(d.kind ?? rawFm.kind) ?? "concept";
-    const evidence = normalizeEvidenceArray(d.evidence, source.id, parseNumberArray(d.chunkRefs ?? rawFm.chunkRefs));
-    const chunkRefs = uniqueNumbers([
+    const evidence = normalizeEvidenceArray(d.evidence, source.id, parseNumberArray(d.chunkRefs ?? rawFm.chunkRefs), maxChunkRef);
+    const chunkRefs = clampChunkRefs(uniqueNumbers([
       ...parseNumberArray(rawFm.chunkRefs),
       ...parseNumberArray(d.chunkRefs),
       ...evidence.flatMap((ev) => ev.chunkRefs),
-    ]);
+    ]), maxChunkRef);
     const frontmatter: WikiFrontmatter = {
       ...parseWikiFrontmatter(rawFm),
       nodeId,
@@ -378,16 +381,16 @@ function parseNumberArray(value: unknown): number[] {
   return [];
 }
 
-function normalizeEvidenceArray(value: unknown, fallbackSourceId: string, fallbackChunkRefs: number[]): Evidence[] {
+function normalizeEvidenceArray(value: unknown, fallbackSourceId: string, fallbackChunkRefs: number[], maxChunkRef: number): Evidence[] {
   if (!Array.isArray(value)) return [];
   return value
     .filter(isRecord)
     .map((item) => {
-      const chunkRefs = uniqueNumbers([
+      const chunkRefs = clampChunkRefs(uniqueNumbers([
         ...parseNumberArray(item.chunkRefs),
         ...parseNumberArray(item.chunkRef),
         ...fallbackChunkRefs,
-      ]);
+      ]), maxChunkRef);
       return {
         sourceId: (item.sourceId as string) ?? fallbackSourceId,
         chunkRefs,
@@ -424,6 +427,36 @@ function uniqueStrings(values: string[]): string[] {
 
 function uniqueNumbers(values: number[]): number[] {
   return [...new Set(values.filter((value) => Number.isFinite(value)))].sort((a, b) => a - b);
+}
+
+/**
+ * 将 chunkRefs 限制在有效范围 [1, maxChunkRef] 内。
+ *
+ * LLM 可能输出超出实际 chunk 数量的 chunkRefs（如 [7,8,9] 但只有 4 chunks），
+ * 这会导致结构审计失败并阻塞整个管线。
+ *
+ * 策略：
+ * - 0-based 索引（0, 1, 2, ...）→ 转换为 1-based（1, 2, 3, ...）后验证
+ * - 越界的 1-based 索引 → 过滤掉
+ * - 空结果 → 回退到 [1]（至少引用第一个 chunk，避免 frontmatter 校验失败）
+ */
+function clampChunkRefs(refs: number[], maxChunkRef: number): number[] {
+  if (maxChunkRef <= 0) return refs; // 无 chunks 信息时不过滤
+
+  const clamped: number[] = [];
+  for (const ref of refs) {
+    // 0-based → 1-based 转换
+    const adjusted = ref <= 0 ? ref + 1 : ref;
+    if (adjusted >= 1 && adjusted <= maxChunkRef) {
+      clamped.push(adjusted);
+    }
+  }
+
+  // 去重排序
+  const result = [...new Set(clamped)].sort((a, b) => a - b);
+
+  // 如果过滤后为空，回退到 [1]
+  return result.length > 0 ? result : [1];
 }
 
 function normalizeWikiFilePath(value: unknown, kind: WikiKind, nodeId: string): string {
