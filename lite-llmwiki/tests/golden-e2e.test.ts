@@ -12,7 +12,6 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { auditWiki } from "../src/knowledge/audit.js";
 import { KnowledgeStore } from "../src/knowledge/store.js";
-import { inspireWiki } from "../src/query/inspire.js";
 import { searchWiki } from "../src/query/search.js";
 import type { AppConfig, WikiNodeDraft } from "../src/types.js";
 
@@ -231,24 +230,6 @@ describe("Phase 3: Search legacy and v5-readable pages", () => {
   });
 });
 
-describe("Phase 4: Inspire local page sampling", () => {
-  it("returns a page without requiring an API key", () => {
-    const result = inspireWiki(config, { seed: 1 });
-
-    expect(result).not.toBeNull();
-    expect(result!.nodeId).toBeTruthy();
-    expect(result!.title).toBeTruthy();
-    expect(result!.filePath).toMatch(/^wiki\/concepts\//);
-  });
-
-  it("can filter by concept kind for legacy pages", () => {
-    const result = inspireWiki(config, { kind: "concept", seed: 2 });
-
-    expect(result).not.toBeNull();
-    expect(result!.kind).toBe("concept");
-  });
-});
-
 describe("Phase 5: KnowledgeStore filesystem operations", () => {
   it("readRaw reads all three chase files by raw id", () => {
     expect(store.readRaw("raw_pdf_e 的基本画像-101349df399af024")).toContain("sourceType: pdf");
@@ -291,7 +272,7 @@ describe("Phase 6: v5 verified node contract", () => {
         title: "1/e 的概率极限角色",
         sourceIds: ["raw_pdf_e 的基本画像-101349df399af024"],
         sourceChase: ["raw/chase/raw_pdf_e 的基本画像-101349df399af024.md"],
-        chunkRefs: [1],
+        propRefs: ["1"],
         confidence: 0.86,
         status: "verified",
         tags: ["probability", "one-over-e"],
@@ -300,7 +281,7 @@ describe("Phase 6: v5 verified node contract", () => {
       claim: "1/e 经常作为许多微小机会都失败的极限概率出现。",
       evidence: [{
         sourceId: "raw_pdf_e 的基本画像-101349df399af024",
-        chunkRefs: [1],
+        propRefs: ["1"],
         summary: "错位排列和多次小概率试验都指向 1/e 失败概率。",
         excerpt: "错位排列中，没有任何人拿对帽子的概率随 n 增大趋近 1/e。",
       }],
@@ -315,7 +296,7 @@ describe("Phase 6: v5 verified node contract", () => {
     expect(saved).toContain("nodeId: concept/one-over-e-probability-limit");
     expect(saved).toContain("kind: concept");
     expect(saved).toContain("sourceChase:");
-    expect(saved).toContain("chunkRefs:");
+    expect(saved).toContain("propRefs:");
     expect(saved).toContain("Summary: 错位排列和多次小概率试验都指向 1/e 失败概率。");
 
     const result = auditWiki(config);
@@ -332,7 +313,7 @@ describe("Phase 6: v5 verified node contract", () => {
         title: "反直觉视角: e 的基本画像",
         sourceIds: ["raw_pdf_e 的基本画像-101349df399af024"],
         sourceChase: ["raw/chase/raw_pdf_e 的基本画像-101349df399af024.md"],
-        chunkRefs: [1],
+        propRefs: ["1"],
         confidence: 0.55,
         status: "verified",
         tags: ["counter-intuitive"],
@@ -341,7 +322,7 @@ describe("Phase 6: v5 verified node contract", () => {
       claim: "这份材料中有已确认知识点挑战了常见认知。",
       evidence: [{
         sourceId: "raw_pdf_e 的基本画像-101349df399af024",
-        chunkRefs: [1],
+        propRefs: ["1"],
         summary: "大量机会叠加后，一无所获的概率仍可能稳定在 37%。",
       }],
       interpretation: "- 多次机会并不保证成功，失败概率可以稳定收敛到 1/e。",
@@ -372,7 +353,7 @@ describe("Phase 6: v5 verified node contract", () => {
         title: "Broken",
         sourceIds: ["missing-source"],
         sourceChase: ["raw/chase/missing-source.md"],
-        chunkRefs: [1],
+        propRefs: ["1"],
         confidence: 0.8,
         status: "verified",
         tags: [],
@@ -381,7 +362,7 @@ describe("Phase 6: v5 verified node contract", () => {
       claim: "Broken claim",
       evidence: [{
         sourceId: "missing-source",
-        chunkRefs: [1],
+        propRefs: ["1"],
         summary: "Missing source.",
       }],
     };

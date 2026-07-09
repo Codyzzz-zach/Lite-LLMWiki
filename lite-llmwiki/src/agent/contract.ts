@@ -13,35 +13,36 @@
  * ```
  */
 export type AgentStage =
-  | "plan"
-  | "ingest"
-  | "audit"
-  | "semantic-audit"
-  | "query"
-  | "inspire"
-  | "unknown";
+	| "plan"
+	| "ingest"
+	| "audit"
+	| "audit-structure"
+	| "semantic-audit"
+	| "query"
+	| "inspire"
+	| "unknown";
 
 export interface AgentFailure {
-  ok: false;
-  stage: AgentStage;
-  error: string;
-  blockingIssues: string[];
-  suggestedNextActions: string[];
+	ok: false;
+	stage: AgentStage;
+	error: string;
+	blockingIssues: string[];
+	suggestedNextActions: string[];
 }
 
 export interface BuildFailureOptions {
-  stage: AgentStage | string;
-  error: string;
-  blockingIssues?: string[];
-  suggestedNextActions?: string[];
+	stage: AgentStage | string;
+	error: string;
+	blockingIssues?: string[];
+	suggestedNextActions?: string[];
 }
 
 export function buildFailureJson(opts: BuildFailureOptions): AgentFailure {
-  return {
-    ok: false,
-    stage: (opts.stage as AgentStage) || "unknown",
-    error: opts.error,
-    blockingIssues: opts.blockingIssues ?? [],
-    suggestedNextActions: opts.suggestedNextActions ?? [],
-  };
+	return {
+		ok: false,
+		stage: (opts.stage as AgentStage) || "unknown",
+		error: opts.error,
+		blockingIssues: opts.blockingIssues ?? [],
+		suggestedNextActions: opts.suggestedNextActions ?? [],
+	};
 }

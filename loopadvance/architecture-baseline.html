@@ -1,0 +1,718 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LiteWikiagent 架构基线 v2.0 — 施工完成</title>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true, theme: "base",
+      themeVariables: {
+        fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+        primaryColor: "#eef6ff", primaryTextColor: "#172033", primaryBorderColor: "#77a6d9",
+        lineColor: "#5f748d", secondaryColor: "#f5f0ff", tertiaryColor: "#fff8e8", fontSize: "13px",
+      },
+      flowchart: { useMaxWidth: true, htmlLabels: true, curve: "basis" },
+    });
+  </script>
+  <style>
+    :root { --ink: #172033; --muted: #617087; --soft: #eef3f8; --line: #d7e0ea; --blue: #2f6fbd; --green: #3a8068; --amber: #9b6a1a; --rose: #b2485a; --paper: #fbfcfe; --white: #ffffff; --code-bg: #182235; --shadow: 0 18px 55px rgba(32,50,72,0.12); --brand: #0D5C41; --accent: #00D97E; }
+    * { box-sizing: border-box; } html { scroll-behavior: smooth; }
+    body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif; color: var(--ink); background: linear-gradient(180deg, rgba(238,246,255,0.9), rgba(251,252,254,0.9) 34rem), var(--paper); line-height: 1.74; }
+    a { color: var(--blue); text-underline-offset: 0.18em; }
+    .page { max-width: 1200px; margin: 0 auto; padding: 0 22px 72px; }
+    header { padding: 64px 0 38px; }
+    .eyebrow { display: inline-flex; align-items: center; gap: 10px; color: var(--green); font-size: 0.84rem; font-weight: 780; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 18px; }
+    .eyebrow::before { content: ""; width: 34px; height: 2px; background: var(--green); border-radius: 999px; }
+    .version-badge { display: inline-block; margin-left: 12px; padding: 2px 10px; background: var(--brand); color: #fff; border-radius: 999px; font-size: 0.78rem; font-weight: 700; vertical-align: middle; }
+    h1 { max-width: 950px; margin: 0; font-size: clamp(2.2rem, 5.5vw, 4rem); line-height: 1.04; }
+    .subtitle { max-width: 820px; margin: 24px 0 0; color: #34435a; font-size: clamp(1rem, 2vw, 1.3rem); line-height: 1.68; }
+    .meta-bar { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; padding: 18px 22px; background: rgba(255,255,255,0.82); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(32,50,72,0.06); }
+    .meta-item { font-size: 0.88rem; } .meta-item b { color: var(--blue); }
+    .quick-nav { display: flex; flex-wrap: wrap; gap: 10px; margin: 32px 0 0; }
+    .quick-nav a { display: inline-flex; align-items: center; min-height: 38px; padding: 7px 13px; color: #26354a; background: rgba(255,255,255,0.72); border: 1px solid var(--line); border-radius: 999px; text-decoration: none; font-size: 0.92rem; font-weight: 650; }
+    main { display: grid; gap: 22px; }
+    section { padding: 46px 0; border-top: 1px solid rgba(215,224,234,0.86); }
+    .section-head { display: grid; grid-template-columns: minmax(0,0.42fr) minmax(0,0.9fr); gap: 32px; align-items: start; margin-bottom: 26px; }
+    .kicker { color: var(--blue); font-size: 0.82rem; font-weight: 820; letter-spacing: 0.09em; text-transform: uppercase; }
+    h2 { margin: 0; font-size: clamp(1.6rem, 2.8vw, 2.5rem); line-height: 1.16; }
+    h3 { margin: 26px 0 10px; font-size: 1.22rem; line-height: 1.32; }
+    p { margin: 0 0 16px; } .lead { color: #33445b; font-size: 1.06rem; line-height: 1.82; }
+    .diagram-wrap { margin: 24px 0; padding: 22px; background: var(--white); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; box-shadow: 0 10px 30px rgba(32,50,72,0.07); }
+    .mermaid { min-width: 600px; text-align: center; }
+    table { width: 100%; border-collapse: collapse; margin: 22px 0; background: var(--white); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; box-shadow: 0 10px 30px rgba(32,50,72,0.06); }
+    th, td { padding: 12px 16px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; font-size: 0.92rem; }
+    th { background: #eef4fb; color: #20324c; font-size: 0.82rem; letter-spacing: 0.04em; text-transform: uppercase; }
+    tr:last-child td { border-bottom: 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.88em; background: var(--soft); padding: 1px 4px; border-radius: 3px; }
+    .code { padding: 18px; color: #eff6ff; background: var(--code-bg); border-radius: 8px; overflow-x: auto; line-height: 1.6; font-size: 0.88rem; }
+    .callout { padding: 20px 24px; background: rgba(255,255,255,0.82); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 30px rgba(32,50,72,0.06); margin: 20px 0; }
+    .callout.warn { border-color: #ead5a4; background: #fffaf0; }
+    .callout.good { border-color: #b8d9cd; background: #f3fbf8; }
+    .callout strong { color: #0f243d; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.76rem; font-weight: 700; }
+    .badge-ok { background: #d4edda; color: #155724; } .badge-new { background: #cce5ff; color: #004085; }
+    .two-col { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 22px; align-items: start; }
+    footer { padding: 30px 0 10px; color: var(--muted); font-size: 0.9rem; }
+    @media (max-width: 860px) { .section-head, .two-col { grid-template-columns: 1fr; } .mermaid { min-width: 520px; } }
+  </style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <div class="eyebrow">Loop Engineering Baseline · v2.0 <span class="version-badge">2026-07-09 · 施工完成</span></div>
+  <h1>LiteWikiagent 架构基线 v2.0</h1>
+  <p class="subtitle">
+    基于 lite-llmwiki 代码库截至 2026-07-09 的<strong>真实架构快照</strong>。
+    架构设计 v1.0 的 11 个施工步骤已全部完成——所有模块、数据流、依赖关系均从源码逐行确认。
+  </p>
+  <div class="meta-bar">
+    <div class="meta-item"><b>代码库</b> <code>lite-llmwiki/</code></div>
+    <div class="meta-item"><b>源文件</b> 60 个 TypeScript 文件</div>
+    <div class="meta-item"><b>测试</b> 25 个文件 · 275 passed / 4 skipped</div>
+    <div class="meta-item"><b>TypeCheck</b> ✅ 0 errors</div>
+    <div class="meta-item"><b>CLI 命令</b> 15 个</div>
+  </div>
+  <nav class="quick-nav">
+    <a href="#overview">总览</a>
+    <a href="#layers">六层架构</a>
+    <a href="#flow">数据流</a>
+    <a href="#ingest">Ingest 管线</a>
+    <a href="#audit">审计体系</a>
+    <a href="#board">Board 查询</a>
+    <a href="#graph">图谱系统</a>
+    <a href="#evolution">自进化</a>
+    <a href="#daemon">Daemon</a>
+    <a href="#storage">存储结构</a>
+    <a href="#modules">模块清单</a>
+    <a href="#health">健康度</a>
+    <a href="#v1diff">v1.0 vs v2.0</a>
+  </nav>
+</header>
+
+<main>
+
+<!-- ══════════════════════════════════ 总览 ══════════════════════════════════ -->
+<section id="overview">
+  <div class="section-head">
+    <div class="kicker">01 / Overview</div>
+    <div><h2>系统总览：完整发动机</h2></div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  subgraph INPUT["📥 输入"]
+    PDF["PDF"]
+    MD["Markdown"]
+    TEX["TeX"]
+  end
+
+  subgraph LOADER["Loader 层"]
+    L1["pdf-loader / loader / tex-loader"]
+    CHASE["raw/chase/*.md<br/>chunk marker"]
+  end
+
+  subgraph PROPS["命题提取"]
+    P1["extractPropositions()<br/>LLM 拆分原子命题"]
+    P2["prop marker<br/>&lt;!-- prop N --&gt;"]
+  end
+
+  subgraph ENGINE["发动机本体"]
+    COMPILE["compile<br/>命题 → wiki 节点 + edges"]
+    AUDIT["audit<br/>结构(硬) + 语义(软)"]
+    BOARD["board 装配<br/>搜索 + graph 强制注入"]
+    QUERY["query engine<br/>LLM 在残局上推理"]
+  end
+
+  subgraph EVOLVE["自进化层"]
+    CONTRADICT["矛盾检测<br/>LLM judge"]
+    REINFORCE["强化检测<br/>LLM judge 双维度"]
+    INSPIRE["inspire<br/>人类探索工具"]
+    CONFIRM["confirm<br/>人类确认闸门"]
+  end
+
+  subgraph OUTPUT["📤 输出"]
+    WIKI["wiki/*.md<br/>节点 + edges"]
+    GRAPH["graph.json<br/>图谱聚合索引"]
+    GATE["audit-gate.json<br/>关卡状态"]
+    PROGRESS["progress.md<br/>待确认工单"]
+  end
+
+  PDF & MD & TEX --> LOADER
+  LOADER --> CHASE
+  CHASE --> PROPS
+  PROPS --> COMPILE
+  COMPILE --> AUDIT
+  COMPILE --> EVOLVE
+  AUDIT --> WIKI
+  AUDIT --> GATE
+  WIKI --> BOARD
+  GRAPH --> BOARD
+  BOARD --> QUERY
+  EVOLVE --> PROGRESS
+  EVOLVE --> GRAPH
+  EVOLVE --> WIKI
+    </pre>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════ 六层架构 ══════════════════════════════════ -->
+<section id="layers">
+  <div class="section-head">
+    <div class="kicker">02 / Layers</div>
+    <div><h2>六层架构</h2></div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  subgraph L0["Layer 0 · Loader"]
+    L0_1["loader.ts · pdf-loader.ts · tex-loader.ts"]
+    L0_2["PDF/MD/TeX → Source 对象 → chunkText() → chase"]
+  end
+
+  subgraph L1["Layer 1 · Proposition Extraction"]
+    L1_1["ingest/proposition.ts"]
+    L1_2["LLM 拆分原子命题 → &lt;!-- prop N --&gt; marker"]
+  end
+
+  subgraph L2["Layer 2 · Engine Core"]
+    direction TB
+    L2_C["ingest/pipeline.ts — 共享管线"]
+    L2_A["knowledge/audit.ts + semantic-audit.ts"]
+    L2_B["query/board.ts + engine.ts"]
+    L2_G["knowledge/graph.ts"]
+  end
+
+  subgraph L3["Layer 3 · Maintenance (daemon CI)"]
+    L3_1["daemon/watcher.ts — chokidar 监听"]
+    L3_2["daemon/timer.ts — 定时 lint"]
+    L3_3["daemon/lint.ts — 健康检查"]
+    L3_4["daemon/state.ts — 原子状态写入"]
+  end
+
+  subgraph L4["Layer 4 · Evolution"]
+    L4_1["contradiction.ts · reinforce.ts"]
+    L4_2["supersede.ts · reflow.ts · confirm.ts"]
+  end
+
+  subgraph L5["Layer 5 · Interface"]
+    L5_1["15 CLI commands"]
+    L5_2["daemon CLI · agent contract"]
+    L5_3["OKF export/import"]
+    L5_4["qmd search · LLMProvider"]
+  end
+
+  L0 --> L1 --> L2 --> L3
+  L2 --> L4
+  L3 --> L4
+  L4 --> L5
+    </pre>
+  </div>
+
+  <table>
+    <tr><th>层</th><th>目录</th><th>职责</th><th>新建/改造</th></tr>
+    <tr><td><strong>L0 Loader</strong></td><td><code>src/ingest/loader.ts · pdf-loader.ts · tex-loader.ts</code></td><td>PDF/MD/TeX → 纯文本 chunks → chase 文件</td><td><span class="badge badge-ok">保留</span></td></tr>
+    <tr><td><strong>L1 Proposition</strong></td><td><code>src/ingest/proposition.ts</code></td><td>LLM 拆分原子命题 → prop marker</td><td><span class="badge badge-new">新建</span></td></tr>
+    <tr><td><strong>L2 Engine</strong></td><td><code>src/ingest/pipeline.ts · knowledge/* · query/*</code></td><td>编译 + 审计 + board + graph</td><td><span class="badge badge-new">新建 pipeline + graph</span></td></tr>
+    <tr><td><strong>L3 Maintenance</strong></td><td><code>src/daemon/*</code></td><td>文件监听 + 定时 lint + 状态管理</td><td><span class="badge badge-new">新建 7 模块</span></td></tr>
+    <tr><td><strong>L4 Evolution</strong></td><td><code>src/evolution/*</code></td><td>矛盾 + 强化 + 回流 + 确认管线</td><td><span class="badge badge-new">新建 5 模块</span></td></tr>
+    <tr><td><strong>L5 Interface</strong></td><td><code>src/cli/* · src/agent/* · src/okf/*</code></td><td>CLI · OKF · agent contract · qmd · LLMProvider</td><td><span class="badge badge-new">新建 6 模块</span></td></tr>
+  </table>
+</section>
+
+<!-- ══════════════════════════════════ 数据流 ══════════════════════════════════ -->
+<section id="flow">
+  <div class="section-head">
+    <div class="kicker">03 / Data Flow</div>
+    <div><h2>一篇新材料进入系统后的完整路径</h2></div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  START["📄 用户放入 raw/original/pdf/paper.pdf"]
+  
+  START --> L["loader: MinerU API → Markdown 正文"]
+  L --> CHUNK["chunkText(): ~2000 tokens/chunk, with overlap"]
+  CHUNK --> CHASE_W["写 chase: &lt;!-- chunk:1 --&gt;...&lt;!-- /chunk:1 --&gt;"]
+
+  CHASE_W --> CHECK{"chase 有 prop marker?"}
+  CHECK -->|"无"| PROPS["proposition.ts: LLM 拆分原子命题"]
+  PROPS --> PMARK["插入 &lt;!-- prop N --&gt; marker"]
+  CHECK -->|"有"| PMARK
+
+  PMARK --> CLEAN["cleanup: 删除同 sourceId 的旧 wiki 节点"]
+
+  CLEAN --> COMPILE["pipeline.ts: LLM compile<br/>命题 → wiki 节点 + edges"]
+  
+  COMPILE --> NODES["写入 wiki/{kind}/*.md<br/>propRefs + edges (JSON)"]
+  COMPILE --> EDGES["derived_from / related edges<br/>confidence: LLM 自评"]
+
+  NODES --> STRUCT["结构审计: nodeId/kind/propRefs 检查"]
+  STRUCT --> SEM{"语义审计: LLM judge<br/>5 维度 verdict"}
+  SEM -->|"passed"| GATE_OK["auditStatus: passed"]
+  SEM -->|"warning/failed"| GATE_WARN["auditStatus: warning/failed<br/>auditScore 写入 frontmatter"]
+
+  GATE_OK & GATE_WARN --> GATE_FILE["audit-gate.json<br/>{structureOk, semanticOk, score}"]
+
+  COMPILE --> POST["post-compile 检测"]
+  POST --> CONTRADICT["矛盾检测: LLM judge<br/>新节点 vs 已有同 kind 节点"]
+  POST --> REINFORCE["强化检测: LLM judge 双维度<br/>语义一致度 + 证据增量度"]
+  
+  CONTRADICT --> PROGRESS["contradicts 候选 → progress.md"]
+  REINFORCE --> PROGRESS
+
+  NODES --> GRAPH["graph.json 重建<br/>buildGraph() from frontmatter.edges"]
+  EDGES --> GRAPH
+
+  PROGRESS --> HUMAN["👤 人类 confirm --all"]
+  HUMAN --> FRONTMATTER["确认的 edges 写入 frontmatter"]
+  FRONTMATTER --> GRAPH
+    </pre>
+  </div>
+
+  <div class="callout good">
+    <strong>关键设计改进（v2.0 vs v1.0）：</strong>
+    <ul>
+      <li><strong>命题提取</strong>是 compile 的前置步骤——LLM 将 chase 文本拆分为原子命题，标注 <code>&lt;!-- prop N --&gt;</code> marker。一次 LLM 调用，结果持久化。</li>
+      <li><strong>覆盖式 ingest</strong>——同一篇材料重编译时，先删掉所有 <code>sourceIds</code> 包含该 source 的旧节点，再写新的。</li>
+      <li><strong>Edge 是编译的自动产出</strong>——compile LLM 在输出节点时同时标注 derived_from 和 related 边（confidence 来自 LLM 自评）。</li>
+      <li><strong>矛盾 + 强化检测</strong>在 compile 后自动运行，候选写入 progress.md 等待人类确认。</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════ Ingest ══════════════════════════════════ -->
+<section id="ingest">
+  <div class="section-head">
+    <div class="kicker">04 / Ingest</div>
+    <div><h2>Ingest 管线：两条路径</h2></div>
+  </div>
+
+  <h3>路径 A：CLI 手动（llmwiki ingest2）</h3>
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart LR
+  CLI["llmwiki ingest2 &lt;file&gt;"]
+  CLI --> PIPE["runIngestPipeline(config, chaseFile, client)"]
+  PIPE --> STEP1["① extract-props"]
+  STEP1 --> STEP2["② compile"]
+  STEP2 --> STEP3["③ audit (结构 + 语义)"]
+  STEP3 --> STEP4["④ contradict + reinforce"]
+    </pre>
+  </div>
+
+  <h3>路径 B：daemon 自动（文件监听）</h3>
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart LR
+  WATCH["watcher.ts: onNewChase"]
+  WATCH --> PIPE2["runIngestPipeline(config, chaseFile, llm)"]
+  PIPE2 --> STEP1B["① extract-props"]
+  STEP1B --> STEP2B["② compile"]
+  STEP2B --> WAIT["③ audit 等待下次 wiki change"]
+    </pre>
+  </div>
+
+  <div class="callout good">
+    <strong>共享管线</strong>——CLI 和 daemon 调的是<strong>同一套函数</strong>（<code>src/ingest/pipeline.ts → runIngestPipeline()</code>）。daemon 是加速器，CLI 是完整后备——设计文档 §14 的要求。
+  </div>
+
+  <h3>命题提取详情</h3>
+  <table>
+    <tr><th>步骤</th><th>内容</th></tr>
+    <tr><td>输入</td><td>chase 文件（含 chunk marker）</td></tr>
+    <tr><td>LLM</td><td>deepseek-v4-flash（thinking disabled, maxTokens 32768）</td></tr>
+    <tr><td>输出格式</td><td><code>{"propositions": [{"index":1, "text":"...", "chunkIndex":1}]}</code></td></tr>
+    <tr><td>marker 格式</td><td><code>&lt;!-- prop N --&gt;</code> 插入在 chunk 关闭标记后</td></tr>
+    <tr><td>读取</td><td><code>readChaseProps()</code> → <code>ChaseProp[]</code></td></tr>
+  </table>
+
+  <h3>编译详情</h3>
+  <table>
+    <tr><th>步骤</th><th>内容</th></tr>
+    <tr><td>输入</td><td>chase 文件（含 prop marker）</td></tr>
+    <tr><td>LLM</td><td>deepseek-v4-flash（thinking disabled, maxTokens 8192）</td></tr>
+    <tr><td>输出</td><td><code>{"nodeDrafts": [{nodeId,kind,title,claim,evidence,edges:[{to,type,confidence}]}]}</code></td></tr>
+    <tr><td>edges</td><td>LLM 自评 confidence（0-1），类型 derived_from / related</td></tr>
+    <tr><td>去重</td><td>写入前删除同 sourceId 的所有旧节点</td></tr>
+  </table>
+</section>
+
+<!-- ══════════════════════════════════ Audit ══════════════════════════════════ -->
+<section id="audit">
+  <div class="section-head">
+    <div class="kicker">05 / Audit</div>
+    <div><h2>双重审计体系</h2></div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  subgraph STRUCT["结构审计 (audit.ts) — 无 LLM，快速"]
+    S1["检查: nodeId · kind · sourceChase · propRefs"]
+    S2["检查: Claim 非空 · Evidence 非空"]
+    S3["检查: propRefs 在 chase 中存在 (collectPropIndices)"]
+  end
+
+  subgraph SEM["语义审计 (semantic-audit.ts) — LLM judge"]
+    SE1["读 chase excerpts (selectChaseChunks)"]
+    SE2["构造 audit prompt (buildSemanticAuditInput)"]
+    SE3["LLM judge: 5 维度 verdict"]
+    SE4["support · addition · inference · limits · citation"]
+    SE5["anchor: 'prop N: 原文引用' — Layer 1 防御"]
+  end
+
+  subgraph GATE["audit-gate.ts"]
+    GA["结构失败 → 阻止 query (hard gate)"]
+    GB["语义失败 → 警告放行 (soft gate)"]
+    GC["审计未执行 → 警告放行"]
+  end
+
+  STRUCT --> GATE
+  SEM --> GATE
+    </pre>
+  </div>
+
+  <table>
+    <tr><th>关卡</th><th>行为</th><th>v2.0 修正</th></tr>
+    <tr><td>结构审计失败</td><td>阻止 query</td><td>硬关卡（不变）</td></tr>
+    <tr><td>语义审计失败</td><td><strong>警告放行</strong></td><td>v2.0 修正：LLM judge 是主观的→不应用主观判断做硬关卡</td></tr>
+    <tr><td>审计未执行</td><td>警告放行</td><td>软关卡（不变）</td></tr>
+  </table>
+</section>
+
+<!-- ══════════════════════════════════ Board ══════════════════════════════════ -->
+<section id="board">
+  <div class="section-head">
+    <div class="kicker">06 / Board</div>
+    <div><h2>Board 查询：6 种模式</h2></div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  Q["用户问题 + mode"] --> SEARCH["SearchProvider.search()"]
+  SEARCH --> SEEDS["seed nodes"]
+
+  SEEDS --> GRAPH_INJ["graph 强制注入<br/>seed nodes 的 edges → 补 related/counter"]
+
+  GRAPH_INJ --> ASM{"assembleBoard<br/>按 mode 分支"}
+  ASM -->|"ask"| A["seeds + evidence + related + limits"]
+  ASM -->|"trace"| T["seeds + full evidence + chase excerpts"]
+  ASM -->|"expand"| E["seeds + methods/cases/equations + questions"]
+  ASM -->|"compare"| C["seeds + bridge nodes + cross-source"]
+  ASM -->|"challenge"| CH["seeds + ALL counters + ALL limits"]
+  ASM -->|"inspire"| I["seeds + insights/questions/tension nodes"]
+
+  A & T & E & C & CH & I --> BOARD_OUT["QueryBoard"]
+  BOARD_OUT --> LLM["DeepSeek LLM"]
+  LLM --> ANSWER["answer + fromWiki + missingEvidence"]
+    </pre>
+  </div>
+
+  <div class="callout good">
+    <strong>v2.0 改进：</strong>Board 装配通过 <code>SearchProvider</code> 接口调用搜索（支持 KeywordSearchProvider 和 QmdSearchProvider 切换）。图谱强制注入——seed nodes 的 edges 被自动补入 board，challenge 模式不遗漏 counter 节点。
+  </div>
+</section>
+
+<!-- ══════════════════════════════════ Graph ══════════════════════════════════ -->
+<section id="graph">
+  <div class="section-head">
+    <div class="kicker">07 / Graph</div>
+    <div><h2>图谱系统</h2></div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart LR
+  FM["wiki/*.md frontmatter.edges"]
+  FM --> BUILD["buildGraph()"]
+  BUILD --> GRAPH["graph.json 聚合索引"]
+  
+  subgraph TYPES["5 种边类型"]
+    T1["derived_from — compile LLM 标注"]
+    T2["related — compile LLM + inspire 确认"]
+    T3["contradicts — daemon 矛盾检测"]
+    T4["supports — reinforce 确认"]
+    T5["superseded_by — 取代确认"]
+  end
+
+  GRAPH --> STATS["getGraphStats()<br/>nodes · edges · orphans · contradicts"]
+  
+  GRAPH --> BOARD_INJ["board 强制注入"]
+  GRAPH --> LINT["lint 孤立检测"]
+    </pre>
+  </div>
+
+  <table>
+    <tr><th>边类型</th><th>谁产生</th><th>confidence 来源</th><th>谁确认</th></tr>
+    <tr><td><code>derived_from</code></td><td>compile LLM</td><td>LLM 自评 (0-1)</td><td>自动</td></tr>
+    <tr><td><code>related</code></td><td>compile LLM + inspire</td><td>LLM 自评 / inspire 硬编码 0.5</td><td>compile 自动 / inspire 需人类</td></tr>
+    <tr><td><code>contradicts</code></td><td>daemon 矛盾检测 LLM</td><td>LLM 自评</td><td>人类确认</td></tr>
+    <tr><td><code>supports</code></td><td>reinforce LLM judge</td><td>双维度综合</td><td>人类确认</td></tr>
+    <tr><td><code>superseded_by</code></td><td>人类确认后</td><td>—</td><td>人类确认</td></tr>
+  </table>
+</section>
+
+<!-- ══════════════════════════════════ Evolution ══════════════════════════════════ -->
+<section id="evolution">
+  <div class="section-head">
+    <div class="kicker">08 / Evolution</div>
+    <div><h2>自进化系统：五个方向</h2></div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  subgraph AUTO["自动检测"]
+    C1["矛盾检测<br/>LLM judge 对比新节点 vs 已有节点"]
+    C2["强化检测<br/>LLM judge 双维度: 语义一致度 + 证据增量度"]
+  end
+
+  subgraph CANDIDATE["候选 → progress.md"]
+    P1["contradicts 候选"]
+    P2["reinforce 候选"]
+    P3["inspire edge 候选"]
+  end
+
+  subgraph HUMAN["人类确认 (confirm CLI)"]
+    H1["confirm --list"]
+    H2["confirm --all"]
+    H3["confirm --accept 1,3"]
+  end
+
+  subgraph APPLY["确认后写入"]
+    A1["edges → frontmatter"]
+    A2["supersede → 标记旧节点"]
+    A3["reinforce → auditScore 提升"]
+  end
+
+  AUTO --> CANDIDATE
+  CANDIDATE --> HUMAN
+  HUMAN --> APPLY
+    </pre>
+  </div>
+
+  <table>
+    <tr><th>模块</th><th>功能</th><th>LLM</th></tr>
+    <tr><td><code>evolution/contradiction.ts</code></td><td>新节点 vs 已有同 kind 节点 → LLM judge 判断矛盾</td><td>是</td></tr>
+    <tr><td><code>evolution/reinforce.ts</code></td><td>双维度 LLM judge: 语义一致度(>0.7) + 证据增量度(>0.5)</td><td>是</td></tr>
+    <tr><td><code>evolution/confirm.ts</code></td><td>确认管线: parse → backlog check → auto-degrade</td><td>否</td></tr>
+    <tr><td><code>evolution/supersede.ts</code></td><td>取代确认: 标记旧节点 status: legacy</td><td>否</td></tr>
+    <tr><td><code>evolution/reflow.ts</code></td><td>回流候选: 筛选 + reflowOrigin 标记</td><td>否</td></tr>
+  </table>
+</section>
+
+<!-- ══════════════════════════════════ Daemon ══════════════════════════════════ -->
+<section id="daemon">
+  <div class="section-head">
+    <div class="kicker">09 / Daemon</div>
+    <div><h2>Daemon：七项职责</h2></div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  subgraph RESP["七项职责"]
+    D1["① 命题提取: onNewChase → runIngestPipeline"]
+    D2["② compile: pipeline 内部自动"]
+    D3["③ audit: onWikiChange → 入队"]
+    D4["④ lint: 定时器 30min → lintWiki() → lint-report.json"]
+    D5["⑤ inspire: 人类命令触发"]
+    D6["⑥ reflow: 定时器 60min → screenAndWriteReflow"]
+    D7["⑦ reinforce: pipeline 内部 post-compile"]
+  end
+
+  subgraph WATCHER["文件监听 (chokidar)"]
+    W1["chase/ 新文件 → onNewChase"]
+    W2["wiki/ 变化 → onWikiChange"]
+  end
+
+  subgraph TIMER["定时器 (setInterval)"]
+    TM1["30s: heartbeat → daemon-state.json"]
+    TM2["30min: lint → lint-report.json"]
+    TM3["60min: reflow → progress.md"]
+  end
+
+  subgraph STATE["状态管理"]
+    S1["daemon-state.json (原子写入)"]
+    S2["daemon.log (追加日志)"]
+  end
+
+  WATCHER --> RESP
+  TIMER --> RESP
+  RESP --> STATE
+    </pre>
+  </div>
+
+  <table>
+    <tr><th>模块</th><th>功能</th></tr>
+    <tr><td><code>daemon/index.ts</code></td><td>主入口: watcher + timer + 优雅退出</td></tr>
+    <tr><td><code>daemon/watcher.ts</code></td><td>chokidar 监听 chase/ + wiki/</td></tr>
+    <tr><td><code>daemon/timer.ts</code></td><td>heartbeat(30s) + lint(30min) + reflow(60min)</td></tr>
+    <tr><td><code>daemon/state.ts</code></td><td>daemon-state.json 原子写入 (write-temp + rename)</td></tr>
+    <tr><td><code>daemon/lint.ts</code></td><td>孤立/断链/propRefs 缺失检测 → lint-report.json</td></tr>
+    <tr><td><code>daemon/health.ts</code></td><td>SystemHealth: code + wiki + graph + daemon + backlog</td></tr>
+    <tr><td><code>daemon/reflow.ts</code></td><td>回流候选标记 (依赖 query cache，当前为 stub)</td></tr>
+  </table>
+</section>
+
+<!-- ══════════════════════════════════ Storage ══════════════════════════════════ -->
+<section id="storage">
+  <div class="section-head">
+    <div class="kicker">10 / Storage</div>
+    <div><h2>存储结构</h2></div>
+  </div>
+
+  <pre class="code">LiteWikiagent/
+├── raw/
+│   ├── original/            # 用户放入的原始材料
+│   │   ├── md/
+│   │   ├── pdf/
+│   │   └── tex/
+│   └── chase/               # 清洗后 Markdown (审查基准层)
+│       └── *.md              # &lt;!-- chunk:N --&gt; + &lt;!-- prop N --&gt;
+│
+├── wiki/                    # 编译的知识层
+│   ├── concepts/ claims/ methods/ cases/ equations/
+│   ├── questions/ insights/ anchors/ counters/
+│   ├── audit-gate.json      # 审计关卡状态
+│   ├── index.json / index.md / log.md
+│   └── *.md                  # frontmatter: propRefs + edges + auditStatus
+│
+├── lite-llmwiki/            # TypeScript CLI 包
+│   ├── src/ (60 .ts files)
+│   └── tests/ (25 test files)
+│
+├── loopadvance/             # Loop Engineering 区域
+│   ├── daemon-state.json    # daemon 运行状态
+│   ├── daemon.log           # daemon 运行日志
+│   ├── lint-report.json     # lint 健康报告
+│   ├── progress.md          # 待确认工单 + 健康度记录
+│   ├── STATUS.md            # Loop A 自动更新的系统状态
+│   ├── PLAN.md              # 施工计划
+│   ├── architecture-baseline.html
+│   ├── architecture-design.html
+│   ├── product-definition.html
+│   └── loop_engineering_tutorial.html
+│
+├── scripts/
+│   └── loop-health.sh       # Loop A: 自动健康度检测
+│
+├── .env                     # DEEPSEEK_API_KEY + MINERU_API_KEY
+└── README.md</pre>
+</section>
+
+<!-- ══════════════════════════════════ Modules ══════════════════════════════════ -->
+<section id="modules">
+  <div class="section-head">
+    <div class="kicker">11 / Module Index</div>
+    <div><h2>完整模块清单</h2></div>
+  </div>
+
+  <table>
+    <tr><th>目录</th><th>文件</th><th>v1.0 状态</th><th>v2.0 状态</th></tr>
+    <tr><td colspan="4"><strong>核心层</strong></td></tr>
+    <tr><td>core/</td><td>client.ts · prefix.ts</td><td><span class="badge badge-ok">保留</span></td><td>改造</td></tr>
+    <tr><td>core/</td><td>llm-provider.ts</td><td>—</td><td><span class="badge badge-new">新建</span></td></tr>
+    <tr><td colspan="4"><strong>Loader 层</strong></td></tr>
+    <tr><td>ingest/</td><td>loader.ts · pdf-loader.ts · tex-loader.ts</td><td><span class="badge badge-ok">保留</span></td><td>不变</td></tr>
+    <tr><td>ingest/</td><td>listening.ts · policy.ts</td><td><span class="badge badge-ok">保留</span></td><td>改造 (parsePropRefs)</td></tr>
+    <tr><td>ingest/</td><td>proposition.ts · pipeline.ts</td><td>—</td><td><span class="badge badge-new">新建</span></td></tr>
+    <tr><td colspan="4"><strong>知识层</strong></td></tr>
+    <tr><td>knowledge/</td><td>store.ts · wiki-parser.ts · render.ts · manifest.ts</td><td><span class="badge badge-ok">保留</span></td><td>改造</td></tr>
+    <tr><td>knowledge/</td><td>chase.ts</td><td><span class="badge badge-ok">保留</span></td><td>改造 (readChaseProps)</td></tr>
+    <tr><td>knowledge/</td><td>audit.ts · audit-gate.ts · semantic-audit.ts · semantic-audit-prompt.ts</td><td><span class="badge badge-ok">保留</span></td><td>改造 (propRefs + anchor)</td></tr>
+    <tr><td>knowledge/</td><td>graph.ts</td><td>—</td><td><span class="badge badge-new">新建</span></td></tr>
+    <tr><td colspan="4"><strong>查询层</strong></td></tr>
+    <tr><td>query/</td><td>board.ts · engine.ts · search.ts</td><td><span class="badge badge-ok">保留</span></td><td>改造</td></tr>
+    <tr><td>query/</td><td>search-provider.ts · qmd-search.ts</td><td>—</td><td><span class="badge badge-new">新建</span></td></tr>
+    <tr><td colspan="4"><strong>自进化层</strong></td></tr>
+    <tr><td>evolution/</td><td>contradiction.ts · supersede.ts · reflow.ts · reinforce.ts · confirm.ts</td><td>—</td><td><span class="badge badge-new">新建 5 模块</span></td></tr>
+    <tr><td colspan="4"><strong>Daemon 层</strong></td></tr>
+    <tr><td>daemon/</td><td>index.ts · watcher.ts · timer.ts · state.ts · lint.ts · reflow.ts · health.ts</td><td>—</td><td><span class="badge badge-new">新建 7 模块</span></td></tr>
+    <tr><td colspan="4"><strong>接口层</strong></td></tr>
+    <tr><td>cli/</td><td>index.ts · cli-llm-init.ts</td><td><span class="badge badge-ok">保留</span></td><td>改造</td></tr>
+    <tr><td>cli/commands/</td><td>ingest.ts · audit.ts · query.ts · inspire.ts 等 8 个</td><td><span class="badge badge-ok">保留</span></td><td>改造</td></tr>
+    <tr><td>cli/commands/</td><td>extract-props.ts · compile-from-props.ts · ingest-pipeline.ts · confirm.ts · daemon.ts · okf.ts</td><td>—</td><td><span class="badge badge-new">新建 7 个命令</span></td></tr>
+    <tr><td>okf/</td><td>export.ts · import.ts · mapping.ts</td><td>—</td><td><span class="badge badge-new">新建</span></td></tr>
+    <tr><td>agent/</td><td>contract.ts</td><td><span class="badge badge-ok">保留</span></td><td>改造 (AgentStage)</td></tr>
+  </table>
+</section>
+
+<!-- ══════════════════════════════════ Health ══════════════════════════════════ -->
+<section id="health">
+  <div class="section-head">
+    <div class="kicker">12 / Health</div>
+    <div><h2>代码健康度</h2></div>
+  </div>
+
+  <table>
+    <tr><th>指标</th><th>v1.0 基线</th><th>v2.0</th></tr>
+    <tr><td>TypeCheck</td><td>❌ 1 error</td><td>✅ 0 errors</td></tr>
+    <tr><td>Tests</td><td>⚠ 26 fail / 212 pass</td><td>✅ 275 pass / 4 skip (279)</td></tr>
+    <tr><td>Test files</td><td>20</td><td>25</td></tr>
+    <tr><td>Source files</td><td>~35</td><td>60</td></tr>
+    <tr><td>CLI commands</td><td>9</td><td>15</td></tr>
+    <tr><td>Total LOC</td><td>~15,000</td><td>~22,000</td></tr>
+  </table>
+
+  <h3>Loop A 健康度系统</h3>
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart LR
+  A["loop-health.sh"]
+  A --> B["typecheck: tsc --noEmit"]
+  A --> C["test: npm test"]
+  A --> D["wiki: health.ts → nodes + audit"]
+  A --> E["graph: edges + orphans"]
+  A --> F["backlog + daemon"]
+  B & C & D & E & F --> V["verdict: green / yellow / red"]
+  V --> S["STATUS.md + progress.md"]
+    </pre>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════ v1 vs v2 ══════════════════════════════════ -->
+<section id="v1diff">
+  <div class="section-head">
+    <div class="kicker">13 / Diff</div>
+    <div><h2>v1.0 → v2.0 核心变化</h2></div>
+  </div>
+
+  <table>
+    <tr><th>维度</th><th>v1.0 基线</th><th>v2.0</th></tr>
+    <tr><td><strong>命题提取</strong></td><td>❌ 不存在</td><td>✅ proposition.ts — LLM 拆分原子命题 → prop marker</td></tr>
+    <tr><td><strong>编译管线</strong></td><td>Pro→Flash 两步（extract→confirm→compile）</td><td>✅ 一步 compile-from-props + 共享管线 pipeline.ts</td></tr>
+    <tr><td><strong>Edge 产生</strong></td><td>❌ 不存在</td><td>✅ compile LLM 自动产出 derived_from/related + LLM 自评 confidence</td></tr>
+    <tr><td><strong>图谱系统</strong></td><td>❌ 仅 manifest helper</td><td>✅ buildGraph() + getGraphStats() + 5 种边类型</td></tr>
+    <tr><td><strong>矛盾检测</strong></td><td>❌ 不存在</td><td>✅ LLM judge → contradicts 候选 → progress.md</td></tr>
+    <tr><td><strong>强化检测</strong></td><td>❌ 不存在</td><td>✅ LLM judge 双维度（语义一致度 + 证据增量度）</td></tr>
+    <tr><td><strong>Daemon</strong></td><td>❌ 不存在</td><td>✅ watcher + timer + state + lint + health</td></tr>
+    <tr><td><strong>搜索</strong></td><td>仅关键词 (Intl.Segmenter)</td><td>✅ SearchProvider 接口 + Keyword + Qmd 双后端</td></tr>
+    <tr><td><strong>LLM 抽象</strong></td><td>DeepSeekClient 直接调用</td><td>✅ LLMProvider 接口 + DeepSeekProvider</td></tr>
+    <tr><td><strong>OKF 集成</strong></td><td>❌ 不存在</td><td>✅ export / import + kind↔type 映射</td></tr>
+    <tr><td><strong>数据模型</strong></td><td>chunkRefs: number[]</td><td>✅ propRefs: string[] + GraphEdge + ChaseProp + auditVerdict + reflowOrigin</td></tr>
+    <tr><td><strong>Board 装配</strong></td><td>直接调 searchWiki</td><td>✅ SearchProvider 接口 + graph 强制注入</td></tr>
+    <tr><td><strong>审计闸门</strong></td><td>语义失败=阻止 query</td><td>✅ 语义失败=警告放行（LLM judge 是主观的）</td></tr>
+    <tr><td><strong>Ingest 去重</strong></td><td>每次编译追加新节点</td><td>✅ 覆盖式——同 sourceId 旧节点先删再写</td></tr>
+    <tr><td><strong>Agent contract</strong></td><td>6 种 stage</td><td>✅ 7 种 stage（加 audit-structure）</td></tr>
+    <tr><td><strong>Loop A 健康度</strong></td><td>仅代码 (typecheck+test)</td><td>✅ 代码 + wiki + graph + backlog + daemon 五维度</td></tr>
+  </table>
+</section>
+
+</main>
+
+<footer>
+  <p>生成日期：2026-07-09 · 基于 lite-llmwiki 源码逐行确认 · 60 源文件 / 25 测试文件 / 275 tests passed<br>
+  从 architecture-design v1.0 出发，11 步施工完成。所有 mermaid 图表通过 CDN 渲染。</p>
+</footer>
+
+</div>
+</body>
+</html>

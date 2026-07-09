@@ -61,14 +61,14 @@ function makeDraft(overrides: Partial<WikiNodeDraft> = {}): WikiNodeDraft {
       kind: "concept",
       sourceIds: ["raw_x-abcd"],
       sourceChase: ["raw/chase/raw_x-abcd.md"],
-      chunkRefs: [1],
+      propRefs: ["1"],
       confidence: 0.8,
       status: "verified",
       tags: ["x-tag"],
       related: [],
     },
     claim: "claim about 1/e",
-    evidence: [{ sourceId: "raw_x-abcd", chunkRefs: [1], summary: "sum" }],
+    evidence: [{ sourceId: "raw_x-abcd", propRefs: ["1"], summary: "sum" }],
     interpretation: "interpretation",
     limits: ["only in lab"],
     useFor: ["use1"],
@@ -149,11 +149,11 @@ describe("board — trace mode", () => {
     expect(board.sourceExcerpts[0]?.text).toContain("Original text for trace");
   });
 
-  it("trace mode instructions: requireChunkRef=true, synthesisLevel='strict'", async () => {
+  it("trace mode instructions: requirePropRef=true, synthesisLevel='strict'", async () => {
     setupChase("<!-- chunk 1 -->\nA\n");
     saveDraft(makeDraft());
     const board = await buildQueryBoard(config, "1/e", { mode: "trace" });
-    expect(board.instructions.outputBoundaries.requireChunkRef).toBe(true);
+    expect(board.instructions.outputBoundaries.requirePropRef).toBe(true);
     expect(board.instructions.synthesisLevel).toBe("strict");
   });
 });

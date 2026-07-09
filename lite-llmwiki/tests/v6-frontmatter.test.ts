@@ -98,14 +98,14 @@ describe("v6 frontmatter — BoardInstruction (M5)", () => {
       synthesisLevel: "anchored",
       outputBoundaries: {
         requireLayeredOutput: true,
-        requireChunkRef: true,
+        requirePropRef: true,
         requireEvidenceBoundary: true,
       },
       coverageNote: "wiki covers 80% of question",
     };
     expect(inst.mode).toBe("trace");
     expect(inst.synthesisLevel).toBe("anchored");
-    expect(inst.outputBoundaries.requireChunkRef).toBe(true);
+    expect(inst.outputBoundaries.requirePropRef).toBe(true);
   });
 });
 
@@ -123,7 +123,7 @@ describe("v6 frontmatter — BoardNode.boardRoles 可选 (M7)", () => {
       tags: [],
       sourceIds: [],
       sourceChase: [],
-      chunkRefs: [],
+      propRefs: [],
       score: 0.5,
       // boardRoles 故意省略
     };
@@ -143,7 +143,7 @@ describe("v6 frontmatter — BoardNode.boardRoles 可选 (M7)", () => {
       tags: [],
       sourceIds: [],
       sourceChase: [],
-      chunkRefs: [],
+      propRefs: [],
       boardRoles: ["evidence", "concept"],
       score: 0.5,
     };
@@ -170,7 +170,7 @@ describe("v6 frontmatter — QueryBoard 必含 instructions", () => {
         synthesisLevel: "free",
         outputBoundaries: {
           requireLayeredOutput: true,
-          requireChunkRef: false,
+          requirePropRef: false,
           requireEvidenceBoundary: true,
         },
       },

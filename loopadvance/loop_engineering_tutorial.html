@@ -1,0 +1,1034 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Loop Engineering Tutorial</title>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "base",
+      themeVariables: {
+        fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
+        primaryColor: "#eef6ff",
+        primaryTextColor: "#172033",
+        primaryBorderColor: "#77a6d9",
+        lineColor: "#5f748d",
+        secondaryColor: "#f5f0ff",
+        tertiaryColor: "#fff8e8"
+      }
+    });
+  </script>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172033;
+      --muted: #617087;
+      --soft: #eef3f8;
+      --line: #d7e0ea;
+      --blue: #2f6fbd;
+      --green: #3a8068;
+      --amber: #9b6a1a;
+      --rose: #b2485a;
+      --paper: #fbfcfe;
+      --white: #ffffff;
+      --shadow: 0 18px 55px rgba(32, 50, 72, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        linear-gradient(180deg, rgba(238, 246, 255, 0.9), rgba(251, 252, 254, 0.9) 34rem),
+        var(--paper);
+      line-height: 1.74;
+      letter-spacing: 0;
+    }
+
+    a {
+      color: var(--blue);
+      text-underline-offset: 0.18em;
+    }
+
+    .page {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 0 22px 72px;
+    }
+
+    header {
+      padding: 64px 0 38px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--green);
+      font-size: 0.84rem;
+      font-weight: 780;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 18px;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 34px;
+      height: 2px;
+      background: var(--green);
+      border-radius: 999px;
+    }
+
+    h1 {
+      max-width: 950px;
+      margin: 0;
+      font-size: clamp(2.35rem, 6vw, 5.4rem);
+      line-height: 1.02;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      max-width: 820px;
+      margin: 24px 0 0;
+      color: #34435a;
+      font-size: clamp(1.05rem, 2.2vw, 1.36rem);
+      line-height: 1.68;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.72fr);
+      gap: 26px;
+      align-items: stretch;
+      margin-top: 34px;
+    }
+
+    .definition-panel,
+    .side-note,
+    .callout,
+    .principle,
+    .source-list {
+      background: rgba(255, 255, 255, 0.82);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      border-radius: 8px;
+    }
+
+    .definition-panel {
+      padding: 30px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .definition-panel::after {
+      content: "";
+      position: absolute;
+      inset: auto 24px 24px auto;
+      width: 118px;
+      height: 118px;
+      border: 1px solid rgba(47, 111, 189, 0.28);
+      border-radius: 50%;
+    }
+
+    .definition-label {
+      color: var(--muted);
+      font-size: 0.86rem;
+      font-weight: 760;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .definition {
+      margin: 12px 0 0;
+      max-width: 680px;
+      font-size: clamp(1.28rem, 2.5vw, 2.05rem);
+      line-height: 1.36;
+      font-weight: 760;
+    }
+
+    .side-note {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 18px;
+      box-shadow: 0 12px 38px rgba(32, 50, 72, 0.09);
+    }
+
+    .note-title {
+      margin: 0;
+      color: var(--amber);
+      font-size: 0.9rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .note-big {
+      margin: 0;
+      font-size: 1.5rem;
+      line-height: 1.32;
+      font-weight: 780;
+    }
+
+    .quick-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 32px 0 0;
+    }
+
+    .quick-nav a {
+      display: inline-flex;
+      align-items: center;
+      min-height: 38px;
+      padding: 7px 13px;
+      color: #26354a;
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      text-decoration: none;
+      font-size: 0.92rem;
+      font-weight: 650;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 22px;
+    }
+
+    section {
+      padding: 46px 0;
+      border-top: 1px solid rgba(215, 224, 234, 0.86);
+    }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(0, 0.42fr) minmax(0, 0.9fr);
+      gap: 32px;
+      align-items: start;
+      margin-bottom: 26px;
+    }
+
+    .kicker {
+      color: var(--blue);
+      font-size: 0.82rem;
+      font-weight: 820;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: clamp(1.7rem, 3vw, 2.7rem);
+      line-height: 1.16;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 26px 0 10px;
+      font-size: 1.28rem;
+      line-height: 1.32;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0 0 16px;
+    }
+
+    .lead {
+      color: #33445b;
+      font-size: 1.08rem;
+      line-height: 1.82;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 22px;
+      align-items: start;
+    }
+
+    .callout {
+      padding: 24px;
+      box-shadow: 0 12px 38px rgba(32, 50, 72, 0.08);
+    }
+
+    .callout strong,
+    .principle strong {
+      color: #0f243d;
+    }
+
+    .callout.warn {
+      border-color: #ead5a4;
+      background: #fffaf0;
+    }
+
+    .callout.good {
+      border-color: #b8d9cd;
+      background: #f3fbf8;
+    }
+
+    .diagram-wrap {
+      margin: 24px 0;
+      padding: 18px;
+      background: var(--white);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow-x: auto;
+      box-shadow: 0 10px 30px rgba(32, 50, 72, 0.07);
+    }
+
+    .mermaid {
+      min-width: 680px;
+      text-align: center;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 22px 0;
+      background: var(--white);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(32, 50, 72, 0.06);
+    }
+
+    th,
+    td {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #eef4fb;
+      color: #20324c;
+      font-size: 0.88rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    code,
+    pre {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+
+    .code {
+      padding: 18px;
+      color: #eff6ff;
+      background: #182235;
+      border-radius: 8px;
+      overflow-x: auto;
+      line-height: 1.6;
+      font-size: 0.92rem;
+    }
+
+    .steps {
+      counter-reset: step;
+      display: grid;
+      gap: 14px;
+      margin: 24px 0;
+    }
+
+    .step {
+      counter-increment: step;
+      display: grid;
+      grid-template-columns: 54px minmax(0, 1fr);
+      gap: 16px;
+      padding: 18px;
+      background: var(--white);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(32, 50, 72, 0.05);
+    }
+
+    .step::before {
+      content: counter(step);
+      display: grid;
+      place-items: center;
+      width: 44px;
+      height: 44px;
+      color: #fff;
+      background: var(--blue);
+      border-radius: 50%;
+      font-weight: 820;
+    }
+
+    .step h3 {
+      margin: 0 0 6px;
+    }
+
+    .step p {
+      margin-bottom: 0;
+      color: #405066;
+    }
+
+    .principles {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin: 24px 0;
+    }
+
+    .principle {
+      padding: 20px;
+      box-shadow: 0 10px 26px rgba(32, 50, 72, 0.06);
+    }
+
+    .principle .tag {
+      display: inline-flex;
+      margin-bottom: 12px;
+      color: #fff;
+      background: var(--green);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.78rem;
+      font-weight: 780;
+    }
+
+    .checklist {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin: 22px 0;
+    }
+
+    .check {
+      padding: 16px 18px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    .check b {
+      display: block;
+      margin-bottom: 5px;
+      color: #20324c;
+    }
+
+    .source-list {
+      padding: 22px 24px;
+      box-shadow: none;
+    }
+
+    .source-list ol {
+      margin: 12px 0 0;
+      padding-left: 22px;
+    }
+
+    .source-list li {
+      margin: 8px 0;
+    }
+
+    footer {
+      padding: 30px 0 10px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    @media (max-width: 860px) {
+      header {
+        padding-top: 42px;
+      }
+
+      .hero-grid,
+      .section-head,
+      .two-col,
+      .principles,
+      .checklist {
+        grid-template-columns: 1fr;
+      }
+
+      .definition-panel,
+      .side-note,
+      .callout,
+      .principle {
+        padding: 20px;
+      }
+
+      .mermaid {
+        min-width: 620px;
+      }
+    }
+
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      .quick-nav {
+        display: none;
+      }
+
+      .definition-panel,
+      .side-note,
+      .callout,
+      .principle,
+      .diagram-wrap,
+      table {
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div class="eyebrow">AI agent systems tutorial</div>
+      <h1>Loop Engineering：从“提示 AI”到“设计会自我推进的工作循环”</h1>
+      <p class="subtitle">一份面向人类阅读的中文教程：用直白语言解释 loop engineering 是什么、它和 prompt/context/harness engineering 的关系、一个 loop 怎样运行、如何验证、在哪里容易翻车，以及如何从第一个小循环开始。</p>
+
+      <div class="hero-grid">
+        <div class="definition-panel">
+          <div class="definition-label">一句话定义</div>
+          <p class="definition">Loop engineering 是把“人不断提示 agent”的工作，改造成“系统按目标、状态和验证规则自动提示 agent、检查结果并决定下一步”的工程方法。</p>
+        </div>
+        <aside class="side-note">
+          <p class="note-title">核心变化</p>
+          <p class="note-big">你不再是循环里的手动时钟；你变成设计时钟、刹车、仪表盘和验收规则的人。</p>
+          <p>prompt 仍然重要，但它只是循环中的一个零件。真正的杠杆变成了：触发机制、上下文、工具权限、状态记忆、验证器、停止条件和人工升级路径。</p>
+        </aside>
+      </div>
+
+      <nav class="quick-nav" aria-label="快速导航">
+        <a href="#what">是什么</a>
+        <a href="#stack">层级关系</a>
+        <a href="#cycle">循环如何转动</a>
+        <a href="#components">六个组成件</a>
+        <a href="#patterns">常见模式</a>
+        <a href="#verification">验证与停止</a>
+        <a href="#risks">风险</a>
+        <a href="#start">从小开始</a>
+      </nav>
+    </header>
+
+    <main>
+      <section id="what">
+        <div class="section-head">
+          <div class="kicker">01 / What it is</div>
+          <div>
+            <h2>Loop engineering 到底是什么？</h2>
+            <p class="lead">最容易理解的入口是一个熟悉场景：你让 coding agent 修测试。它改一点代码，你跑测试，失败了；你把错误贴回去，它再改；你再跑测试。看似 agent 在工作，实际上你在做循环控制：决定什么时候开始、把什么信息喂回去、什么时候算成功、什么时候放弃。</p>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div>
+            <p>Loop engineering 做的事，就是把这套重复控制结构显式设计出来。系统会自己发现待办事项，生成下一条提示，调用 agent 或子 agent 执行，读取真实环境反馈，把状态写到外部记忆里，再根据验证结果决定继续、重试、回滚、提交给人类，或停止。</p>
+            <p>因此，loop engineering 不是“写一个更厉害的 prompt”。它是把 prompt 放进一个可重复、可观察、可终止的控制系统里。prompt 回答“这一步怎么说”，loop 回答“什么时候说、对谁说、带什么上下文、拿什么证据验收、失败后怎么处理、成本上限是多少”。</p>
+          </div>
+          <div class="callout good">
+            <strong>一个有用的判断标准：</strong>
+            <p>如果每一步都需要你读结果、复制错误、输入下一句，那你就是 loop。如果系统能自己读反馈、决定下一步，并在达到可验证条件后停下，那你设计了一个 loop。</p>
+          </div>
+        </div>
+
+        <div class="diagram-wrap">
+          <pre class="mermaid">
+flowchart LR
+  Human["人类逐轮提示"] --> Agent["Agent 执行"]
+  Agent --> Result["结果 / 错误 / 新状态"]
+  Result --> Human
+
+  Designer["人类设计 loop"] --> Loop["触发 + 状态 + 提示生成 + 验证 + 停止"]
+  Loop --> Agent2["Agent / Sub-agents"]
+  Agent2 --> Feedback["工具反馈 / 测试 / 审查 / 工单"]
+  Feedback --> Loop
+  Loop --> Escalate["必要时升级给人"]
+          </pre>
+        </div>
+      </section>
+
+      <section id="stack">
+        <div class="section-head">
+          <div class="kicker">02 / The stack</div>
+          <div>
+            <h2>它不是替代 prompt engineering，而是站在更高一层</h2>
+            <p class="lead">Prompt、context、harness、loop 不是互相淘汰的流行词，而是从小到大的工程边界。越往上，系统越自主，错误也越容易累积，所以验证和约束也要越硬。</p>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>层级</th>
+              <th>关心什么</th>
+              <th>核心问题</th>
+              <th>典型失败</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Prompt engineering</strong></td>
+              <td>单次输入怎么写</td>
+              <td>我要对模型说什么？</td>
+              <td>指令含糊、例子不足、语气或角色不对</td>
+            </tr>
+            <tr>
+              <td><strong>Context engineering</strong></td>
+              <td>当前窗口里应该放什么</td>
+              <td>模型此刻需要看见哪些文件、历史、规则和摘要？</td>
+              <td>上下文噪声、过期信息、关键信息缺失、窗口膨胀</td>
+            </tr>
+            <tr>
+              <td><strong>Harness engineering</strong></td>
+              <td>单次 agent run 的环境</td>
+              <td>给它哪些工具、权限、恢复策略和完成定义？</td>
+              <td>工具太危险、权限过大、失败恢复混乱、done 定义不清</td>
+            </tr>
+            <tr>
+              <td><strong>Loop engineering</strong></td>
+              <td>多次 run 组成的自推进循环</td>
+              <td>怎样让它自己启动、分派、验证、记忆、停止或升级？</td>
+              <td>无限重试、验证债、理解债、成本失控、错误自我放大</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="diagram-wrap">
+          <pre class="mermaid">
+flowchart TB
+  P["Prompt<br/>一句指令"] --> C["Context<br/>当前可见信息"]
+  C --> H["Harness<br/>单次运行的工具、权限、边界"]
+  H --> L["Loop<br/>触发、重复、验证、记忆、升级"]
+  L --> O["Outcome<br/>可审计的持续产出"]
+          </pre>
+        </div>
+      </section>
+
+      <section id="cycle">
+        <div class="section-head">
+          <div class="kicker">03 / One turn</div>
+          <div>
+            <h2>一个 loop 的五个动作</h2>
+            <p class="lead">把一次循环拆开，其实就是五件事：发现值得做的事、交给执行者、验证结果、保存状态、安排下一次。缺少任何一个，loop 要么转不起来，要么只是在原地消耗 token。</p>
+          </div>
+        </div>
+
+        <div class="steps">
+          <div class="step">
+            <div>
+              <h3>Discovery：发现工作</h3>
+              <p>从 CI 失败、issue、日志、邮件、报表、监控告警或 backlog 中找出值得处理的事项。关键不是“读数据”，而是判断哪些事现在值得做。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div>
+              <h3>Handoff：隔离交接</h3>
+              <p>把任务交给 agent 或子 agent，最好放进独立 worktree、分支或沙箱，避免多个 agent 同时改同一片工作区。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div>
+              <h3>Verification：验证结果</h3>
+              <p>运行测试、lint、类型检查、构建、审查器或业务规则。最可靠的是命令式证据；无法机械验证时，再用模型评审补足。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div>
+              <h3>Persistence：保存状态</h3>
+              <p>把发现、尝试、结论、失败原因和下一步写入 markdown、数据库、工单或看板。模型会忘，外部状态不会忘。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div>
+              <h3>Scheduling：决定下一步</h3>
+              <p>根据验证结果选择继续、重试、回滚、开 PR、归档、等待下次触发，或升级给人类。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="diagram-wrap">
+          <pre class="mermaid">
+flowchart LR
+  A["发现<br/>Discovery"] --> B["交接<br/>Handoff"]
+  B --> C["执行<br/>Agent run"]
+  C --> D["验证<br/>Verification"]
+  D --> E["保存状态<br/>Persistence"]
+  E --> F{"下一步？"}
+  F -->|继续| A
+  F -->|成功| G["提交 / 通知 / 归档"]
+  F -->|卡住| H["升级给人类"]
+          </pre>
+        </div>
+      </section>
+
+      <section id="components">
+        <div class="section-head">
+          <div class="kicker">04 / Components</div>
+          <div>
+            <h2>六个组成件：heartbeat、body、memory 和 checker</h2>
+            <p class="lead">不同工具的叫法会变，但可靠 loop 的结构很稳定：有心跳，有隔离，有可复用知识，有外部连接，有 maker/checker 分工，还有一条贯穿始终的状态脊柱。</p>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>组成件</th>
+              <th>作用</th>
+              <th>简单例子</th>
+              <th>设计要点</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Automation / heartbeat</strong></td>
+              <td>让 loop 自动启动</td>
+              <td>每天 9 点检查 CI；PR 打开时自动审查</td>
+              <td>选择合适频率，设置成本和时间上限</td>
+            </tr>
+            <tr>
+              <td><strong>Worktree / isolation</strong></td>
+              <td>让并行 agent 不互相覆盖</td>
+              <td>每个修复任务一个 git worktree</td>
+              <td>隔离分支、明确合并策略、避免共享脏状态</td>
+            </tr>
+            <tr>
+              <td><strong>Skills / reusable knowledge</strong></td>
+              <td>把项目规则固化下来</td>
+              <td>测试命令、代码规范、发布流程、禁改区域</td>
+              <td>短、准、可维护；用名称触发，不粘贴长指令</td>
+            </tr>
+            <tr>
+              <td><strong>Connectors / plugins</strong></td>
+              <td>连接真实工具</td>
+              <td>GitHub、Linear、Slack、Gmail、数据库、监控</td>
+              <td>最小权限、审计日志、危险动作需人工确认</td>
+            </tr>
+            <tr>
+              <td><strong>Sub-agents</strong></td>
+              <td>拆分执行、审查、总结等角色</td>
+              <td>一个 agent 写代码，另一个 agent 做审查</td>
+              <td>maker 和 checker 分离，避免自己给自己判满分</td>
+            </tr>
+            <tr>
+              <td><strong>External memory</strong></td>
+              <td>跨运行保存状态</td>
+              <td><code>TODO.md</code>、<code>progress.md</code>、工单状态、PR 备注</td>
+              <td>记录尝试过什么、为什么失败、下一次从哪里继续</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="callout warn">
+          <strong>不要把 memory 误解成聊天记录。</strong>
+          <p>长对话会积累旧推理、错误假设和过期文件片段。更稳的方式是把状态写到外部：任务清单、日志、测试结果、分支、PR、工单。每次新运行只读必要状态，保持上下文干净。</p>
+        </div>
+      </section>
+
+      <section id="patterns">
+        <div class="section-head">
+          <div class="kicker">05 / Patterns</div>
+          <div>
+            <h2>常见 loop 模式：从最简单到可并行</h2>
+            <p class="lead">Loop engineering 不要求一开始就搭大型多 agent 系统。真正成熟的做法通常是从小而可验证的 loop 开始，再逐步增加自动化、隔离和并行能力。</p>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>模式</th>
+              <th>适合场景</th>
+              <th>优点</th>
+              <th>风险</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>ReAct loop</strong></td>
+              <td>需要边行动边观察反馈的任务</td>
+              <td>简单、通用，是多数 agent loop 的基础</td>
+              <td>没有硬停止条件时容易绕圈</td>
+            </tr>
+            <tr>
+              <td><strong>Ralph-style fresh context</strong></td>
+              <td>按任务清单逐项完成、每轮可独立验证</td>
+              <td>每轮重置上下文，减少长会话腐化</td>
+              <td>依赖外部任务文件质量；粒度太大时不稳</td>
+            </tr>
+            <tr>
+              <td><strong>Plan-and-execute</strong></td>
+              <td>多阶段迁移、复杂重构、批处理</td>
+              <td>规划和执行分离，减少中途漂移</td>
+              <td>计划过早僵化，可能无法适应新反馈</td>
+            </tr>
+            <tr>
+              <td><strong>Evaluator-optimizer</strong></td>
+              <td>有明确验收标准的生成与改进任务</td>
+              <td>maker/checker 循环明确，适合迭代优化</td>
+              <td>评审器标准弱时，系统会学会讨好评审器</td>
+            </tr>
+            <tr>
+              <td><strong>Orchestrator-workers</strong></td>
+              <td>可拆分、可并行的大型任务</td>
+              <td>多个 worker 用独立上下文并行推进</td>
+              <td>协调、合并、审查成本上升</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <pre class="code"><code># 一个极简 Ralph-style loop 的思想，而不是生产建议
+while not done:
+    start_fresh_agent()
+    agent.read("PLAN.md", "STATUS.md")
+    agent.pick_one_small_task()
+    agent.implement()
+    run_tests()
+    agent.update("STATUS.md")
+    stop_this_agent()
+
+# 智能不在 while 语法里，而在：
+# 1. 清晰的小任务
+# 2. 可验证的成功条件
+# 3. 外部状态文件
+# 4. 每轮干净上下文</code></pre>
+      </section>
+
+      <section id="verification">
+        <div class="section-head">
+          <div class="kicker">06 / Verification</div>
+          <div>
+            <h2>真正困难的不是“让它做”，而是“让它知道何时该停”</h2>
+            <p class="lead">一个 loop 的质量上限，往往由 checker 决定。执行者可以很强，但如果验收条件含糊，loop 会把模糊目标解释成“差不多完成”，或者在无法达成的目标上无限重试。</p>
+          </div>
+        </div>
+
+        <div class="principles">
+          <div class="principle">
+            <span class="tag">Rule 1</span>
+            <p><strong>把目标写成可证明的结束状态。</strong>不要写“优化登录模块”，要写“登录相关测试全绿，lint 通过，公共 API 不变”。</p>
+          </div>
+          <div class="principle">
+            <span class="tag">Rule 2</span>
+            <p><strong>优先使用确定性证据。</strong>测试、编译器、类型检查、lint、覆盖率、截图 diff、数据库约束，比模型自评更可靠。</p>
+          </div>
+          <div class="principle">
+            <span class="tag">Rule 3</span>
+            <p><strong>永远设置天花板。</strong>最大轮数、最大耗时、最大花费、连续无进展次数，至少要有一种硬停止。</p>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>字段</th>
+              <th>弱写法</th>
+              <th>强写法</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>结束状态</td>
+              <td>把 checkout flow 做好一点</td>
+              <td>所有 checkout E2E 测试通过，并新增一个覆盖优惠码失败路径的测试</td>
+            </tr>
+            <tr>
+              <td>证据</td>
+              <td>看起来没问题</td>
+              <td><code>npm test -- checkout</code> 和 <code>npm run lint</code> 均退出 0</td>
+            </tr>
+            <tr>
+              <td>约束</td>
+              <td>尽量别影响别的地方</td>
+              <td>不得修改 public API，不得删除现有测试，不得触碰支付密钥配置</td>
+            </tr>
+            <tr>
+              <td>预算</td>
+              <td>一直做直到完成</td>
+              <td>最多 12 轮；同一错误连续出现 3 次就升级给人类</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="diagram-wrap">
+          <pre class="mermaid">
+flowchart TD
+  G["目标 + 约束 + 预算"] --> M["Maker agent 执行"]
+  M --> E["环境证据<br/>tests / lint / logs / diff"]
+  E --> V{"Checker 判断"}
+  V -->|通过| S["停止：提交结果"]
+  V -->|失败但有进展| M
+  V -->|无进展 / 超预算 / 缺权限| H["升级给人类"]
+          </pre>
+        </div>
+      </section>
+
+      <section id="risks">
+        <div class="section-head">
+          <div class="kicker">07 / Risks</div>
+          <div>
+            <h2>Loop engineering 不会消除工程责任，只会放大设计质量</h2>
+            <p class="lead">一个好 loop 会放大你的判断；一个坏 loop 会放大你的含糊、懒惰和权限设计错误。越是能无人值守，越需要更强的边界、审计和人工回路。</p>
+          </div>
+        </div>
+
+        <div class="checklist">
+          <div class="check">
+            <b>验证债</b>
+            没有可靠 checker 的 loop 会持续制造“看似完成”的结果。解决方法是把验收条件工程化，而不是依赖 agent 自信。
+          </div>
+          <div class="check">
+            <b>理解债</b>
+            loop 交付越快，你越可能不理解仓库里发生了什么。需要定期读 diff、看日志、复盘失败，而不是只看“通过”。
+          </div>
+          <div class="check">
+            <b>上下文腐化</b>
+            长循环会把错误路线和旧输出塞满窗口。用外部状态、摘要、子任务隔离和 fresh context 来减压。
+          </div>
+          <div class="check">
+            <b>成本失控</b>
+            定时任务、子 agent、评审器会迅速叠加 token。先低频、只读、可观测，再逐步开放写权限。
+          </div>
+          <div class="check">
+            <b>权限过大</b>
+            能连接 GitHub、Slack、数据库或生产系统的 loop 必须有最小权限、审计日志和危险动作确认。
+          </div>
+          <div class="check">
+            <b>认知外包</b>
+            最舒服的失败是停止思考。loop 应该替你做重复劳动，不应该替你拥有判断力。
+          </div>
+        </div>
+      </section>
+
+      <section id="start">
+        <div class="section-head">
+          <div class="kicker">08 / Start small</div>
+          <div>
+            <h2>如何设计你的第一个 loop</h2>
+            <p class="lead">第一条 loop 不要自动改生产代码。选一个重复、低风险、结果可检查的任务，让它先只读、只总结、只写状态文件。等它稳定产生你愿意采纳的结果，再让它开分支、写草稿、跑验证。</p>
+          </div>
+        </div>
+
+        <div class="steps">
+          <div class="step">
+            <div>
+              <h3>选一个重复任务</h3>
+              <p>例如每天整理 CI 失败、每周汇总依赖更新、每月生成报告草稿、每天筛选重要邮件。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div>
+              <h3>写清触发条件</h3>
+              <p>是每天 9 点、PR 打开、CI 失败、收到特定邮件，还是手动启动？触发越明确，loop 越可控。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div>
+              <h3>写成可验证的 done</h3>
+              <p>用“没有未分类文件”“所有测试通过”“每个 PDF 都有摘要”这样的状态，而不是“整理好”“改进一下”。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div>
+              <h3>限制工具和权限</h3>
+              <p>第一版尽量只读。需要写入时，先只写 markdown 或开草稿 PR，不自动合并、不自动删除、不碰生产。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div>
+              <h3>加入 checker 和天花板</h3>
+              <p>指定测试命令、计数规则、审查 agent 或人工确认，并设置最大轮数、最大耗时或最大花费。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div>
+              <h3>记录并复盘</h3>
+              <p>让 loop 写下它看到什么、做了什么、为什么停下。最初几天你要读日志，修正触发、上下文、验收和权限。</p>
+            </div>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>成熟度</th>
+              <th>Loop 做什么</th>
+              <th>人类还在哪里</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Level 0：手动</td>
+              <td>你逐轮提示 agent</td>
+              <td>每一步都在</td>
+            </tr>
+            <tr>
+              <td>Level 1：只读 triage</td>
+              <td>定时读取信息，写 findings 到文件或看板</td>
+              <td>你决定是否行动</td>
+            </tr>
+            <tr>
+              <td>Level 2：草稿分支</td>
+              <td>在隔离 worktree 里起草修复或报告</td>
+              <td>你审查每个 diff</td>
+            </tr>
+            <tr>
+              <td>Level 3：验证后 PR</td>
+              <td>maker 写，checker 验，通过才开 PR</td>
+              <td>你批准合并</td>
+            </tr>
+            <tr>
+              <td>Level 4：低风险自动化</td>
+              <td>对依赖补丁、格式化、简单 flaky retry 等低风险任务自动合并</td>
+              <td>你审计日志和抽查结果</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="callout good">
+          <strong>第一个练习模板：</strong>
+          <p>“当 <code>触发条件</code> 发生时，读取 <code>输入来源</code>，完成 <code>小而明确的任务</code>，把状态写到 <code>外部记忆</code>。当 <code>可验证条件</code> 成立时停止；如果 <code>失败/无进展/超预算</code>，升级给我。”</p>
+        </div>
+      </section>
+
+      <section id="sources">
+        <div class="section-head">
+          <div class="kicker">09 / References</div>
+          <div>
+            <h2>参考资料与本文取舍</h2>
+            <p class="lead">本文综合了你给出的网页资料和本地 PDF 指南，采用的是归纳和改写：保留共同结构，避免逐字搬运。由于 loop engineering 在 2026 年仍是快速演进概念，具体产品命令、版本和限制应以各工具官方文档为准。</p>
+          </div>
+        </div>
+
+        <div class="source-list">
+          <strong>主要参考：</strong>
+          <ol>
+            <li><a href="https://agentfactory.panaversity.org/docs/loop-engineering-crash-course">The AI Agent Factory: Loop Engineering Crash Course</a></li>
+            <li><a href="https://lushbinary.com/blog/loop-engineering-ai-coding-agents-guide/">Lushbinary: Loop Engineering for AI Agents</a></li>
+            <li><a href="https://tosea.ai/blog/loop-engineering-ai-agents-complete-guide-2026">Tosea.ai: Complete Guide from Prompt to Harness Engineering</a></li>
+            <li><a href="https://www.louisbouchard.ai/loop-engineering/">Louis Bouchard: Loop Engineering Explained</a></li>
+            <li><a href="https://www.developersdigest.tech/blog/loop-engineering-definitive-guide">Developers Digest: Loop Engineering Definitive Guide</a></li>
+            <li><a href="https://www.sabrina.dev/p/loop-engineering-claude-code-goal-routines">Sabrina Ramonov: Claude Code /goal and Routines</a></li>
+            <li>本地文件：<code>Loop-Engineering-The-Complete-Guide-v260615.pdf</code></li>
+          </ol>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>生成日期：2026-07-04。建议用现代浏览器打开；Mermaid 图表通过 CDN 渲染，离线时仍可阅读正文和表格。</p>
+    </footer>
+  </div>
+</body>
+</html>

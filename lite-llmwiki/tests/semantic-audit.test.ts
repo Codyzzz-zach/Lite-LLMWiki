@@ -6,7 +6,7 @@
  * - 单 node 路径：nodeId 过滤
  * - source 路径：source 过滤
  * - chase 缺失 → 该 node 直接 error（不调 LLM）
- * - chunkRefs 缺失 → 该 node 直接 error（不调 LLM）
+ * - propRefs 缺失 → 该 node 直接 error（不调 LLM）
  * - LLM 返回非 JSON → 该 node 记 warning + raw response 摘要
  * - 单 node LLM 失败不影响其他 node
  * - summary 统计正确
@@ -62,14 +62,14 @@ function makeDraft(overrides: Partial<WikiNodeDraft> = {}): WikiNodeDraft {
       kind: "concept",
       sourceIds: ["raw_x-abcd"],
       sourceChase: ["raw/chase/raw_x-abcd.md"],
-      chunkRefs: [1, 2],
+      propRefs: ["1", "2"],
       confidence: 0.8,
       status: "verified",
       tags: ["a"],
       related: [],
     },
     claim: "claim",
-    evidence: [{ sourceId: "raw_x-abcd", chunkRefs: [1, 2], summary: "sum" }],
+    evidence: [{ sourceId: "raw_x-abcd", propRefs: ["1", "2"], summary: "sum" }],
     ...overrides,
   };
 }
@@ -201,9 +201,9 @@ describe("semantic-audit — 错误处理（spec 7.7）", () => {
     )).toBe(true);
   });
 
-  it("chunkRefs 缺失 → 该 node 直接 error（不调 LLM）", async () => {
+  it("propRefs 缺失 → 该 node 直接 error（不调 LLM）", async () => {
     setupChase("<!-- chunk 1 -->\nA\n");
-    // 直接写一个没有 chunkRefs 的 v5 节点（绕过 render 的 chunkRefs 必填校验）
+    // 直接写一个没有 propRefs 的 v5 节点（绕过 render 的 propRefs 必填校验）
     const fp = join(config.wikiDir, "concepts", "test-x.md");
     require("node:fs").mkdirSync(require("node:path").dirname(fp), { recursive: true });
     const md = [
@@ -228,7 +228,7 @@ describe("semantic-audit — 错误处理（spec 7.7）", () => {
     const result = await runSemanticAudit(config, { llmJudge: judge });
     expect(judge).not.toHaveBeenCalled();
     expect(result.summary.failed).toBe(1);
-    expect(result.issues.some((i) => /chunkRef/i.test(i.reason))).toBe(true);
+    expect(result.issues.some((i) => /propRef/i.test(i.reason))).toBe(true);
   });
 
   it("LLM 返回非 JSON → 该 node 记 warning + raw response 摘要", async () => {
@@ -345,14 +345,14 @@ describe("semantic-audit — issue 维度映射", () => {
     const verdict: SemanticJudgeVerdict = {
       ...okVerdict("test/concept/x"),
       citation: "warning",
-      issues: ["chunkRef 1 不覆盖关键 evidence"],
+      issues: ["propRef 1 不覆盖关键 evidence"],
     };
     const judge = vi.fn(async () => JSON.stringify(verdict));
     const result = await runSemanticAudit(config, { llmJudge: judge });
     // 整体 verdict 是 passed → bucket passed；但 citation 维度有 warning
     expect(result.summary.passed).toBe(1);
     // 应该有 LLM 报告的具体 issue（带原文文本）
-    const llmIssue = result.issues.find((i) => i.dimension === "citation" && /chunkRef 1/.test(i.reason));
+    const llmIssue = result.issues.find((i) => i.dimension === "citation" && /propRef 1/.test(i.reason));
     expect(llmIssue).toBeDefined();
   });
 

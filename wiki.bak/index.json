@@ -1,0 +1,143 @@
+[
+  {
+    "nodeId": "bernoulli-zero-success-limit",
+    "kind": "concept",
+    "title": "独立伯努利试验的零成功极限",
+    "filePath": "wiki/concepts/bernoulli-zero-success-limit.md",
+    "sourceIds": [
+      "raw/pdf/e 的基本画像-3ef24c47e940cf85"
+    ],
+    "sourceChase": [
+      "raw/chase/raw_pdf_e 的基本画像-3ef24c47e940cf85.md"
+    ],
+    "chunkRefs": [
+      2
+    ],
+    "tags": [
+      "伯努利",
+      "1/e",
+      "概率论"
+    ],
+    "related": [],
+    "confidence": 0.9,
+    "status": "verified",
+    "updatedAt": "2026-06-11T04:30:50.072Z",
+    "auditStatus": "pending",
+    "claimHash": "b2fda710338357e0"
+  },
+  {
+    "nodeId": "derangement-limit-one-over-e",
+    "kind": "concept",
+    "title": "错位排列的 1/e 极限",
+    "filePath": "wiki/concepts/derangement-limit-one-over-e.md",
+    "sourceIds": [
+      "raw/pdf/e 的基本画像-3ef24c47e940cf85"
+    ],
+    "sourceChase": [
+      "raw/chase/raw_pdf_e 的基本画像-3ef24c47e940cf85.md"
+    ],
+    "chunkRefs": [
+      1
+    ],
+    "tags": [
+      "derangement",
+      "1/e",
+      "组合数学"
+    ],
+    "related": [],
+    "confidence": 0.9,
+    "status": "verified",
+    "updatedAt": "2026-06-11T04:30:50.072Z",
+    "auditStatus": "pending",
+    "claimHash": "3215621b35ce81e5"
+  },
+  {
+    "nodeId": "one-over-e-unification",
+    "kind": "insight",
+    "title": "1/e 的三个面孔：组合·概率·时间",
+    "filePath": "wiki/concepts/one-over-e-unification.md",
+    "sourceIds": [
+      "raw/pdf/e 的基本画像-3ef24c47e940cf85"
+    ],
+    "sourceChase": [
+      "raw/chase/raw_pdf_e 的基本画像-3ef24c47e940cf85.md"
+    ],
+    "chunkRefs": [
+      1,
+      2,
+      4,
+      7,
+      8,
+      9
+    ],
+    "tags": [
+      "1/e",
+      "统一",
+      "洞察"
+    ],
+    "related": [
+      "derangement-limit-one-over-e",
+      "bernoulli-zero-success-limit",
+      "time-constant-one-over-e"
+    ],
+    "confidence": 0.9,
+    "status": "verified",
+    "updatedAt": "2026-06-11T04:30:50.073Z",
+    "auditStatus": "pending",
+    "claimHash": "7052f989bc90013d"
+  },
+  {
+    "nodeId": "time-constant-one-over-e",
+    "kind": "concept",
+    "title": "指数过程的 1/e 时间常数",
+    "filePath": "wiki/concepts/time-constant-one-over-e.md",
+    "sourceIds": [
+      "raw/pdf/e 的基本画像-3ef24c47e940cf85"
+    ],
+    "sourceChase": [
+      "raw/chase/raw_pdf_e 的基本画像-3ef24c47e940cf85.md"
+    ],
+    "chunkRefs": [
+      7,
+      8,
+      9
+    ],
+    "tags": [
+      "指数分布",
+      "1/e",
+      "时间常数"
+    ],
+    "related": [],
+    "confidence": 0.9,
+    "status": "verified",
+    "updatedAt": "2026-06-11T04:30:50.073Z",
+    "auditStatus": "pending",
+    "claimHash": "56e9c29193910dd1"
+  },
+  {
+    "nodeId": "counter-e940cf85",
+    "kind": "counter",
+    "title": "反直觉视角: e 的基本画像",
+    "filePath": "wiki/counters/counter-e940cf85.md",
+    "sourceIds": [
+      "raw/pdf/e 的基本画像-3ef24c47e940cf85"
+    ],
+    "sourceChase": [
+      "raw/chase/raw_pdf_e 的基本画像-3ef24c47e940cf85.md"
+    ],
+    "chunkRefs": [
+      1,
+      2,
+      3
+    ],
+    "tags": [
+      "counter-intuitive"
+    ],
+    "related": [],
+    "confidence": 0.55,
+    "status": "verified",
+    "updatedAt": "2026-06-11T04:30:50.079Z",
+    "auditStatus": "pending",
+    "claimHash": "24d0ce40ee97f321"
+  }
+]

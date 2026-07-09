@@ -20,33 +20,33 @@ import { buildFailureJson } from "../agent/contract.js";
 import type { AppConfig } from "../types.js";
 
 export interface LastAuditRecord {
-  /** 结构 audit 是否通过 */
-  structureOk: boolean;
-  /** 语义 audit 是否通过（null = 未执行） */
-  semanticOk: boolean | null;
-  /** 审计时间 */
-  timestamp: string;
-  /** 总节点数 */
-  nodes: number;
-  /** 语义审计平均分（null = 未执行） */
-  semanticScore: number | null;
+	/** 结构 audit 是否通过 */
+	structureOk: boolean;
+	/** 语义 audit 是否通过（null = 未执行） */
+	semanticOk: boolean | null;
+	/** 审计时间 */
+	timestamp: string;
+	/** 总节点数 */
+	nodes: number;
+	/** 语义审计平均分（null = 未执行） */
+	semanticScore: number | null;
 }
 
 export interface AuditGateResult {
-  /** 是否放行 */
-  passed: boolean;
-  /** 警告信息（放行但有风险时） */
-  warning?: string;
-  /** 阻止时的 spec 11.3 failure JSON */
-  failure?: {
-    ok: false;
-    stage: string;
-    error: string;
-    blockingIssues: string[];
-    suggestedNextActions: string[];
-  };
-  /** 最近审计记录 */
-  lastAudit?: LastAuditRecord;
+	/** 是否放行 */
+	passed: boolean;
+	/** 警告信息（放行但有风险时） */
+	warning?: string;
+	/** 阻止时的 spec 11.3 failure JSON */
+	failure?: {
+		ok: false;
+		stage: string;
+		error: string;
+		blockingIssues: string[];
+		suggestedNextActions: string[];
+	};
+	/** 最近审计记录 */
+	lastAudit?: LastAuditRecord;
 }
 
 // ─── 读取关卡 ───────────────────────────────────────────────────
@@ -58,83 +58,87 @@ const AUDIT_GATE_FILE = "audit-gate.json";
  * 用于 query/inspire 命令启动前验证 wiki 是否通过审计。
  */
 export function checkAuditGate(config: AppConfig): AuditGateResult {
-  const gatePath = join(config.wikiDir, AUDIT_GATE_FILE);
+	const gatePath = join(config.wikiDir, AUDIT_GATE_FILE);
 
-  // 关卡文件不存在 → 未审计
-  if (!existsSync(gatePath)) {
-    // 如果 wiki 目录也是空的 → 无数据
-    if (!existsSync(config.wikiDir) || !existsSync(join(config.wikiDir, "index.json"))) {
-      return {
-        passed: false,
-        warning: "wiki is empty — no data to query",
-        failure: buildFailureJson({
-          stage: "query",
-          error: "wiki is empty — run ingest first",
-          blockingIssues: ["no-wiki"],
-          suggestedNextActions: ["run ingest to populate wiki"],
-        }),
-      };
-    }
-    // wiki 有数据但未审计 → 警告，允许查询（spec 11.2 允许 warning gate）
-    return {
-      passed: true,
-      warning: "wiki has not been audited — results may not be reliable. Run `audit --json` first.",
-    };
-  }
+	// 关卡文件不存在 → 未审计
+	if (!existsSync(gatePath)) {
+		// 如果 wiki 目录也是空的 → 无数据
+		if (
+			!existsSync(config.wikiDir) ||
+			!existsSync(join(config.wikiDir, "index.json"))
+		) {
+			return {
+				passed: false,
+				warning: "wiki is empty — no data to query",
+				failure: buildFailureJson({
+					stage: "query",
+					error: "wiki is empty — run ingest first",
+					blockingIssues: ["no-wiki"],
+					suggestedNextActions: ["run ingest to populate wiki"],
+				}),
+			};
+		}
+		// wiki 有数据但未审计 → 警告，允许查询（spec 11.2 允许 warning gate）
+		return {
+			passed: true,
+			warning:
+				"wiki has not been audited — results may not be reliable. Run `audit --json` first.",
+		};
+	}
 
-  try {
-    const content = readFileSync(gatePath, "utf-8");
-    const record: LastAuditRecord = JSON.parse(content);
+	try {
+		const content = readFileSync(gatePath, "utf-8");
+		const record: LastAuditRecord = JSON.parse(content);
 
-    // 结构 audit 失败 → 阻止
-    if (!record.structureOk) {
-      return {
-        passed: false,
-        lastAudit: record,
-        failure: buildFailureJson({
-          stage: "query",
-          error: "structure audit failed — wiki is not reliable (spec 11.2)",
-          blockingIssues: ["structure-audit-failed"],
-          suggestedNextActions: ["run `audit --json` to identify issues", "re-ingest if nodes are incorrect"],
-        }),
-      };
-    }
+		// 结构 audit 失败 → 阻止
+		if (!record.structureOk) {
+			return {
+				passed: false,
+				lastAudit: record,
+				failure: buildFailureJson({
+					stage: "query",
+					error: "structure audit failed — wiki is not reliable (spec 11.2)",
+					blockingIssues: ["structure-audit-failed"],
+					suggestedNextActions: [
+						"run `audit --json` to identify issues",
+						"re-ingest if nodes are incorrect",
+					],
+				}),
+			};
+		}
 
-    // 语义 audit 失败 → 阻止（spec 11.2 严格模式）
-    if (record.semanticOk === false) {
-      return {
-        passed: false,
-        lastAudit: record,
-        failure: buildFailureJson({
-          stage: "query",
-          error: "semantic audit failed — wiki claims may not be faithful to source (spec 11.2)",
-          blockingIssues: ["semantic-audit-failed"],
-          suggestedNextActions: ["run `audit --semantic --json` to see issues", "re-ingest if claims are stretched"],
-        }),
-      };
-    }
+		// 语义 audit 失败 → 警告放行（LLM judge 是主观的——不应用主观判断做硬关卡 §06）
+		if (record.semanticOk === false) {
+			return {
+				passed: true,
+				warning: `semantic audit found issues (score: ${record.semanticScore}) — claims may not be faithful to source. Agent should check auditStatus on each node before trusting.`,
+				lastAudit: record,
+			};
+		}
 
-    // 结构通过，语义未执行 → 警告放行
-    if (record.semanticOk === null) {
-      return {
-        passed: true,
-        warning: "structure audit passed but semantic audit not yet run — claims may not be verified. Run `audit --semantic --json`.",
-        lastAudit: record,
-      };
-    }
+		// 结构通过，语义未执行 → 警告放行
+		if (record.semanticOk === null) {
+			return {
+				passed: true,
+				warning:
+					"structure audit passed but semantic audit not yet run — claims may not be verified. Run `audit --semantic --json`.",
+				lastAudit: record,
+			};
+		}
 
-    // 全部通过 → 放行
-    return {
-      passed: true,
-      lastAudit: record,
-    };
-  } catch {
-    // 关卡文件损坏 → 警告放行
-    return {
-      passed: true,
-      warning: "audit gate file is corrupted — treating as un-audited. Run `audit --json`.",
-    };
-  }
+		// 全部通过 → 放行
+		return {
+			passed: true,
+			lastAudit: record,
+		};
+	} catch {
+		// 关卡文件损坏 → 警告放行
+		return {
+			passed: true,
+			warning:
+				"audit gate file is corrupted — treating as un-audited. Run `audit --json`.",
+		};
+	}
 }
 
 // ─── 写入关卡 ───────────────────────────────────────────────────
@@ -144,19 +148,19 @@ export function checkAuditGate(config: AppConfig): AuditGateResult {
  * 由 audit 命令和 ingest 的自动审计调用。
  */
 export function writeAuditGate(
-  config: AppConfig,
-  structureOk: boolean,
-  semanticOk: boolean | null,
-  nodes: number,
-  semanticScore: number | null,
+	config: AppConfig,
+	structureOk: boolean,
+	semanticOk: boolean | null,
+	nodes: number,
+	semanticScore: number | null,
 ): void {
-  const gatePath = join(config.wikiDir, AUDIT_GATE_FILE);
-  const record: LastAuditRecord = {
-    structureOk,
-    semanticOk,
-    timestamp: new Date().toISOString(),
-    nodes,
-    semanticScore,
-  };
-  writeFileSync(gatePath, JSON.stringify(record, null, 2), "utf-8");
+	const gatePath = join(config.wikiDir, AUDIT_GATE_FILE);
+	const record: LastAuditRecord = {
+		structureOk,
+		semanticOk,
+		timestamp: new Date().toISOString(),
+		nodes,
+		semanticScore,
+	};
+	writeFileSync(gatePath, JSON.stringify(record, null, 2), "utf-8");
 }

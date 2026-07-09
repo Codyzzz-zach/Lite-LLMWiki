@@ -1,0 +1,1944 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LiteWikiagent 系统架构设计 v1</title>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "base",
+      themeVariables: {
+        fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+        primaryColor: "#eef6ff", primaryTextColor: "#172033", primaryBorderColor: "#77a6d9",
+        lineColor: "#5f748d", secondaryColor: "#f5f0ff", tertiaryColor: "#fff8e8", fontSize: "13px",
+      },
+      flowchart: { useMaxWidth: true, htmlLabels: true, curve: "basis" },
+    });
+  </script>
+  <style>
+    :root {
+      --ink: #172033; --muted: #617087; --soft: #eef3f8; --line: #d7e0ea;
+      --blue: #2f6fbd; --green: #3a8068; --amber: #9b6a1a; --rose: #b2485a;
+      --paper: #fbfcfe; --white: #ffffff; --code-bg: #182235;
+      --brand: #0D5C41; --accent: #00D97E;
+      --shadow: 0 18px 55px rgba(32,50,72,0.12);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+      color: var(--ink);
+      background: linear-gradient(180deg, rgba(238,246,255,0.9), rgba(251,252,254,0.9) 34rem), var(--paper);
+      line-height: 1.74;
+    }
+    a { color: var(--blue); text-underline-offset: 0.18em; }
+    .page { max-width: 1180px; margin: 0 auto; padding: 0 22px 72px; }
+    header { padding: 64px 0 38px; }
+    .eyebrow { display: inline-flex; align-items: center; gap: 10px; color: var(--green); font-size: 0.84rem; font-weight: 780; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 18px; }
+    .eyebrow::before { content: ""; width: 34px; height: 2px; background: var(--green); border-radius: 999px; }
+    .version-badge { display: inline-block; margin-left: 12px; padding: 2px 10px; background: var(--brand); color: #fff; border-radius: 999px; font-size: 0.78rem; font-weight: 700; vertical-align: middle; }
+    h1 { max-width: 950px; margin: 0; font-size: clamp(2.2rem, 5.5vw, 4.6rem); line-height: 1.04; }
+    .subtitle { max-width: 820px; margin: 24px 0 0; color: #34435a; font-size: clamp(1rem, 2vw, 1.3rem); line-height: 1.68; }
+    .quick-nav { display: flex; flex-wrap: wrap; gap: 10px; margin: 32px 0 0; }
+    .quick-nav a { display: inline-flex; align-items: center; min-height: 38px; padding: 7px 13px; color: #26354a; background: rgba(255,255,255,0.72); border: 1px solid var(--line); border-radius: 999px; text-decoration: none; font-size: 0.92rem; font-weight: 650; }
+    .quick-nav a.highlight { border-color: var(--brand); color: var(--brand); font-weight: 750; }
+    main { display: grid; gap: 22px; }
+    section { padding: 46px 0; border-top: 1px solid rgba(215,224,234,0.86); }
+    .section-head { display: grid; grid-template-columns: minmax(0,0.42fr) minmax(0,0.9fr); gap: 32px; align-items: start; margin-bottom: 26px; }
+    .kicker { color: var(--blue); font-size: 0.82rem; font-weight: 820; letter-spacing: 0.09em; text-transform: uppercase; }
+    h2 { margin: 0; font-size: clamp(1.6rem, 2.8vw, 2.5rem); line-height: 1.16; }
+    h3 { margin: 26px 0 10px; font-size: 1.22rem; line-height: 1.32; }
+    h4 { margin: 0 0 8px; font-size: 1.05rem; }
+    p { margin: 0 0 16px; }
+    .lead { color: #33445b; font-size: 1.06rem; line-height: 1.82; }
+    table { width: 100%; border-collapse: collapse; margin: 22px 0; background: var(--white); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; box-shadow: 0 10px 30px rgba(32,50,72,0.06); }
+    th, td { padding: 12px 16px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; font-size: 0.92rem; }
+    th { background: #eef4fb; color: #20324c; font-size: 0.82rem; letter-spacing: 0.04em; text-transform: uppercase; }
+    tr:last-child td { border-bottom: 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.88em; }
+    .pre-block { padding: 18px; color: #eff6ff; background: var(--code-bg); border-radius: 8px; overflow-x: auto; line-height: 1.6; font-size: 0.88rem; margin: 20px 0; }
+    .diagram-wrap { margin: 24px 0; padding: 22px; background: var(--white); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; box-shadow: 0 10px 30px rgba(32,50,72,0.07); }
+    .mermaid { min-width: 600px; text-align: center; }
+    .callout { padding: 20px 24px; background: rgba(255,255,255,0.82); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 30px rgba(32,50,72,0.06); margin: 20px 0; }
+    .callout.warn { border-color: #ead5a4; background: #fffaf0; }
+    .callout.good { border-color: #b8d9cd; background: #f3fbf8; }
+    .callout.danger { border-color: #e8c4ca; background: #fdf5f6; }
+    .callout strong { color: #0f243d; }
+    .card-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; margin: 24px 0; }
+    .card-grid.three { grid-template-columns: repeat(3, minmax(0,1fr)); }
+    .principle-card { padding: 20px; background: var(--white); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(32,50,72,0.05); }
+    .principle-card .tag { display: inline-block; margin-bottom: 10px; padding: 4px 10px; border-radius: 999px; font-size: 0.76rem; font-weight: 780; color: #fff; }
+    .tag-blue { background: var(--blue); } .tag-green { background: var(--green); }
+    .tag-amber { background: var(--amber); } .tag-rose { background: var(--rose); } .tag-brand { background: var(--brand); }
+    .principle-card p { margin: 0; color: #405066; font-size: 0.92rem; }
+    .row-danger { background: rgba(184,72,90,0.06); }
+    .row-warn { background: rgba(155,106,26,0.04); }
+    .row-brand { background: rgba(13,92,65,0.04); }
+    .exists { color: var(--green); font-weight: 700; }
+    .missing { color: var(--rose); font-weight: 700; }
+    .partial { color: var(--amber); font-weight: 700; }
+    footer { padding: 30px 0 10px; color: var(--muted); font-size: 0.9rem; }
+    @media (max-width: 860px) {
+      .section-head, .card-grid, .card-grid.three { grid-template-columns: 1fr; }
+      .mermaid { min-width: 520px; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <div class="eyebrow">Architecture Design v1 <span class="version-badge">2026-07-08</span></div>
+  <h1>LiteWikiagent 系统架构设计</h1>
+  <p class="subtitle">
+    基于 <a href="./product-definition.html">产品定义 v3.1</a>（发动机设计）和
+    <a href="./user-guide.html">用户使用文档 v3.0</a>（发动机操作手册）编写的完整系统架构设计。
+    覆盖分层架构、数据模型、管线设计、进程模型、状态管理——以及每个组件的接口契约。
+  </p>
+  <nav class="quick-nav">
+    <a href="#overview" class="highlight">架构总览</a>
+    <a href="#layers">分层架构</a>
+    <a href="#data">数据模型</a>
+    <a href="#chase">Chase 层</a>
+    <a href="#compile">编译管线</a>
+    <a href="#audit">审计系统</a>
+    <a href="#board">Board 装配</a>
+    <a href="#graph">图谱系统</a>
+    <a href="#daemon">Daemon 架构</a>
+    <a href="#agent">Agent 接口</a>
+    <a href="#evolution">自进化系统</a>
+    <a href="#state">状态管理</a>
+    <a href="#hygiene">信息卫生</a>
+    <a href="#process">进程模型</a>
+    <a href="#okf">OKF 集成</a>
+    <a href="#modules">模块映射</a>
+    <a href="#open">待决断</a>
+  </nav>
+</header>
+
+<main>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="overview">
+  <div class="section-head">
+    <div class="kicker">01 / Architecture Overview</div>
+    <div>
+      <h2>架构总览</h2>
+      <p class="lead">发动机 = 编译 + 审计 + 局面。三个组件不可分割，构成一条从 chase 命题到 LLM 推理的完整管线。</p>
+    </div>
+  </div>
+
+  <p>架构设计的源原则来自产品定义的 9 条不可动摇原则（§14）和 17 条关键决断（§16）。以下是全局架构图——展示所有组件、数据流和角色边界。</p>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  subgraph HUMAN["👤 人类（主编）"]
+    H1["选材：放文件到 raw/"]
+    H2["终判：批量确认待确认清单"]
+    H3["触发：手动运行 inspire"]
+  end
+
+  subgraph LOADER["📦 Loader 层（可插拔·纯机械）"]
+    L1["PDF Loader"]
+    L2["MD Loader"]
+    L3["TeX Loader"]
+  end
+
+  subgraph DAEMON["⚙️ Daemon（CI pipeline·常驻进程）"]
+    D1["① 命题提取"]
+    D2["② 文件监听→触发 compile"]
+    D3["③ wiki 变化→触发 audit"]
+    D4["④ 定期 lint"]
+    D5["⑤ inspire 执行"]
+    D6["⑥ 回流候选标记"]
+    D7["⑦ 强化检测"]
+    D8["graph.json 重建"]
+  end
+
+  subgraph ENGINE["🔧 发动机本体"]
+    E1["Compile<br/>Pro→Flash 两步"]
+    E2["Audit<br/>结构(硬) + 语义(软)"]
+    E3["Board 装配<br/>搜索 + 强制注入"]
+    E4["Query Engine<br/>LLM 在残局上推理"]
+  end
+
+  subgraph STORE["📁 文件系统（唯一 IPC）"]
+    S1["raw/chase/*.md"]
+    S2["wiki/*.md<br/>(frontmatter + body)"]
+    S3["wiki/graph.json"]
+    S4["wiki/audit-gate.json"]
+    S5["progress.md"]
+    S6["lint-report.json"]
+    S7["daemon-state.json"]
+  end
+
+  subgraph AGENT["🤖 Agent（决策者）"]
+    A1["调用 CLI 命令"]
+    A2["读状态文件"]
+    A3["在 board 残局上推理"]
+    A4["预筛选确认清单"]
+  end
+
+  H1 --> LOADER
+  LOADER -->|"chase 纯文本"| S1
+  S1 --> D1
+  D1 -->|"插入 prop marker"| S1
+  D1 --> D2
+  D2 --> E1
+  S1 -->|"chase 命题"| E1
+  E1 -->|"wiki 节点"| S2
+  S2 --> D3
+  D3 --> E2
+  S2 -->|"claim + frontmatter"| E2
+  S1 -->|"chase 命题锚点"| E2
+  E2 -->|"auditStatus + auditScore"| S2
+  E2 -->|"关卡状态"| S4
+  S4 --> E3
+  S2 --> E3
+  S3 --> E3
+  E3 --> E4
+  E4 --> A3
+  A1 --> E1
+  A1 --> E4
+  A1 --> D5
+  D5 --> E3
+  D4 --> S6
+  D6 --> S5
+  D7 --> S5
+  D4 --> D8
+  D8 --> S3
+  A2 --> S5
+  A2 --> S6
+  A2 --> S7
+  A4 --> H2
+  S5 --> H2
+  S6 --> H2
+    </pre>
+  </div>
+
+  <h3>组件存在状态</h3>
+  <table>
+    <tr><th>组件</th><th>当前代码库状态</th><th>架构文档覆盖章节</th></tr>
+    <tr><td>Loader 层（PDF/MD/TeX）</td><td class="exists">✅ 已构建</td><td>§02 分层架构</td></tr>
+    <tr><td>Chase 层（chunk 读取）</td><td class="partial">⚠️ 段落级，待升级为命题级</td><td>§04 Chase 层</td></tr>
+    <tr><td>Compile（Pro 两步）</td><td class="exists">✅ 已构建</td><td>§05 编译管线</td></tr>
+    <tr><td>Audit（结构 + 语义）</td><td class="exists">✅ 已构建</td><td>§06 审计系统</td></tr>
+    <tr><td>Board（6 种 mode）</td><td class="exists">✅ 已构建</td><td>§07 Board 装配</td></tr>
+    <tr><td>Graph（图谱）</td><td class="missing">❌ 仅 manifest helper</td><td>§08 图谱系统</td></tr>
+    <tr><td>Daemon（CI pipeline）</td><td class="missing">❌ 不存在</td><td>§09 Daemon 架构</td></tr>
+    <tr><td>Search（混合搜索）</td><td class="partial">⚠️ 仅关键词（Intl.Segmenter）</td><td>§07 Board 装配</td></tr>
+    <tr><td>Lint 引擎</td><td class="missing">❌ 仅 biome（代码 lint）</td><td>§09 Daemon 架构</td></tr>
+    <tr><td>OKF 导出/导入</td><td class="missing">❌ 不存在</td><td>§15 OKF 集成</td></tr>
+    <tr><td>命题提取（daemon ①）</td><td class="missing">❌ 不存在</td><td>§04 Chase 层</td></tr>
+    <tr><td>回流/强化/矛盾检测</td><td class="missing">❌ 不存在</td><td>§11 自进化系统</td></tr>
+  </table>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="layers">
+  <div class="section-head">
+    <div class="kicker">02 / Layered Architecture</div>
+    <div>
+      <h2>分层架构</h2>
+      <p class="lead">发动机边界画在 chase 入口。之前的格式转换是可插拔的外围组件。发动机本体从 chase MD 开始。</p>
+    </div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart LR
+  subgraph L1["第 0 层 · 外围（可插拔）"]
+    direction TB
+    LOADER["Loader 层<br/>PDF/MD/TeX → 纯文本<br/>不调 LLM · 纯机械"]
+  end
+
+  subgraph L2["第 1 层 · 半智能（daemon 触发）"]
+    direction TB
+    PROP["命题提取<br/>纯文本 → 命题序列<br/>调 1 次 LLM · 结果持久化"]
+  end
+
+  subgraph L3["第 2 层 · 发动机本体（核心）"]
+    direction TB
+    COMPILE["Compile<br/>Pro→Flash 两步"]
+    AUDIT["Audit<br/>结构 + 语义"]
+    BOARD["Board<br/>搜索 + 强制注入"]
+    QUERY["Query<br/>LLM 推理"]
+  end
+
+  subgraph L4["第 3 层 · 维护层（daemon CI）"]
+    direction TB
+    LINT["Lint 引擎"]
+    REFLOW["回流标记"]
+    REINFORCE["强化检测"]
+    GRAPH_REBUILD["图谱重建"]
+  end
+
+  subgraph L5["第 4 层 · 接口层"]
+    direction TB
+    CLI["CLI 命令<br/>llmwiki ingest/audit/query/inspire/status"]
+    DAEMON_PROC["Daemon 进程<br/>文件监听 + 定时器"]
+    AGENT_API["Agent JSON 契约<br/>failure JSON + exit code"]
+  end
+
+  L1 -->|"chase 纯文本"| L2
+  L2 -->|"chase 命题序列"| L3
+  L3 --> L4
+  L4 -.->|"状态文件"| L3
+  L5 --> L3
+  L5 --> L4
+    </pre>
+  </div>
+
+  <table>
+    <tr><th>层</th><th>什么</th><th>调不调 LLM</th><th>合同</th><th>对应模块</th></tr>
+    <tr>
+      <td><strong>第 0 层 · Loader</strong></td>
+      <td>格式转换——PDF/MD/TeX 转纯文本 Markdown</td>
+      <td>不调 LLM，纯机械</td>
+      <td>接收 raw 文件 → 产出 chase 纯文本（不带 marker）</td>
+      <td><code>ingest/loader.ts</code> · <code>pdf-loader.ts</code> · <code>tex-loader.ts</code></td>
+    </tr>
+    <tr class="row-warn">
+      <td><strong>第 1 层 · 命题提取</strong></td>
+      <td>LLM 将纯文本分割为自包含原子命题</td>
+      <td>调一次 LLM（每篇文档一次，永久缓存）</td>
+      <td>接收 chase 纯文本 → 产出带 <code>&lt;!-- prop N --&gt;</code> marker 的 chase MD</td>
+      <td><strong>新建</strong> <code>ingest/proposition.ts</code>（daemon ① 触发）</td>
+    </tr>
+    <tr class="row-brand">
+      <td><strong>第 2 层 · 发动机本体</strong></td>
+      <td>编译、审计、board 装配、查询</td>
+      <td>compile 调 LLM · audit 调 LLM · query 调 LLM</td>
+      <td>接收带 prop marker 的 chase → 输出可审计 wiki + 残局</td>
+      <td><code>ingest/listening.ts</code> · <code>knowledge/audit*.ts</code> · <code>query/board.ts</code> · <code>query/engine.ts</code></td>
+    </tr>
+    <tr>
+      <td><strong>第 3 层 · 维护层</strong></td>
+      <td>lint、回流标记、强化检测、图谱重建</td>
+      <td>lint 调 LLM（语义检测） · 回流调 LLM judge · 强化调 LLM judge</td>
+      <td>读 wiki 状态 → 写状态文件（不直接写 wiki 内容）</td>
+      <td><strong>新建</strong> <code>daemon/lint.ts</code> · <code>daemon/reflow.ts</code> · <code>daemon/reinforce.ts</code></td>
+    </tr>
+    <tr>
+      <td><strong>第 4 层 · 接口层</strong></td>
+      <td>CLI 命令、daemon 进程、agent JSON 契约</td>
+      <td>自身不调——委托给下层</td>
+      <td>接收人类/agent 指令 → 调用发动机组件</td>
+      <td><code>cli/index.ts</code> · <strong>新建</strong> <code>daemon/index.ts</code> · <code>agent/contract.ts</code></td>
+    </tr>
+  </table>
+
+  <div class="callout">
+    <strong>为什么边界画在 chase 入口：</strong>loader 层是可替换的——以后加 EPUB/DOCX loader 只需遵守合同（产出纯文本），发动机不用改。命题提取由 daemon 统一处理——不在 loader 层调 LLM。这个设计让 loader 层可以无限扩展而不影响内核。
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="data">
+  <div class="section-head">
+    <div class="kicker">03 / Data Model</div>
+    <div>
+      <h2>数据模型与文件系统</h2>
+      <p class="lead">文件系统是唯一 IPC。所有状态以文件形式持久化——daemon 和 CLI 通过文件协作，不通过 socket/IPC。</p>
+    </div>
+  </div>
+
+  <h3>目录结构</h3>
+  <div class="pre-block">LiteWikiagent/
+├── raw/
+│   ├── original/                 # 人类放入的原始材料
+│   │   ├── md/                   # Markdown 源文件
+│   │   ├── pdf/                  # PDF 文件
+│   │   └── tex/                  # LaTeX 项目目录
+│   └── chase/                    # chase 证据层（loader 产出 + daemon 命题提取）
+│       └── *.md                  # 带 &lt;!-- prop N --&gt; marker 的 chase MD
+│
+├── wiki/                         # 编译产物——结构化知识库
+│   ├── concepts/                 # concept kind 节点
+│   ├── claims/                   # claim kind 节点
+│   ├── methods/                  # method kind 节点
+│   ├── cases/                    # case kind 节点
+│   ├── equations/                # equation kind 节点
+│   ├── questions/                # question kind 节点
+│   ├── insights/                 # insight kind 节点
+│   ├── anchors/                  # anchor kind 节点
+│   ├── counters/                 # counter kind 节点
+│   ├── index.md                  # wiki 索引（人类可读）
+│   ├── index.json                # wiki 索引（机器可读）
+│   ├── graph.json                # 图谱聚合索引（daemon 重建）
+│   ├── audit-gate.json           # 审计关卡状态（跨进程）
+│   └── log.md                    # 操作日志
+│
+├── loopadvance/                  # daemon 状态与进度
+│   ├── daemon-state.json         # daemon 运行状态（时间戳+统计+队列）
+│   ├── progress.md               # 人类可读的日志+工单
+│   ├── lint-report.json          # lint 问题清单
+│   └── daemon.log                # daemon 运行日志
+│
+├── lite-llmwiki/                 # 代码库
+│   ├── src/
+│   │   ├── core/                 # LLM 客户端 + prompt 构建
+│   │   ├── ingest/               # loader + listening + policy + 命题提取
+│   │   ├── knowledge/            # store + chase + audit + wiki-parser + graph
+│   │   ├── query/                # board + engine + search
+│   │   ├── daemon/               # daemon 进程（新建）
+│   │   ├── evolution/            # 自进化系统（新建）
+│   │   ├── okf/                  # OKF 导出导入（新建）
+│   │   ├── agent/                # agent 契约
+│   │   └── cli/                  # CLI 命令
+│   └── dist/                     # 构建产物
+│
+└── scripts/
+    └── loop-health.sh            # 健康度检查</div>
+
+  <h3>核心数据模型</h3>
+
+  <h4>1. Chase MD（证据层）</h4>
+  <div class="pre-block">---
+sourceId: raw/pdf/my-paper-a1b2c3d4
+sourcePath: raw/original/pdf/my-paper.pdf
+createdAt: 2026-07-08T10:00:00Z
+propositionExtracted: true          # daemon ① 是否已处理
+---
+
+&lt;!-- prop 1 --&gt;
+Shor算法能在多项式时间内分解大整数。
+
+&lt;!-- prop 2 --&gt;
+Shor算法对RSA加密构成威胁。
+
+&lt;!-- prop 3 --&gt;
+量子纠错需要大量物理量子比特。
+
+&lt;!-- prop 4 --&gt;
+当前量子计算机只有约1000个物理量子比特。</div>
+
+  <h4>2. Wiki Node（编译产物）</h4>
+  <div class="pre-block">---
+nodeId: shor-rsa-threat            # 稳定节点 ID，图谱主键
+kind: claim                        # 9 种 kind 之一
+title: "Shor算法对RSA加密的威胁"
+claim: "Shor算法能在多项式时间内分解大整数，对RSA加密构成根本性威胁"
+evidence: "多项式时间分解 → RSA依赖大整数分解的难度假设被打破"
+sourceChase: raw/chase/my-paper.md
+sourceId: raw/pdf/my-paper-a1b2c3d4
+propRefs: [1, 2]                   # 命题级引用（替代旧 chunkRefs）
+tags: [quantum, cryptography]
+confidence: 0.92
+createdAt: 2026-07-08T10:05:00Z
+updatedAt: 2026-07-08T10:06:00Z
+
+# 审计信号（audit 写入）
+auditStatus: passed                # passed | warning | failed
+auditScore: 0.91
+auditVerdict:                      # evidence-anchored 输出
+  support: aligned
+  addition: none
+  inference: ok
+  limits: ok
+  citation: ok
+  anchor: "prop 2: 'Shor算法对RSA加密构成威胁'"
+
+# 图谱边（frontmatter 为真相源，graph.json 为聚合索引）
+edges:
+  derived_from: [quantum-computing-overview]
+  contradicts: []
+  related: [rsa-security-analysis, polynomial-time-factoring]
+
+# 回流标记（仅 reflow 节点）
+reflowOrigin: false                # true = 回流节点（信任层级低于编译节点）
+---
+
+## Evidence
+
+多项式时间分解 → RSA 依赖大整数分解的难度假设被打破。
+
+## Body
+
+Shor 算法的多项式时间复杂度意味着……</div>
+
+  <h4>3. graph.json（聚合索引·daemon 重建）</h4>
+  <div class="pre-block">{
+  "version": 1,
+  "rebuiltAt": "2026-07-08T10:10:00Z",
+  "nodeCount": 47,
+  "edgeCount": 89,
+  "nodes": {
+    "shor-rsa-threat": { "kind": "claim", "sourceId": "raw/pdf/my-paper-a1b2c3d4" },
+    "quantum-computing-overview": { "kind": "concept", "sourceId": "raw/pdf/my-paper-a1b2c3d4" }
+  },
+  "edges": [
+    { "from": "shor-rsa-threat", "to": "quantum-computing-overview", "type": "derived_from", "confidence": 1.0 },
+    { "from": "shor-rsa-threat", "to": "rsa-security-analysis", "type": "related", "confidence": 0.8 }
+  ],
+  "orphans": ["some-isolated-node"],
+  "contradictions": []
+}</div>
+
+  <h4>4. audit-gate.json（跨进程关卡）</h4>
+  <div class="pre-block">{
+  "structure": { "ok": true, "checkedAt": "2026-07-08T10:06:00Z", "issues": [] },
+  "semantic": { "ok": true, "averageScore": 0.91, "checkedAt": "2026-07-08T10:06:30Z",
+                "warnings": [], "lowScoreNodes": [] }
+}</div>
+
+  <h4>5. daemon-state.json（daemon 运行状态）</h4>
+  <div class="pre-block">{
+  "running": true,
+  "pid": 12345,
+  "startedAt": "2026-07-08T08:00:00Z",
+  "lastLintAt": "2026-07-08T09:00:00Z",
+  "lastReflowScanAt": "2026-07-08T09:30:00Z",
+  "pendingConfirmations": {
+    "reflow": 3,
+    "edges": 5,
+    "supersede": 2,
+    "reinforce": 4,
+    "lintTickets": 7
+  },
+  "totalPending": 21,
+  "backlogLevel": "normal"
+}</div>
+
+  <h4>6. progress.md（人类可读工单）</h4>
+  <div class="pre-block">## 2026-07-08
+
+### 待确认清单
+
+#### 回流候选 (3)
+- [ ] [reflow-001] "量子纠错距离实用还远" — 基于 3 个节点的综合推理
+      derived_from: [shor-rsa-threat, quantum-computing-overview, physical-qubit-count]
+- [ ] [reflow-002] ...
+
+#### Edge 候选 (5)
+- [ ] [edge-001] shor-rsa-threat ↔ rsa-security-analysis (related, 0.8)
+- [ ] [edge-002] ...
+
+#### 取代候选 (2)
+- [ ] [supersede-001] old-claim-X ← new-claim-Y (contradicts)
+- [ ] [supersede-002] ...
+
+#### 强化候选 (4)
+- [ ] [reinforce-001] node: shor-rsa-threat (当前 auditScore: 0.91)
+      new source: raw/pdf/another-paper (语义一致度: 0.88, 证据增量度: 0.75)
+      建议新 auditScore: 0.94
+- [ ] [reinforce-002] ...
+
+#### 语义 Lint 工单 (7)
+- [ ] [lint-001] node: old-concept-X — claim 可能过时（与新材料矛盾）
+- [ ] [lint-002] ...</div>
+
+  <h3>数据模型关系图</h3>
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+erDiagram
+  CHASE_MD ||--o{ WIKI_NODE : "compile 产出"
+  CHASE_MD {
+    string sourceId PK
+    string sourcePath
+    boolean propositionExtracted
+    text propositions "prop 1..N"
+  }
+  WIKI_NODE ||--o{ AUDIT_RESULT : "audit 写入"
+  WIKI_NODE ||--o{ GRAPH_EDGE : "frontmatter edges"
+  WIKI_NODE {
+    string nodeId PK
+    string kind "9 种之一"
+    string claim
+    string evidence
+    string sourceChase FK
+    int_array propRefs "命题级引用"
+    string auditStatus
+    float auditScore
+    json auditVerdict
+    boolean reflowOrigin
+  }
+  GRAPH_EDGE {
+    string from FK
+    string to FK
+    string type "derived_from|contradicts|related"
+    float confidence
+  }
+  GRAPH_JSON }o--o{ GRAPH_EDGE : "聚合索引"
+  GRAPH_JSON {
+    int nodeCount
+    int edgeCount
+    string rebuiltAt
+  }
+  AUDIT_GATE ||--|| WIKI_NODE : "关卡检查"
+  AUDIT_GATE {
+    boolean structureOk
+    boolean semanticOk
+    float averageScore
+  }
+  DAEMON_STATE ||--o{ CONFIRMATION_ITEM : "积压跟踪"
+  CONFIRMATION_ITEM {
+    string type "reflow|edge|supersede|reinforce|lint"
+    string status "pending|confirmed|rejected"
+    json detail
+  }
+    </pre>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="chase">
+  <div class="section-head">
+    <div class="kicker">04 / Chase Layer</div>
+    <div>
+      <h2>Chase 证据层：命题提取管线</h2>
+      <p class="lead">chase 是审计的证据基础设施。chunk 粒度为命题级，由 daemon 触发一次性 LLM 调用。</p>
+    </div>
+  </div>
+
+  <h3>命题提取管线</h3>
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart LR
+  subgraph LOADER["Loader 层（纯机械）"]
+    L["PDF/MD/TeX 文件<br/>→ 纯文本 Markdown"]
+  end
+
+  subgraph CHASE_STORE["chase 存储"]
+    C1["chase 纯文本<br/>(无 marker)"]
+    C2["chase 命题序列<br/>(带 prop marker)"]
+  end
+
+  subgraph DAEMON_PROP["Daemon ① 命题提取"]
+    P1["检测新 chase 文件<br/>propositionExtracted=false"]
+    P2["调 LLM 命题提取<br/>(deepseek-v4-pro)"]
+    P3["插入 prop marker<br/>更新 frontmatter"]
+    P4["propositionExtracted=true"]
+    P1 --> P2 --> P3 --> P4
+  end
+
+  subgraph CONSUMERS["下游消费者"]
+    CC["Compile<br/>读 prop 编号序列"]
+    CA["Audit Judge<br/>读单个 prop 原文"]
+    CB["Board trace<br/>带 prop excerpt"]
+  end
+
+  L -->|"产出"| C1
+  C1 --> P1
+  P4 --> C2
+  C2 --> CC
+  C2 --> CA
+  C2 --> CB
+    </pre>
+  </div>
+
+  <h3>命题提取 Prompt 架构</h3>
+  <table>
+    <tr><th>维度</th><th>设计</th></tr>
+    <tr><td>模型</td><td>deepseek-v4-pro（深度理解任务，需要语义判断命题边界）</td></tr>
+    <tr><td>输入</td><td>chase 纯文本（loader 产出的 Markdown）</td></tr>
+    <tr><td>输出</td><td>命题列表——每个命题是自包含的原子事实，编号从 1 开始</td></tr>
+    <tr><td>缓存</td><td>一次性调用，结果持久化在 chase MD 中。compile 和 audit 复用同一编号</td></tr>
+    <tr><td>失败处理</td><td>daemon 写状态报告（progress.md），agent 读到后决定是否重试或人工复核</td></tr>
+  </table>
+
+  <h3>无向后兼容</h3>
+  <p>当前 wiki 节点量少——全部清空后直接用新格式。chase.ts 只支持 <code>&lt;!-- prop N --&gt;</code> marker，不支持旧 <code>&lt;!-- chunk N --&gt;</code>。frontmatter 只用 <code>propRefs</code>，不支持 <code>chunkRefs</code>。代码简洁——无 fallback 逻辑、无双字段共存、无迁移脚本。</p>
+
+  <div class="callout good">
+    <strong>为什么命题级：</strong>EMNLP 2024 (Dense X Retrieval) 实验证据：命题级分块在 Recall@20 上比段落级提升 2-10%。judge 对比 "claim X 是否被 prop 7 支持" 时，输入是自包含原子事实，没有无关上下文干扰——减少 false pass 和 false fail。
+  </div>
+
+  <h3>模块设计</h3>
+  <table>
+    <tr><th>模块</th><th>状态</th><th>职责</th></tr>
+    <tr><td><code>ingest/proposition.ts</code></td><td class="missing">❌ 新建</td><td>命题提取 prompt 构建 + LLM 调用 + 响应解析 + chase MD 更新</td></tr>
+    <tr><td><code>knowledge/chase.ts</code></td><td class="partial">⚠️ 改造</td><td>只支持 <code>prop</code> marker（不兼容旧 chunk）；<code>readChaseProps()</code> 新方法</td></tr>
+    <tr><td><code>daemon/watcher.ts</code></td><td class="missing">❌ 新建</td><td>监听 chase/ 新文件，触发命题提取</td></tr>
+  </table>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="compile">
+  <div class="section-head">
+    <div class="kicker">05 / Compile Pipeline</div>
+    <div>
+      <h2>编译管线：Pro 两步提取</h2>
+      <p class="lead">编译是发动机的第一个组件——必要但非壁垒。Pro 深度思考 → Flash 结构化输出的分工。</p>
+    </div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  subgraph INPUT["输入"]
+    I1["chase 命题序列<br/>prop 1..N"]
+    I2["workspace rules<br/>已有 wiki 节点概要"]
+  end
+
+  subgraph STEP1["Step 1 · deepseek-v4-pro（深度思考）"]
+    S1A["读 chase 命题序列"]
+    S1B["理解：主题结构<br/>论点关系<br/>概念边界"]
+    S1C["输出：thinking JSON<br/>{ themes, keyRelations, suggestedKinds }"]
+    S1A --> S1B --> S1C
+  end
+
+  subgraph STEP2["Step 2 · deepseek-v4-flash（结构化提取）"]
+    S2A["读 chase 命题序列 + Step1 thinking"]
+    S2B["提取：9 种 kind 的 wiki 节点<br/>frontmatter + body + edges 候选"]
+    S2C["输出：nodeDrafts[]<br/>每个节点带 propRefs"]
+    S2A --> S2B --> S2C
+  end
+
+  subgraph POLICY["Policy 确认闸门"]
+    P1["filterByPolicy()<br/>conservative/balanced/expansive"]
+    P2{"通过?"}
+    P3["写入 wiki/"]
+    P4["丢弃或标记待确认"]
+    P1 --> P2
+    P2 -->|"是"| P3
+    P2 -->|"否"| P4
+  end
+
+  subgraph POST["编译后（daemon 触发）"]
+    POST1["③ audit 自动触发"]
+    POST2["⑦ 强化检测自动触发"]
+  end
+
+  I1 --> STEP1
+  I2 --> STEP1
+  S1C --> STEP2
+  I1 --> S2A
+  S2C --> POLICY
+  P3 --> POST1
+  P3 --> POST2
+    </pre>
+  </div>
+
+  <h3>9 种 WikiKind · 固定 Schema</h3>
+  <table>
+    <tr><th>kind</th><th>语义</th><th>目录路由</th><th>Policy 行为</th><th>Board 强制注入角色</th></tr>
+    <tr><td><strong>concept</strong></td><td>原子知识定义</td><td><code>concepts/</code></td><td>fact type — 所有 policy 可确认</td><td>expand 模式带入</td></tr>
+    <tr><td><strong>claim</strong></td><td>断言 + 证据</td><td><code>claims/</code></td><td>fact type</td><td>所有模式 seed</td></tr>
+    <tr><td><strong>method</strong></td><td>可复现过程</td><td><code>methods/</code></td><td>fact type</td><td>expand 模式强制带入</td></tr>
+    <tr><td><strong>case</strong></td><td>具体实例</td><td><code>cases/</code></td><td>fact type</td><td>expand 模式强制带入</td></tr>
+    <tr><td><strong>equation</strong></td><td>公式 + 解释</td><td><code>equations/</code></td><td>fact type</td><td>expand 模式强制带入</td></tr>
+    <tr><td><strong>question</strong></td><td>开放问题</td><td><code>questions/</code></td><td>soft type — expansive 需 limits</td><td>inspire 模式带入</td></tr>
+    <tr><td><strong>insight</strong></td><td>跨来源综合</td><td><code>insights/</code></td><td>soft type — expansive 需 limits</td><td>inspire 模式带入</td></tr>
+    <tr><td><strong>anchor</strong></td><td>用户锚点直觉</td><td><code>anchors/</code></td><td>balanced 拒绝</td><td>不参与强制注入</td></tr>
+    <tr><td><strong>counter</strong></td><td>反直觉视角</td><td><code>counters/</code></td><td>soft type</td><td>challenge 模式<strong>全部</strong>强制带入</td></tr>
+  </table>
+
+  <div class="callout">
+    <strong>远期解耦规划：</strong>v1 硬编码 9 kind。但 compile prompt、policy 规则、board 注入规则不直接写死 kind 名称——从 Schema 配置文件读取。代价一样，天花板完全不同。以后换领域只需换 Schema 文件，发动机代码不变。
+  </div>
+
+  <h3>模块设计</h3>
+  <table>
+    <tr><th>模块</th><th>状态</th><th>职责</th></tr>
+    <tr><td><code>ingest/listening.ts</code></td><td class="exists">✅</td><td><code>proIngest()</code> — extract/compile/reread 三模式，Pro→Flash 两步</td></tr>
+    <tr><td><code>core/prefix.ts</code></td><td class="exists">✅</td><td>prompt 构建——<code>buildThinkStepPrefix()</code> / <code>buildFormatStepPrefix()</code></td></tr>
+    <tr><td><code>ingest/policy.ts</code></td><td class="exists">✅</td><td><code>filterByPolicy()</code> — conservative/balanced/expansive 三级</td></tr>
+    <tr><td><code>core/client.ts</code></td><td class="exists">✅</td><td>DeepSeek API 客户端（OpenAI 兼容）</td></tr>
+    <tr><td><code>knowledge/render.ts</code></td><td class="exists">✅</td><td>WikiNodeDraft → Markdown 渲染</td></tr>
+    <tr><td><code>knowledge/store.ts</code></td><td class="exists">✅</td><td><code>saveWikiPage()</code> / <code>saveWikiNode()</code></td></tr>
+  </table>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="audit">
+  <div class="section-head">
+    <div class="kicker">06 / Audit System</div>
+    <div>
+      <h2>审计系统：双重审查 + 三层防御</h2>
+      <p class="lead">审计是发动机的第一壁垒。engine 是所有竞品中唯一让 LLM 自动做语义审计的产品。</p>
+    </div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  subgraph TRIGGER["审计触发"]
+    T1["daemon ③ wiki 变化自动触发"]
+    T2["agent 手动: audit --json"]
+    T3["agent 手动: audit --semantic --json"]
+  end
+
+  subgraph STRUCTURE["结构审计（无 LLM · 硬关卡）"]
+    SA1["检查: nodeId, kind, sourceChase,<br/>propRefs, claim, evidence"]
+    SA2{"全部存在?"}
+    SA3["✅ 结构通过"]
+    SA4["❌ 阻止 · exit 2<br/>failure JSON stage=audit-structure"]
+    SA1 --> SA2
+    SA2 -->|"是"| SA3
+    SA2 -->|"否"| SA4
+  end
+
+  subgraph SEMANTIC["语义审计（LLM judge · 软关卡）"]
+    SE1["读 claim + chase 命题原文"]
+    SE2["LLM judge 5 维度判断"]
+    SE3["evidence-anchored verdict<br/>带原文锚点"]
+    SE4["写回 frontmatter:<br/>auditStatus + auditScore + verdict"]
+    SE1 --> SE2 --> SE3 --> SE4
+  end
+
+  subgraph DEFENSE["三层防御"]
+    D1["第一层: evidence-anchored<br/>verdict 必须带 prop 原文引用"]
+    D2["第二层: 矛盾交叉验证<br/>contradicts 边 → 至少一个 audit 有错"]
+    D3["第三层: 跨模型二次审计<br/>auditScore>0.9 + 频繁引用 → 用 Claude 重审"]
+  end
+
+  subgraph GATE["关卡输出"]
+    G1["audit-gate.json 更新"]
+    G2["query/inspire 读取关卡"]
+    G3{"结构 ok?"}
+    G4{"语义 ok?"}
+    G5["❌ 阻止"]
+    G6["⚠️ 警告放行<br/>board 带 auditStatus"]
+    G7["✅ 放行"]
+  end
+
+  T1 --> STRUCTURE
+  T2 --> STRUCTURE
+  T3 --> SEMANTIC
+  SA3 --> SEMANTIC
+  SE4 --> DEFENSE
+  D1 -.-> SE3
+  D2 -.-> G1
+  D3 -.-> SE4
+  SE4 --> G1
+  G1 --> G2 --> G3
+  G3 -->|"否"| G5
+  G3 -->|"是"| G4
+  G4 -->|"否/null"| G6
+  G4 -->|"是"| G7
+    </pre>
+  </div>
+
+  <h3>5 维度语义审计</h3>
+  <table>
+    <tr><th>维度</th><th>judge 的问题</th><th>结果值</th><th>score 影响</th></tr>
+    <tr><td><strong>support</strong></td><td>claim 是否被 propRefs 指向的命题支持？</td><td>aligned / stretched / unsupported</td><td>aligned=1.0, stretched=0.6, unsupported=0.2</td></tr>
+    <tr><td><strong>addition</strong></td><td>是否引入原文没有的强判断？</td><td>none / minor / major</td><td>none=1.0, minor=0.8, major=0.3</td></tr>
+    <tr><td><strong>inference</strong></td><td>是否把推理标成事实？</td><td>ok / warning / failed</td><td>ok=1.0, warning=0.5, failed=0.1</td></tr>
+    <tr><td><strong>limits</strong></td><td>是否遗漏限制条件？</td><td>ok / warning / failed</td><td>ok=1.0, warning=0.6, failed=0.2</td></tr>
+    <tr><td><strong>citation</strong></td><td>propRefs 是否覆盖关键证据？</td><td>ok / warning / failed</td><td>ok=1.0, warning=0.7, failed=0.3</td></tr>
+  </table>
+
+  <p><strong>auditScore = 5 维度 score 的加权平均。</strong> auditStatus 判定：score ≥ 0.8 → passed, 0.5-0.8 → warning, < 0.5 → failed。warning 和 failed 都不阻止 query——但 board 中必须带上 auditStatus 让 LLM 知道可信度。</p>
+
+  <h3>三层防御的实现位置</h3>
+  <table>
+    <tr><th>防御层</th><th>实现位置</th><th>触发条件</th><th>状态</th></tr>
+    <tr><td>第一层 · evidence-anchored</td><td><code>semantic-audit-prompt.ts</code></td><td>每次语义审计</td><td class="partial">⚠️ 需改造 prompt 要求带 prop 锚点</td></tr>
+    <tr><td>第二层 · 矛盾交叉验证</td><td><strong>新建</strong> <code>evolution/contradiction.ts</code></td><td>graph.json 有 contradicts 边时</td><td class="missing">❌ 依赖图谱</td></tr>
+    <tr><td>第三层 · 跨模型审计</td><td><strong>新建</strong> <code>knowledge/cross-model-audit.ts</code></td><td>auditScore>0.9 + 频繁引用</td><td class="missing">❌ 依赖多 Provider</td></tr>
+  </table>
+
+  <div class="callout warn">
+    <strong>第三层防御的前置条件：</strong>跨模型二次审计需要多 Provider 支持。当前仅 DeepSeek。第三层在多 Provider 基础设施就绪前不实现——前两层已经能控制大部分风险。
+  </div>
+
+  <h3>模块设计</h3>
+  <table>
+    <tr><th>模块</th><th>状态</th><th>职责</th></tr>
+    <tr><td><code>knowledge/audit.ts</code></td><td class="exists">✅</td><td><code>auditWiki()</code> — 结构审计 + <code>writeAuditResults()</code></td></tr>
+    <tr><td><code>knowledge/semantic-audit.ts</code></td><td class="exists">✅</td><td><code>runSemanticAudit()</code> — LLM judge 5 维度</td></tr>
+    <tr><td><code>knowledge/semantic-audit-prompt.ts</code></td><td class="partial">⚠️ 改造</td><td>prompt 改为 prop 级锚点 + 要求 evidence-anchored 输出</td></tr>
+    <tr><td><code>knowledge/audit-gate.ts</code></td><td class="exists">✅</td><td><code>checkAuditGate()</code> / <code>writeAuditGate()</code></td></tr>
+    <tr><td><code>cli/commands/audit.ts</code></td><td class="exists">✅</td><td>CLI <code>audit</code> / <code>audit --semantic</code></td></tr>
+  </table>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="board">
+  <div class="section-head">
+    <div class="kicker">07 / Board Assembly</div>
+    <div>
+      <h2>Board 装配：搜索 + 强制注入 = 残局</h2>
+      <p class="lead">Board 是发动机的第二壁垒。6 种 mode = 6 种残局摆法。搜索负责相关性，强制注入负责完整性。</p>
+    </div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  subgraph INPUT["输入"]
+    Q["用户/agent 提问"]
+    M["mode 选择<br/>ask/trace/expand/compare/challenge/inspire"]
+  end
+
+  subgraph SEARCH["搜索阶段（相关性）"]
+    SE["SearchProvider.search(query)"]
+    SE --> SEEDS["seed nodes<br/>nodeId + relevance score"]
+  end
+
+  subgraph INJECT["强制注入阶段（完整性）"]
+    I1["按 mode 读取确定性字段"]
+    I2["graph.json edges<br/>derived_from / contradicts / related"]
+    I3["kind 字段<br/>强制带 counter/method/case/equation"]
+    I4["auditStatus<br/>强制带 tension 节点"]
+    I5["sourceId<br/>强制按来源分组"]
+  end
+
+  subgraph ASSEMBLE["Board 装配"]
+    B1["合并 seed + forced"]
+    B2["去重 + 排序"]
+    B3["附加 chase 命题 excerpt<br/>(trace 模式)"]
+    B4["附加 audit 信号<br/>(auditStatus + auditScore)"]
+    B5["附加 BoardInstruction<br/>(synthesisLevel + outputBoundaries)"]
+  end
+
+  subgraph OUTPUT["输出"]
+    BOARD["QueryBoard JSON<br/>→ LLM 推理"]
+  end
+
+  Q --> SEARCH
+  M --> INJECT
+  SEEDS --> B1
+  I1 --> I2 & I3 & I4 & I5
+  I2 & I3 & I4 & I5 --> B1
+  B1 --> B2 --> B3 --> B4 --> B5 --> BOARD
+    </pre>
+  </div>
+
+  <h3>搜索后端抽象</h3>
+  <p>board 装配不绑定特定搜索引擎。通过 <code>SearchProvider</code> 接口抽象：</p>
+  <div class="pre-block">interface SearchProvider {
+  search(query: string, opts?: SearchOpts): SearchResult[];
+  reindex(): void;
+}
+
+interface SearchResult {
+  nodeId: string;
+  relevance: number;  // 0-1
+  matchedFields: string[];
+}
+
+// 当前实现
+class KeywordSearchProvider implements SearchProvider {
+  // Intl.Segmenter 分词 + 字段权重打分
+  // 已存在于 query/search.ts
+}
+
+// 未来实现
+class QmdSearchProvider implements SearchProvider {
+  // 调用 qmd CLI --json
+  // BM25 + Vector + RRF + LLM Rerank
+}</div>
+
+  <h3>6 种 mode 的装配规则</h3>
+  <table>
+    <tr><th>mode</th><th>搜索</th><th>强制注入</th><th>注入数据源</th><th>BoardInstruction</th></tr>
+    <tr>
+      <td><strong>ask</strong></td>
+      <td>top seeds</td>
+      <td>light——related + 少量 counter</td>
+      <td>graph edges (related)</td>
+      <td>synthesisLevel: balanced</td>
+    </tr>
+    <tr>
+      <td><strong>trace</strong></td>
+      <td>seeds</td>
+      <td>全链——derived_from 祖先 + chase prop 原文</td>
+      <td>graph edges (derived_from) + chase prop marker</td>
+      <td>synthesisLevel: faithful</td>
+    </tr>
+    <tr>
+      <td><strong>expand</strong></td>
+      <td>seeds</td>
+      <td>所有相关 method/case/equation</td>
+      <td>kind 字段</td>
+      <td>synthesisLevel: exploratory</td>
+    </tr>
+    <tr>
+      <td><strong>compare</strong></td>
+      <td>seeds</td>
+      <td>按 sourceId 强制分组</td>
+      <td>sourceId frontmatter</td>
+      <td>synthesisLevel: analytical</td>
+    </tr>
+    <tr>
+      <td><strong>challenge</strong></td>
+      <td>seeds</td>
+      <td><strong>ALL</strong> counter + <strong>ALL</strong> limit</td>
+      <td>graph edges (contradicts) + kind (counter)</td>
+      <td>synthesisLevel: adversarial</td>
+    </tr>
+    <tr>
+      <td><strong>inspire</strong></td>
+      <td>seeds</td>
+      <td>tension 节点 (auditStatus=failed) + cross-kind</td>
+      <td>auditStatus + graph edges</td>
+      <td>synthesisLevel: generative</td>
+    </tr>
+  </table>
+
+  <div class="callout good">
+    <strong>强制注入依赖确定性字段——不依赖搜索排名。</strong>kind、sourceId、auditStatus、graph edges 都是编译和审计阶段产生的结构化字段。搜索可能遗漏的节点（counter 排名靠后、tension 排名靠后）通过强制注入确保出现在棋盘上。这就是 AlphaGo 类比：不给 LLM 空棋盘——给它一个摆好棋子的残局。
+  </div>
+
+  <h3>模块设计</h3>
+  <table>
+    <tr><th>模块</th><th>状态</th><th>职责</th></tr>
+    <tr><td><code>query/board.ts</code></td><td class="exists">✅</td><td><code>buildQueryBoard()</code> — 6 模式确定性装配</td></tr>
+    <tr><td><code>query/search.ts</code></td><td class="partial">⚠️ 改造为 SearchProvider 接口</td><td>当前是 KeywordSearchProvider，需抽象接口</td></tr>
+    <tr><td><code>query/engine.ts</code></td><td class="exists">✅</td><td><code>queryKnowledge()</code> — board + LLM + 分层输出</td></tr>
+    <tr><td><code>cli/commands/query.ts</code></td><td class="exists">✅</td><td>CLI <code>query --mode</code></td></tr>
+    <tr><td><strong>新建</strong> <code>query/search-provider.ts</code></td><td class="missing">❌</td><td>SearchProvider 接口 + KeywordSearchProvider + QmdSearchProvider(未来)</td></tr>
+  </table>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="graph">
+  <div class="section-head">
+    <div class="kicker">08 / Graph System</div>
+    <div>
+      <h2>图谱系统：frontmatter 真相源 + graph.json 聚合索引</h2>
+      <p class="lead">图谱不是可视化卖点——是 board 强制注入的基础设施。edges 的真相源在 frontmatter，graph.json 是 daemon 重建的缓存。</p>
+    </div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  subgraph TRUTH["真相源（frontmatter）"]
+    F1["wiki/claims/shor-rsa-threat.md<br/>edges:<br/>  derived_from: [quantum-overview]<br/>  contradicts: []<br/>  related: [rsa-analysis]"]
+    F2["wiki/concepts/quantum-overview.md<br/>edges:<br/>  derived_from: []<br/>  contradicts: []<br/>  related: [shor-rsa-threat]"]
+  end
+
+  subgraph DAEMON_REBUILD["Daemon ⑧ 图谱重建"]
+    R1["扫描所有 wiki/*.md frontmatter"]
+    R2["提取 edges 字段"]
+    R3["构建 nodes + edges 索引"]
+    R4["检测 orphans + contradictions"]
+    R5["写入 graph.json"]
+    R1 --> R2 --> R3 --> R4 --> R5
+  end
+
+  subgraph CONSUMERS["消费者"]
+    C1["Board 装配<br/>读 graph.json<br/>强制注入 edges"]
+    C2["矛盾检测<br/>读 graph.json<br/>contradicts 边"]
+    C3["Lint 孤儿检测<br/>读 graph.json<br/>orphans 列表"]
+    C4["status --json<br/>读 graph.json<br/>统计 nodeCount/edgeCount"]
+  end
+
+  F1 -.->|"daemon 扫描"| R1
+  F2 -.->|"daemon 扫描"| R1
+  R5 --> C1
+  R5 --> C2
+  R5 --> C3
+  R5 --> C4
+    </pre>
+  </div>
+
+  <h3>边类型定义</h3>
+  <table>
+    <tr><th>边类型</th><th>语义</th><th>谁产生</th><th>谁确认</th><th>Board 使用</th></tr>
+    <tr><td><strong>derived_from</strong></td><td>A 的推理依据来自 B</td><td>compile LLM 标注</td><td>编译时自动（非 LLM 二次生成）</td><td>trace 模式全链追溯</td></tr>
+    <tr><td><strong>contradicts</strong></td><td>A 和 B 互相矛盾</td><td>daemon 矛盾检测</td><td>人类确认</td><td>challenge 模式强制全部带</td></tr>
+    <tr><td><strong>related</strong></td><td>A 和 B 有语义关联</td><td>compile 自动推导 + inspire 候选</td><td>自动推导的直接写入；inspire 的需人类确认</td><td>ask 模式 light 注入</td></tr>
+    <tr><td><strong>superseded_by</strong></td><td>A 被 B 取代</td><td>daemon 矛盾检测 → 人类确认</td><td>人类确认后写入</td><td>board 跳过 superseded 节点</td></tr>
+  </table>
+
+  <div class="callout good">
+    <strong>ingest = node + edge 的双重产出。</strong>
+    <p>每次 ingest（编译管线）完成后，系统自动产生两类 edge：</p>
+    <ul>
+      <li><strong>derived_from</strong> — compile LLM 在提取节点时标注推理链（如「节点B的claim基于节点A的命题」）→ 直接写入 frontmatter，无需人类确认</li>
+      <li><strong>related</strong> — compile LLM 自动推导语义关联（如同一 source、共享 tags、claim 关键词重叠）→ 直接写入</li>
+    </ul>
+    <p>这两类 edge 是 ingest 的<strong>内置产出</strong>——不需要额外步骤。contradicts 和 superseded_by 由 daemon 在 compile 后异步检测，写入 progress.md 等待人类确认。</p>
+    <p><strong>inspire 是独立的探索工具</strong>——它的目的是降低发现阈值，帮助人类发现不明显、非线性的关联和因果连接。inspire 产出的 related 候选<strong>必须人类确认</strong>（因为 LLM 在 inspire 模式下做的是推测性推理，不是在编译过程中根据命题原文推导）。</p>
+  </div>
+
+  <h3>graph.json 重建时机</h3>
+  <table>
+    <tr><th>触发</th><th>谁触发</th><th>说明</th></tr>
+    <tr><td>compile 后</td><td>daemon ③</td><td>wiki 文件变化 → 触发 audit → 完成后重建 graph.json</td></tr>
+    <tr><td>人类确认 edge 后</td><td>CLI 写入 edge 后</td><td>edge 写入 frontmatter → 触发重建</td></tr>
+    <tr><td>定期 lint 时</td><td>daemon ④</td><td>lint 顺便重建——确保 graph.json 不过时</td></tr>
+    <tr><td>graph.json 不存在时</td><td>board 装配前</td><td>fallback——现场扫描全部 frontmatter 重建</td></tr>
+  </table>
+
+  <div class="callout">
+    <strong>图谱是 P0 优先级的真正理由：</strong>不是"别人有所以我们也要有"——是"没有图谱，board 的残局就可能摆错棋子"。challenge 模式的 contradicts 边和 trace 模式的 derived_from 边不再依赖搜索——靠图谱的确定性关系。强制注入的可靠性从"LLM 标注 + 搜索排名"升级为"结构化的类型关系"。
+  </div>
+
+  <h3>模块设计</h3>
+  <table>
+    <tr><th>模块</th><th>状态</th><th>职责</th></tr>
+    <tr><td><code>knowledge/manifest.ts</code></td><td class="partial">⚠️ 已有 claim hash + related 预计算</td><td>升级为完整图谱 builder</td></tr>
+    <tr><td><strong>新建</strong> <code>knowledge/graph.ts</code></td><td class="missing">❌</td><td>graph.json 重建 + 读取 + orphan/contradiction 检测</td></tr>
+    <tr><td><strong>新建</strong> <code>evolution/contradiction.ts</code></td><td class="missing">❌</td><td>矛盾检测——跨来源 claim 对比 → contradicts 候选</td></tr>
+  </table>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="daemon">
+  <div class="section-head">
+    <div class="kicker">09 / Daemon Architecture</div>
+    <div>
+      <h2>Daemon 架构：CI pipeline · 七项职责</h2>
+      <p class="lead">daemon 是常驻 Node.js 进程——文件监听 + 定时器。类比 CI pipeline：自动跑测试但不决定修不修 bug。</p>
+    </div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  subgraph DAEMON_PROC["Daemon 进程（常驻）"]
+    subgraph WATCHER["文件监听器（chokidar）"]
+      W1["watch raw/chase/<br/>→ ① 命题提取"]
+      W2["watch wiki/<br/>→ ③ 触发 audit"]
+    end
+
+    subgraph TIMER["定时器（setInterval）"]
+      T1["每 60min<br/>→ ④ lint"]
+      T2["每 30min<br/>→ ⑥ 回流标记"]
+    end
+
+    subgraph EVENT["事件驱动"]
+      E1["compile 完成<br/>→ ⑦ 强化检测"]
+      E2["wiki 文件变化<br/>→ ⑧ graph.json 重建"]
+    end
+
+    subgraph CMD["命令接收"]
+      C1["人类 inspire 命令<br/>→ ⑤ inspire 执行"]
+    end
+
+    subgraph STATE_MGR["状态管理器"]
+      SM1["写 progress.md"]
+      SM2["写 daemon-state.json"]
+      SM3["写 lint-report.json"]
+    end
+  end
+
+  subgraph FS["文件系统"]
+    F1["chase/*.md"]
+    F2["wiki/*.md"]
+    F3["graph.json"]
+    F4["progress.md"]
+    F5["daemon-state.json"]
+    F6["lint-report.json"]
+  end
+
+  W1 -.->|"监听"| F1
+  W2 -.->|"监听"| F2
+  SM1 --> F4
+  SM2 --> F5
+  SM3 --> F6
+  C1 --> E1
+    </pre>
+  </div>
+
+  <h3>七项职责详解</h3>
+  <table>
+    <tr><th>#</th><th>职责</th><th>触发</th><th>执行逻辑</th><th>输出</th><th>daemon 不做什么</th></tr>
+    <tr>
+      <td>①</td>
+      <td>命题提取</td>
+      <td>raw/chase/ 新文件<br/>或 propositionExtracted=false</td>
+      <td>调 LLM（deepseek-v4-pro）→ 分割原子命题 → 插入 <code>&lt;!-- prop N --&gt;</code> marker</td>
+      <td>更新 chase MD<br/>写 daemon-state.json</td>
+      <td>不判断命题质量是否需要人工复核——写状态报告让 agent/人类决定</td>
+    </tr>
+    <tr>
+      <td>②</td>
+      <td>文件监听自动导入</td>
+      <td>chase 已有 prop marker</td>
+      <td>触发 <code>compile</code> 管线</td>
+      <td>wiki 节点写入 wiki/</td>
+      <td>不做选材判断——人类放文件已经做了这个决定</td>
+    </tr>
+    <tr>
+      <td>③</td>
+      <td>wiki 变化自动审查</td>
+      <td>wiki/ 文件变化</td>
+      <td>触发 <code>audit</code>（结构 + 语义）→ 写 audit-gate.json</td>
+      <td>auditStatus/auditScore 写入 frontmatter<br/>audit-gate.json 更新</td>
+      <td>不决定 audit 结果怎么用——agent 自己判断</td>
+    </tr>
+    <tr>
+      <td>④</td>
+      <td>定期 lint + 分级修复</td>
+      <td>定时器（60min）</td>
+      <td>扫描孤立节点、断裂引用、过时声明 → <strong>机械问题自动修复</strong>（断链、图重建） → 语义问题生成工单</td>
+      <td>lint-report.json<br/>progress.md 追加工单</td>
+      <td>不做语义修复——内容改写需人类确认</td>
+    </tr>
+    <tr>
+      <td>⑤</td>
+      <td>启发发现</td>
+      <td>人类命令触发<br/><code>llmwiki inspire</code></td>
+      <td>跑 inspire → 装配 inspire 模式 board → 产出 5 类候选</td>
+      <td>progress.md 追加 edge/connection 候选</td>
+      <td>不写入 edges——人类在结果中勾选确认后才写入</td>
+    </tr>
+    <tr>
+      <td>⑥</td>
+      <td>回流候选标记</td>
+      <td>定时器（30min）</td>
+      <td>扫描 query 历史 → LLM judge 判断值得固化的答案 → 标记 reflow 候选</td>
+      <td>progress.md 追加回流候选</td>
+      <td>不写回 wiki——人类确认后才写入</td>
+    </tr>
+    <tr>
+      <td>⑦</td>
+      <td>强化检测</td>
+      <td>compile 完成后</td>
+      <td>新节点 vs 已有节点语义一致检测 → 输出双维度（一致度 + 增量度） → 增量度 > 阈值 → 标记强化候选</td>
+      <td>progress.md 追加强化候选</td>
+      <td>不提升 auditScore——人类确认后才更新</td>
+    </tr>
+  </table>
+
+  <h3>daemon 与 CLI 的协作协议</h3>
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+sequenceDiagram
+    participant H as 人类
+    participant CLI as CLI (短命进程)
+    participant FS as 文件系统 (IPC)
+    participant D as Daemon (常驻进程)
+
+    H->>CLI: llmwiki ingest paper.pdf --auto
+    CLI->>FS: loader 写 chase 纯文本
+    CLI->>FS: compile 写 wiki 节点
+    CLI->>FS: 写 audit-gate.json
+    CLI-->>H: JSON 输出 (ok: true)
+
+    Note over D: daemon 监听到 wiki 变化
+    D->>FS: ③ 触发 audit (如果 CLI 没做)
+    D->>FS: ⑦ 强化检测
+    D->>FS: ⑧ graph.json 重建
+    D->>FS: 写 progress.md (强化候选)
+    D->>FS: 写 daemon-state.json
+
+    Note over CLI,D: 下一次 agent 会话
+    H->>CLI: llmwiki query "问题" --mode ask
+    CLI->>FS: 读 audit-gate.json
+    CLI->>FS: 读 graph.json
+    CLI->>FS: 读 daemon-state.json (积压状态)
+    CLI-->>H: JSON 输出 (含 audit 信号 + board)
+    </pre>
+  </div>
+
+  <div class="callout good">
+    <strong>daemon 与 agent 的关系：</strong>agent 不直接调 daemon，也不依赖 daemon 运行。agent 的标准流程完全自包含。daemon 是<strong>加速器</strong>——如果 daemon 在跑，agent 的 audit 可能已完成、graph.json 已是最新。如果 daemon 没在跑，agent 自己做（CLI 命令是完整的）。
+  </div>
+
+  <h3>模块设计</h3>
+  <table>
+    <tr><th>模块</th><th>状态</th><th>职责</th></tr>
+    <tr><td><strong>新建</strong> <code>daemon/index.ts</code></td><td class="missing">❌</td><td>daemon 进程入口——启动 watcher + timer + state manager</td></tr>
+    <tr><td><strong>新建</strong> <code>daemon/watcher.ts</code></td><td class="missing">❌</td><td>chokidar 文件监听——chase/ 和 wiki/ 目录</td></tr>
+    <tr><td><strong>新建</strong> <code>daemon/timer.ts</code></td><td class="missing">❌</td><td>setInterval 定时器——lint (60min) + reflow scan (30min)</td></tr>
+    <tr><td><strong>新建</strong> <code>daemon/state.ts</code></td><td class="missing">❌</td><td>状态文件原子写入——progress.md + daemon-state.json + lint-report.json</td></tr>
+    <tr><td><strong>新建</strong> <code>daemon/lint.ts</code></td><td class="missing">❌</td><td>lint 引擎——孤立/断链/过时/缺失检测 + 机械修复</td></tr>
+    <tr><td><strong>新建</strong> <code>daemon/reflow.ts</code></td><td class="missing">❌</td><td>回流候选标记——扫描 query 历史 + LLM judge 筛选</td></tr>
+    <tr><td><strong>新建</strong> <code>evolution/reinforce.ts</code></td><td class="missing">❌</td><td>强化检测——语义一致 + 证据增量双维度</td></tr>
+  </table>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="agent">
+  <div class="section-head">
+    <div class="kicker">10 / Agent Interface</div>
+    <div>
+      <h2>Agent 接口：CLI 命令 + JSON 契约</h2>
+      <p class="lead">agent 通过 CLI 命令调用发动机。所有输出是 JSON。失败有标准化的 failure JSON。exit code 区分硬关卡和软关卡。</p>
+    </div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TD
+  subgraph AGENT_FLOW["Agent 标准调用流程"]
+    A1["1. plan --json<br/>(dry-run 提取预览)"]
+    A2["2. ingest --auto --json<br/>(编译 + 自动审查)"]
+    A3["3. 读 daemon 状态<br/>check audit-gate.json"]
+    A4{"structure ok?"}
+    A5["❌ 停止<br/>结构 audit 未通过"]
+    A6{"semantic ok?"}
+    A7["⚠️ 信号弱<br/>agent 自行判断"]
+    A8["5. query / inspire --json"]
+    A9["6. status --json<br/>(读积压状态)"]
+    A1 --> A2 --> A3 --> A4
+    A4 -->|"否"| A5
+    A4 -->|"是/不存在"| A6
+    A6 -->|"否/null"| A7
+    A6 -->|"是"| A8
+    A7 --> A8
+    A8 --> A9
+  end
+    </pre>
+  </div>
+
+  <h3>CLI 命令清单</h3>
+  <table>
+    <tr><th>命令</th><th>调 LLM</th><th>输出</th><th>exit code</th></tr>
+    <tr><td><code>plan &lt;file&gt; --json</code></td><td>是（Pro 单步）</td><td>提取预览（不写 wiki）</td><td>0 / 1</td></tr>
+    <tr><td><code>ingest &lt;file&gt; --auto --policy &lt;p&gt; --json</code></td><td>是（Pro→Flash 两步）</td><td>sourceId + created[] + audit</td><td>0 / 1 / 2</td></tr>
+    <tr><td><code>audit --json</code></td><td>否</td><td>结构审计报告</td><td>0 / 2</td></tr>
+    <tr><td><code>audit --semantic --json</code></td><td>是（LLM judge）</td><td>5 维度 verdict + score</td><td>0 / 1</td></tr>
+    <tr><td><code>query &lt;q&gt; --mode &lt;m&gt; --json</code></td><td>是（LLM 推理）</td><td>answer + fromWiki[] + modelSynthesis[] + missingEvidence[]</td><td>0 / 1 / 2</td></tr>
+    <tr><td><code>inspire [--seed &lt;s&gt;] --json</code></td><td>是（LLM 推理）</td><td>5 类启发项候选</td><td>0 / 1</td></tr>
+    <tr><td><code>status --json</code></td><td>否</td><td>wiki 统计 + 审计状态 + 积压状态</td><td>0</td></tr>
+    <tr><td><code>search &lt;q&gt; --json</code></td><td>否</td><td>nodeId + relevance 列表</td><td>0</td></tr>
+    <tr><td><code>node &lt;nodeId&gt; --json</code></td><td>否</td><td>完整 wiki 页面</td><td>0</td></tr>
+    <tr><td><code>daemon [--background|--stop]</code></td><td>委托</td><td>daemon 控制</td><td>0 / 1</td></tr>
+    <tr><td><code>export --okf --out &lt;dir&gt;</code></td><td>否</td><td>OKF bundle 目录</td><td>0 / 1</td></tr>
+    <tr><td><code>import --okf &lt;dir&gt; [--dry-run]</code></td><td>是（走编译管线）</td><td>导入结果</td><td>0 / 1</td></tr>
+  </table>
+
+  <h3>Exit Code 语义</h3>
+  <table>
+    <tr><th>exit code</th><th>含义</th><th>agent 行为</th></tr>
+    <tr><td><strong>0</strong></td><td>成功</td><td>解析 JSON 输出，继续下一步</td></tr>
+    <tr><td><strong>1</strong></td><td>运行时错误</td><td>停止，报告 error</td></tr>
+    <tr><td><strong>2</strong></td><td>结构审计硬关卡失败</td><td>停止，不可继续 query。failure JSON 中 stage=<code>audit-structure</code></td></tr>
+  </table>
+
+  <div class="callout danger">
+    <strong>语义审计不产生 exit 2。</strong>语义审计失败走警告放行——信号通过 frontmatter 和 board 告知 agent。agent 读取 auditStatus 后自行判断是否继续 query。如果继续，board 中必须带 auditStatus=warning，LLM 在回答中必须声明"本回答包含 auditStatus=warning 的节点"。
+  </div>
+
+  <h3>Failure JSON 契约</h3>
+  <div class="pre-block">{
+  "ok": false,
+  "stage": "audit-structure",       // 精确 stage（不是泛化的 "audit"）
+  "error": "structure audit failed — required fields missing",
+  "blockingIssues": ["missing-nodeId", "missing-claim"],
+  "suggestedNextActions": ["run audit --json to see details"]
+}</div>
+
+  <h3>Query JSON 输出结构</h3>
+  <div class="pre-block">{
+  "ok": true,
+  "mode": "ask",
+  "answer": "...",
+  "fromWiki": [                      // 来自 wiki 的引用（有 audit 信号）
+    { "claim": "...", "nodeId": "...", "auditStatus": "passed", "auditScore": 0.91 }
+  ],
+  "modelSynthesis": [                // LLM 综合推理（无 wiki 锚点）
+    { "text": "...", "basedOn": ["nodeId-1", "nodeId-2"] }
+  ],
+  "missingEvidence": [               // 知识缺口
+    "需要 X 的实验验证数据"
+  ],
+  "board": {                         // board 装配统计
+    "seedCount": 5,
+    "forcedCount": 3,
+    "auditWarnings": 1
+  }
+}</div>
+
+  <h3>Agent 禁止行为</h3>
+  <div class="callout danger">
+    <ul style="margin:0; padding-left:18px;">
+      <li>ingest 失败后继续 query</li>
+      <li>结构审计失败后（exit 2）把 wiki 当可靠来源</li>
+      <li>语义信号弱时不告知用户——即使不阻止 query，也必须在回答中声明</li>
+      <li>把 modelSynthesis 当 fromWiki</li>
+      <li>隐藏 missingEvidence</li>
+      <li>替人类确认回流、edges、取代——这些需要人的判断力</li>
+    </ul>
+  </div>
+
+  <h3>模块设计</h3>
+  <table>
+    <tr><th>模块</th><th>状态</th></tr>
+    <tr><td><code>agent/contract.ts</code></td><td class="exists">✅ <code>buildFailureJson()</code> + <code>AgentStage</code> 类型</td></tr>
+    <tr><td><code>cli/index.ts</code></td><td class="exists">✅ commander 注册 9 子命令</td></tr>
+    <tr><td><code>cli/commands/*.ts</code></td><td class="exists">✅ ingest/audit/query/inspire/status/search/node/plan/chat</td></tr>
+    <tr><td><strong>新建</strong> <code>cli/commands/daemon.ts</code></td><td class="missing">❌ daemon 控制命令</td></tr>
+    <tr><td><strong>新建</strong> <code>cli/commands/export.ts</code></td><td class="missing">❌ OKF 导出</td></tr>
+    <tr><td><strong>新建</strong> <code>cli/commands/import.ts</code></td><td class="missing">❌ OKF 导入</td></tr>
+  </table>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="evolution">
+  <div class="section-head">
+    <div class="kicker">11 / Evolution System</div>
+    <div>
+      <h2>自进化系统：五个方向 + 信息卫生</h2>
+      <p class="lead">wiki 随使用越来越准——取代、自愈、连接、缺口、强化。所有 LLM 二次生成内容必经人类确认。</p>
+    </div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  GOAL["🎯 wiki 越来越准"]
+
+  subgraph AUTO["可以自动（机械操作）"]
+    A1["断链修复<br/>引用已删节点 → 更新引用"]
+    A2["图重建<br/>frontmatter → graph.json"]
+    A3["结构审计<br/>nodeId/kind/propRefs 检查"]
+    A4["embedding 生成"]
+    A5["增量编译检测<br/>文件是否变了"]
+  end
+
+  subgraph CANDIDATE["daemon 标记候选（不写入）"]
+    C1["取代候选<br/>矛盾检测 → contradicts 边"]
+    C2["回流候选<br/>LLM judge 筛选 query 答案"]
+    C3["强化候选<br/>语义一致 + 证据增量"]
+    C4["edge 候选<br/>inspire 发现隐藏关联"]
+    C5["语义 lint 工单<br/>claim 可能过时/漂移"]
+  end
+
+  subgraph HUMAN_GATE["人类确认闸门"]
+    H1["定期批量处理"]
+    H2["agent 预筛选排序"]
+    H3{"积压量"}
+    H4["<20 正常"]
+    H5["20-50 agent 提醒"]
+    H6[">50 自动降级"]
+  end
+
+  subgraph WRITE["确认后写入"]
+    W1["取代: superseded_by 标记"]
+    W2["回流: 新 wiki 节点 (reflowOrigin=true)"]
+    W3["强化: auditScore 提升"]
+    W4["edge: frontmatter edges 更新"]
+    W5["lint: 手动修复或升级"]
+  end
+
+  GOAL --> AUTO & CANDIDATE
+  CANDIDATE --> HUMAN_GATE
+  H1 --> H2 --> H3
+  H3 --> H4 & H5 & H6
+  H4 & H5 & H6 --> WRITE
+  AUTO --> A1 & A2 & A3 & A4 & A5
+    </pre>
+  </div>
+
+  <h3>五个方向详解</h3>
+
+  <div class="card-grid">
+    <div class="principle-card">
+      <span class="tag tag-blue">取代</span>
+      <h4>新材料淘汰旧声明</h4>
+      <p>矛盾检测 → contradicts 边 → 旧声明标候选 superseded → <strong>人类确认后</strong> superseded_by 写入 frontmatter。board 跳过 superseded 节点。</p>
+    </div>
+    <div class="principle-card">
+      <span class="tag tag-green">自愈</span>
+      <h4>定期 lint + 分级修复</h4>
+      <p>机械问题（断链、图重建）自动修复。语义问题（claim 过时、内容漂移）生成工单 → 人类确认后手动修复。</p>
+    </div>
+    <div class="principle-card">
+      <span class="tag tag-amber">连接</span>
+      <h4>发现隐藏关联（两层机制）</h4>
+      <p><strong>第一层 · ingest 自动：</strong>每次 compile 时，LLM 自动标注 derived_from 边（推理链）和 related 边（语义关联）→ 直接写入 frontmatter。这是 ingest 的内置产出——不需要额外步骤。</p>
+      <p><strong>第二层 · inspire 探索：</strong>人类手动触发 inspire → 装配 inspire 模式 board → 产出 edge 候选。inspire 的目的是<strong>降低发现阈值</strong>——帮助人类发现不明显、非线性的关联和因果连接。LLM 在 inspire 模式下做推测性推理，因此产出<strong>必须人类确认</strong> → 写入 frontmatter edges。</p>
+    </div>
+    <div class="principle-card">
+      <span class="tag tag-rose">缺口</span>
+      <h4>标记知识空白</h4>
+      <p>query 的 missingEvidence + inspire 的 missingEvidence + lint 的孤立节点 → 写入 progress.md → 人类决定是否填补。</p>
+    </div>
+    <div class="principle-card">
+      <span class="tag tag-brand">强化</span>
+      <h4>新材料支持已有声明</h4>
+      <p>compile 后 daemon 检测新节点与已有节点的语义一致 → 双维度判断（一致度 + 增量度）→ 增量度 > 阈值 → 标记候选 → <strong>人类确认后</strong> auditScore 提升。</p>
+    </div>
+  </div>
+
+  <h3>强化检测的双维度判断</h3>
+  <table>
+    <tr><th>维度</th><th>问题</th><th>计算</th><th>阈值</th></tr>
+    <tr><td><strong>语义一致度</strong></td><td>两个 claim 真的在说同一件事吗？</td><td>LLM judge 对比 claim A 和 claim B 的语义相似性</td><td>> 0.7 才继续</td></tr>
+    <tr><td><strong>证据增量度</strong></td><td>新来源是否提供了独立的经验证据？</td><td>LLM judge 判断新来源是否有旧来源没有的验证</td><td>> 0.5 才标记候选</td></tr>
+  </table>
+
+  <div class="callout warn">
+    <strong>trivial vs genuine reinforcement：</strong>两本书都说"1/e ≈ 0.368"——语义一致度 1.0，但证据增量度 0.0（数学常数不需要独立验证）→ 不标记候选。论文 A 说"X 有效"，论文 B 说"我们在独立实验中复现了 X"——一致度 0.9，增量度 0.8 → 标记候选。
+  </div>
+
+  <h3>回流节点的信任层级</h3>
+  <table>
+    <tr><th></th><th>编译节点</th><th>回流节点</th></tr>
+    <tr><td>来源</td><td>chase 命题 → compiler 提取</td><td>query LLM 基于多个节点综合推理</td></tr>
+    <tr><td>证据锚点</td><td>sourceChase + propRefs → 可追溯</td><td>derived_from 边 → 指向推理来源，无 chase 原文</td></tr>
+    <tr><td>audit</td><td>✅ judge 可对比 claim vs chase 命题</td><td>❌ 无 chase 原文，audit 不可用</td></tr>
+    <tr><td>frontmatter 标记</td><td>reflowOrigin: false</td><td>reflowOrigin: true</td></tr>
+    <tr><td>board 行为</td><td>正常使用</td><td>LLM 能区分"原文说的"和"LLM 推的"</td></tr>
+  </table>
+
+  <h3>模块设计</h3>
+  <table>
+    <tr><th>模块</th><th>状态</th><th>职责</th></tr>
+    <tr><td><strong>新建</strong> <code>evolution/contradiction.ts</code></td><td class="missing">❌</td><td>矛盾检测——跨来源 claim 对比 → contradicts 候选</td></tr>
+    <tr><td><strong>新建</strong> <code>evolution/supersede.ts</code></td><td class="missing">❌</td><td>取代确认流程——人类确认 → superseded_by 写入</td></tr>
+    <tr><td><strong>新建</strong> <code>evolution/reflow.ts</code></td><td class="missing">❌</td><td>回流候选标记 + 确认写入（reflowOrigin=true）</td></tr>
+    <tr><td><strong>新建</strong> <code>evolution/reinforce.ts</code></td><td class="missing">❌</td><td>强化检测——双维度判断 + 候选标记 + 确认后 auditScore 更新</td></tr>
+    <tr><td><strong>新建</strong> <code>daemon/lint.ts</code></td><td class="missing">❌</td><td>lint 引擎——孤立/断链/过时检测 + 机械修复</td></tr>
+    <tr><td><strong>新建</strong> <code>evolution/confirm.ts</code></td><td class="missing">❌</td><td>确认管线——读候选 + agent 预筛选 + 积压降级</td></tr>
+  </table>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="state">
+  <div class="section-head">
+    <div class="kicker">12 / State Management</div>
+    <div>
+      <h2>状态管理：文件系统作为唯一 IPC</h2>
+      <p class="lead">CLI 和 daemon 不直接通信——通过文件系统协作。daemon 写状态文件，CLI 读状态文件。原子写入防止并发损坏。</p>
+    </div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart LR
+  subgraph WRITERS["写入方"]
+    DAEMON_W["Daemon<br/>(主写入方)"]
+    CLI_W["CLI<br/>(写入 wiki + audit-gate)"]
+    HUMAN_W["人类确认<br/>(通过 CLI 写入 edges/supersede)"]
+  end
+
+  subgraph STATE_FILES["状态文件"]
+    F1["progress.md<br/>候选清单 + 工单"]
+    F2["daemon-state.json<br/>运行状态 + 积压统计"]
+    F3["lint-report.json<br/>问题清单"]
+    F4["audit-gate.json<br/>审计关卡"]
+    F5["graph.json<br/>图谱聚合索引"]
+    F6["wiki/*.md<br/>节点（frontmatter 为真相源）"]
+  end
+
+  subgraph READERS["读取方"]
+    AGENT_R["Agent CLI<br/>读状态做决策"]
+    DAEMON_R["Daemon<br/>读 wiki 变化触发"]
+    HUMAN_R["人类<br/>读 progress.md 做确认"]
+  end
+
+  DAEMON_W -->|"原子写"| F1 & F2 & F3 & F5
+  CLI_W -->|"原子写"| F4 & F6
+  HUMAN_W -->|"通过 CLI 原子写"| F6
+
+  F1 --> HUMAN_R & AGENT_R
+  F2 --> AGENT_R
+  F3 --> AGENT_R & HUMAN_R
+  F4 --> AGENT_R
+  F5 --> AGENT_R
+  F6 --> DAEMON_R & AGENT_R
+    </pre>
+  </div>
+
+  <h3>原子写入协议</h3>
+  <p>所有状态文件的写入采用 <strong>write-to-temp + rename</strong> 模式，防止 daemon 和 CLI 并发写入导致文件损坏：</p>
+  <div class="pre-block">// 原子写入伪代码
+function atomicWrite(filePath, content) {
+  const tmp = filePath + ".tmp." + process.pid;
+  fs.writeFileSync(tmp, content);
+  fs.renameSync(tmp, filePath);  // 原子操作
+}</div>
+
+  <h3>状态文件职责矩阵</h3>
+  <table>
+    <tr><th>文件</th><th>谁写</th><th>谁读</th><th>内容</th><th>写入时机</th></tr>
+    <tr><td><code>progress.md</code></td><td>daemon</td><td>人类 + agent</td><td>回流候选 + edge 候选 + 强化候选 + 取代候选 + lint 工单</td><td>每次候选产生时追加</td></tr>
+    <tr><td><code>daemon-state.json</code></td><td>daemon</td><td>agent</td><td>运行状态 + 积压统计 + 时间戳</td><td>每次 daemon 操作后更新</td></tr>
+    <tr><td><code>lint-report.json</code></td><td>daemon</td><td>agent + 人类</td><td>问题清单（孤立节点 + 断链 + 语义工单）</td><td>每次 lint 完成后</td></tr>
+    <tr><td><code>audit-gate.json</code></td><td>CLI + daemon</td><td>agent + daemon</td><td>结构 + 语义审计关卡状态</td><td>每次 audit 完成后</td></tr>
+    <tr><td><code>graph.json</code></td><td>daemon</td><td>agent CLI (board)</td><td>图谱聚合索引——nodes + edges + orphans + contradictions</td><td>wiki 变化后 + 定期 lint 时</td></tr>
+    <tr><td><code>wiki/*.md</code></td><td>CLI (compile) + CLI (人类确认)</td><td>daemon + agent</td><td>wiki 节点——frontmatter (真相源) + body</td><td>compile 时 + 人类确认时</td></tr>
+  </table>
+
+  <div class="callout">
+    <strong>graph.json 不存在时的 fallback：</strong>board 装配前检查 graph.json。如果不存在或超过 1 小时未更新——现场扫描全部 wiki frontmatter 在<strong>内存中</strong>重建。CLI fallback 只读不写——只有 daemon 有写 graph.json 的权限。消除竞态丢失。这保证了即使 daemon 没运行，agent 也能正常工作。
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="hygiene">
+  <div class="section-head">
+    <div class="kicker">13 / Information Hygiene</div>
+    <div>
+      <h2>信息卫生管线：自动 vs 人工边界</h2>
+      <p class="lead">所有 LLM 二次生成内容必须人类确认才能进入 wiki。机械操作可以自动——语义操作不能自动。</p>
+    </div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart LR
+  subgraph AUTO["✅ 可以自动（机械操作）"]
+    A1["格式转换<br/>PDF→MD"]
+    A2["命题分割<br/>prop marker 插入"]
+    A3["结构审计<br/>字段检查"]
+    A4["embedding 生成"]
+    A5["增量编译检测"]
+    A6["图重建<br/>frontmatter→graph.json"]
+    A7["搜索索引更新"]
+    A8["断链修复<br/>引用更新"]
+  end
+
+  subgraph CANDIDATE["⚠️ daemon 标记候选（不写入）"]
+    C1["回流候选"]
+    C2["edge 候选"]
+    C3["强化候选"]
+    C4["取代候选"]
+    C5["语义 lint 工单"]
+  end
+
+  subgraph HUMAN["👤 人类确认后写入"]
+    H1["回流: 新节点<br/>reflowOrigin=true"]
+    H2["edge: frontmatter<br/>edges 更新"]
+    H3["强化: auditScore<br/>提升"]
+    H4["取代: superseded_by<br/>标记"]
+    H5["lint: 手动修复<br/>内容改写"]
+  end
+
+  AUTO --> CANDIDATE
+  CANDIDATE --> HUMAN
+    </pre>
+  </div>
+
+  <h3>积压管理机制</h3>
+  <table>
+    <tr><th>积压量</th><th>状态</th><th>行为</th></tr>
+    <tr class="row-brand"><td>&lt; 20</td><td>正常</td><td>继续积压，等人类定期处理</td></tr>
+    <tr class="row-warn"><td>20-50</td><td>警告</td><td>agent 每次会话开头提醒人类"有 X 条待确认，建议本周处理"</td></tr>
+    <tr class="row-danger"><td>&gt; 50</td><td>溢出</td><td>自动降级：低优先级项标记超时跳过，中项合并同类，只保留核心风险项</td></tr>
+  </table>
+
+  <h3>agent 预筛选排序</h3>
+  <p>agent 在会话开头读待确认清单，用 LLM 按两个维度排序：</p>
+  <table>
+    <tr><th>维度</th><th>问题</th><th>排序逻辑</th></tr>
+    <tr><td><strong>风险</strong></td><td>这条如果错了，对 query 质量的影响有多大？</td><td>被频繁引用的核心 claim > 低频引用的边缘 claim</td></tr>
+    <tr><td><strong>置信度</strong></td><td>daemon 判断的把握有多高？</td><td>LLM judge 高分 > 低分</td></tr>
+  </table>
+  <p>高风险 + 高置信度排前面。低风险 + 低置信度可以滞后或丢弃。</p>
+
+  <h3>人类确认的用户界面</h3>
+  <p>人类确认时看到的最小信息集（以强化确认为例）：</p>
+  <div class="pre-block">### 强化候选 [reinforce-001]
+
+已有节点: shor-rsa-threat
+  claim: "Shor算法对RSA加密构成根本性威胁"
+  当前 auditScore: 0.91
+  chase 命题锚点: prop 2 "Shor算法对RSA加密构成威胁"
+
+新来源节点: shor-rsa-confirmation
+  claim: "独立实验确认Shor算法在多项式时间内分解RSA-2048"
+  source: raw/pdf/another-paper
+  chase 命题锚点: prop 5 "实验复现了分解结果"
+
+daemon judge 判断:
+  语义一致度: 0.88 (两个 claim 在说同一件事)
+  证据增量度: 0.75 (新来源提供了独立实验验证)
+  建议新 auditScore: 0.94
+
+人类判断:
+  ☐ 确认提升 (genuine reinforcement)
+  ☐ 拒绝 (trivial reinforcement — 无独立验证)
+  ☐ 跳过 (需要更多信息)</div>
+    </pre>
+  </div>
+
+  <div class="callout good">
+    <strong>知识策展不是通知驱动的碎片化操作。</strong>认知科学上叫"注意力切换成本"——每次切换 15-25 分钟恢复。一周集中处理 20 条 vs 每天被打断 3 次——前者的总认知成本远低于后者。代码 review、论文审稿、合规审计都是批量做的——知识策展也一样。
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="process">
+  <div class="section-head">
+    <div class="kicker">14 / Process Model</div>
+    <div>
+      <h2>进程模型与部署</h2>
+      <p class="lead">两个进程类型：CLI（短命·按需）和 daemon（常驻·后台）。通过文件系统协作，不需要 socket/IPC。</p>
+    </div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  subgraph RUNTIME["运行时"]
+    subgraph CLI_PROC["CLI 进程（短命）"]
+      CLI1["agent/人类调用<br/>llmwiki ingest/query/inspire"]
+      CLI2["执行完毕<br/>exit 0/1/2"]
+    end
+
+    subgraph DAEMON_PROC["Daemon 进程（常驻）"]
+      D1["llmwiki daemon --background"]
+      D2["chokidar watcher<br/>监听 chase/ + wiki/"]
+      D3["setInterval timers<br/>lint 60min + reflow 30min"]
+      D4["事件处理<br/>命题提取/audit/强化/重建"]
+      D5["状态写入<br/>progress.md + daemon-state.json"]
+    end
+  end
+
+  subgraph FS["文件系统（共享状态）"]
+    F1["chase/*.md"]
+    F2["wiki/*.md"]
+    F3["state files"]
+  end
+
+  CLI1 -->|"写"| F1 & F2
+  CLI1 -->|"读"| F3
+  D2 -.->|"监听"| F1 & F2
+  D4 -->|"写"| F1 & F2 & F3
+  D5 -->|"写"| F3
+    </pre>
+  </div>
+
+  <h3>进程生命周期</h3>
+  <table>
+    <tr><th></th><th>CLI 进程</th><th>Daemon 进程</th></tr>
+    <tr><td>启动</td><td>agent/人类调用 <code>llmwiki &lt;cmd&gt;</code></td><td><code>llmwiki daemon --background</code></td></tr>
+    <tr><td>生命周期</td><td>短命——执行完命令即退出</td><td>常驻——直到 <code>--stop</code> 或进程被杀</td></tr>
+    <tr><td>状态</td><td>无状态——每次调用独立</td><td>有状态——运行状态写入 daemon-state.json</td></tr>
+    <tr><td>LLM 调用</td><td>按命令需要调（ingest/query/audit/inspire）</td><td>命题提取/语义 audit/lint/回流/强化检测</td></tr>
+    <tr><td>文件写入</td><td>wiki 节点 + audit-gate.json</td><td>progress.md + daemon-state.json + lint-report.json + graph.json + chase prop marker</td></tr>
+    <tr><td>并发控制</td><td>不需要——短命进程</td><td>原子写入（temp+rename）防止与 CLI 冲突</td></tr>
+  </table>
+
+  <h3>daemon 进程管理</h3>
+  <div class="pre-block"># 前台运行（开发调试）
+llmwiki daemon
+
+# 后台运行（长期运行）
+llmwiki daemon --background
+
+# 查看日志
+tail -f loopadvance/daemon.log
+
+# 停止——读 daemon-state.json 的 pid 字段发 SIGTERM
+llmwiki daemon --stop
+
+# 查看状态——检查 lastHeartbeat 判断 daemon 是否活着
+llmwiki status --json  # 包含 daemon 运行状态</div>
+  <p><strong>无独立 PID 文件。</strong>daemon-state.json 已包含 <code>pid</code> + <code>startedAt</code> 字段，新增 <code>lastHeartbeat</code>——daemon 每 30 秒更新一次。<code>--stop</code> 读 pid 发 SIGTERM；如果 kill 失败则标记为 stale。<code>status --json</code> 检查 <code>lastHeartbeat</code> 是否在 60 秒内——超过则报告 daemon 不在运行。</p>
+
+  <h3>daemon 不运行时的 fallback</h3>
+  <table>
+    <tr><th>功能</th><th>daemon 在跑</th><th>daemon 没跑</th></tr>
+    <tr><td>命题提取</td><td>自动——文件监听触发</td><td>不发生——chase 没有 prop marker，compile 无法执行（需 daemon 或手动触发命题提取后才能 compile）</td></tr>
+    <tr><td>audit</td><td>自动——wiki 变化触发</td><td>手动——agent 调 <code>audit --json</code></td></tr>
+    <tr><td>graph.json</td><td>自动——定期重建</td><td>fallback——board 装配前现场重建</td></tr>
+    <tr><td>lint</td><td>自动——定时器触发</td><td>不发生——wiki 可能积累孤立节点</td></tr>
+    <tr><td>回流/强化</td><td>自动标记候选</td><td>不发生——没有候选产生</td></tr>
+    <tr><td>inspire</td><td>daemon 执行</td><td>CLI 直接执行（<code>llmwiki inspire</code>）</td></tr>
+  </table>
+
+  <div class="callout good">
+    <strong>核心设计原则：</strong>agent 的标准流程完全自包含——不依赖 daemon 运行。daemon 是加速器，不是必需品。如果 daemon 没在跑，agent 自己做（CLI 命令是完整的）。daemon 在跑时，agent 读状态文件发现"audit 已完成"——跳过自己做的步骤。
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="okf">
+  <div class="section-head">
+    <div class="kicker">15 / OKF Integration</div>
+    <div>
+      <h2>OKF 集成：导出/导入管线</h2>
+      <p class="lead">wiki 节点格式天然兼容 OKF v0.1。零改造成本——只需 kind→type 映射。</p>
+    </div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart LR
+  subgraph EXPORT["导出流程"]
+    E1["llmwiki export --okf --out ./bundle"]
+    E2["读取 wiki/*.md"]
+    E3["kind → type 映射<br/>createdAt → timestamp 映射<br/>propRefs → citations 映射"]
+    E4["写入 OKF bundle<br/>(标准 Markdown + YAML)"]
+    E5["生成 index.md + log.md"]
+    E1 --> E2 --> E3 --> E4 --> E5
+  end
+
+  subgraph IMPORT["导入流程"]
+    I1["llmwiki import --okf ./external-bundle"]
+    I2["读取 OKF bundle"]
+    I3["type → kind 映射<br/>timestamp → createdAt 映射"]
+    I4["每个 concept 视为 wiki 节点 draft"]
+    I5["进入编译管线<br/>audit + gate 流程"]
+    I6["写回 wiki/"]
+    I1 --> I2 --> I3 --> I4 --> I5 --> I6
+  end
+    </pre>
+  </div>
+
+  <h3>字段映射</h3>
+  <table>
+    <tr><th>OKF 字段</th><th>LiteWikiagent 字段</th><th>映射方式</th></tr>
+    <tr><td><code>type</code></td><td><code>kind</code></td><td>9 kind → OKF type（concept→Concept, claim→Claim, 等）</td></tr>
+    <tr><td><code>title</code> + <code>description</code></td><td>已有</td><td>零差距</td></tr>
+    <tr><td><code>tags</code></td><td>已有</td><td>零差距</td></tr>
+    <tr><td><code>timestamp</code></td><td><code>createdAt</code> / <code>updatedAt</code></td><td>小映射</td></tr>
+    <tr><td>index.md + log.md</td><td>已有</td><td>零差距</td></tr>
+    <tr><td>Citations section</td><td>chase propRefs</td><td>向下兼容（LiteWikiagent 更细粒度）</td></tr>
+    <tr><td>Bundle</td><td>wiki/ 目录</td><td>零差距</td></tr>
+  </table>
+
+  <div class="callout good">
+    <strong>导入不绕过质量闸门。</strong>外部 OKF 内容进入编译管线——走 audit + gate 流程。外部知识不会因为"已经是 OKF 格式"就跳过审计。这是信息卫生原则的延伸。
+  </div>
+
+  <h3>模块设计</h3>
+  <table>
+    <tr><th>模块</th><th>状态</th><th>职责</th></tr>
+    <tr><td><strong>新建</strong> <code>okf/export.ts</code></td><td class="missing">❌</td><td>OKF bundle 导出——字段映射 + 目录生成</td></tr>
+    <tr><td><strong>新建</strong> <code>okf/import.ts</code></td><td class="missing">❌</td><td>OKF bundle 导入——字段映射 + 进入编译管线</td></tr>
+    <tr><td><strong>新建</strong> <code>okf/mapping.ts</code></td><td class="missing">❌</td><td>kind↔type 映射表 + timestamp↔createdAt 映射</td></tr>
+    <tr><td><strong>新建</strong> <code>cli/commands/export.ts</code></td><td class="missing">❌</td><td>CLI <code>export --okf</code></td></tr>
+    <tr><td><strong>新建</strong> <code>cli/commands/import.ts</code></td><td class="missing">❌</td><td>CLI <code>import --okf</code></td></tr>
+  </table>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="modules">
+  <div class="section-head">
+    <div class="kicker">16 / Module Map</div>
+    <div>
+      <h2>模块映射：现有代码 → 目标架构</h2>
+      <p class="lead">当前代码库已有组件 + 需要新建的组件 + 需要改造的组件——完整清单。</p>
+    </div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  subgraph EXISTING["✅ 已有（保留/改造）"]
+    E1["core/client.ts<br/>DeepSeek API 客户端"]
+    E2["core/prefix.ts<br/>Prompt 构建"]
+    E3["ingest/loader.ts<br/>MD Loader"]
+    E4["ingest/pdf-loader.ts<br/>PDF Loader"]
+    E5["ingest/tex-loader.ts<br/>TeX Loader"]
+    E6["ingest/listening.ts<br/>Pro 两步 compile"]
+    E7["ingest/policy.ts<br/>三级确认策略"]
+    E8["knowledge/store.ts<br/>文件存储"]
+    E9["knowledge/chase.ts<br/>chase 读取 (改造: prop marker)"]
+    E10["knowledge/audit.ts<br/>结构审计"]
+    E11["knowledge/semantic-audit.ts<br/>语义审计 (改造: prop 锚点)"]
+    E12["knowledge/semantic-audit-prompt.ts (改造)"]
+    E13["knowledge/audit-gate.ts<br/>跨进程关卡"]
+    E14["knowledge/manifest.ts<br/>(升级为 graph.ts)"]
+    E15["knowledge/wiki-parser.ts<br/>wiki 解析"]
+    E16["knowledge/render.ts<br/>节点渲染"]
+    E17["query/board.ts<br/>6 模式装配"]
+    E18["query/engine.ts<br/>查询引擎"]
+    E19["query/search.ts<br/>(改造为 SearchProvider)"]
+    E20["agent/contract.ts<br/>failure JSON"]
+    E21["cli/index.ts + commands/*.ts<br/>CLI 命令"]
+  end
+
+  subgraph NEW["❌ 新建"]
+    N1["ingest/proposition.ts<br/>命题提取"]
+    N2["knowledge/graph.ts<br/>图谱系统"]
+    N3["daemon/index.ts<br/>daemon 入口"]
+    N4["daemon/watcher.ts<br/>文件监听"]
+    N5["daemon/timer.ts<br/>定时器"]
+    N6["daemon/state.ts<br/>状态管理"]
+    N7["daemon/lint.ts<br/>lint 引擎"]
+    N8["daemon/reflow.ts<br/>回流标记"]
+    N9["evolution/contradiction.ts<br/>矛盾检测"]
+    N10["evolution/supersede.ts<br/>取代确认"]
+    N11["evolution/reflow.ts<br/>回流确认"]
+    N12["evolution/reinforce.ts<br/>强化检测"]
+    N13["evolution/confirm.ts<br/>确认管线"]
+    N14["query/search-provider.ts<br/>搜索接口抽象"]
+    N15["okf/export.ts<br/>OKF 导出"]
+    N16["okf/import.ts<br/>OKF 导入"]
+    N17["okf/mapping.ts<br/>字段映射"]
+    N18["cli/commands/daemon.ts"]
+    N19["cli/commands/export.ts"]
+    N20["cli/commands/import.ts"]
+  end
+    </pre>
+  </div>
+
+  <h3>改造清单</h3>
+  <table>
+    <tr><th>模块</th><th>改造内容</th><th>原因</th></tr>
+    <tr><td><code>knowledge/chase.ts</code></td><td>只支持 <code>&lt;!-- prop N --&gt;</code> marker（不兼容旧 chunk）。新增 <code>readChaseProps()</code>，移除 <code>readChaseChunks()</code></td><td>命题级分块升级</td></tr>
+    <tr><td><code>knowledge/semantic-audit-prompt.ts</code></td><td>prompt 改为 prop 级锚点。要求 judge 输出 evidence-anchored verdict（带具体 prop 原文引用）</td><td>三层防御第一层</td></tr>
+    <tr><td><code>knowledge/semantic-audit.ts</code></td><td>读 propRefs（替代 chunkRefs）。写 auditVerdict 含 anchor 字段</td><td>命题级证据锚点</td></tr>
+    <tr><td><code>query/search.ts</code></td><td>抽象为 <code>SearchProvider</code> 接口。当前实现改为 <code>KeywordSearchProvider</code></td><td>搜索后端可替换</td></tr>
+    <tr><td><code>query/board.ts</code></td><td>强制注入从读 <code>chunkRefs</code> 改为读 <code>propRefs</code> + <code>graph.json</code></td><td>命题级 + 图谱驱动</td></tr>
+    <tr><td><code>knowledge/manifest.ts</code></td><td>升级为 <code>graph.ts</code>——完整图谱 builder</td><td>图谱系统</td></tr>
+    <tr><td><code>agent/contract.ts</code></td><td>AgentStage 增加 <code>audit-structure</code> 精确值</td><td>区分结构/语义审计</td></tr>
+    <tr><td><code>types.ts</code></td><td>WikiFrontmatter 增加 <code>propRefs</code>, <code>auditVerdict</code>, <code>reflowOrigin</code>, <code>edges</code> 字段</td><td>数据模型升级</td></tr>
+  </table>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="open">
+  <div class="section-head">
+    <div class="kicker">17 / Open Questions</div>
+    <div>
+      <h2>待决断问题</h2>
+      <p class="lead">以下架构决策需要进一步确认——当前文档给出了推荐方案，但尚未最终定论。</p>
+    </div>
+  </div>
+
+  <table>
+    <tr><th>#</th><th>问题</th><th>推荐方案</th><th>状态</th></tr>
+    <tr>
+      <td>1</td>
+      <td><strong>图谱存储模型</strong></td>
+      <td>方案 A：frontmatter 为真相源，graph.json 为 daemon 重建的聚合索引</td>
+      <td class="exists">✅ 已确认</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td><strong>daemon 进程管理</strong></td>
+      <td>单 Node.js 进程 + chokidar 文件监听 + setInterval 定时器。后台模式用 child_process detach。无独立 PID 文件——daemon-state.json 含 pid + lastHeartbeat 字段，--stop 读 pid 发 SIGTERM，status --json 检查 lastHeartbeat 判断 daemon 是否活着</td>
+      <td class="exists">✅ 已确认</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td><strong>搜索后端切换</strong></td>
+      <td>SearchProvider 接口抽象。v1 只用 KeywordSearchProvider（当前 Intl.Segmenter），接口定义好但不做配置切换（YAGNI）。qmd 集成时再加 QmdSearchProvider + 配置项</td>
+      <td class="exists">✅ 已确认</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td><strong>LLM Provider 抽象</strong></td>
+      <td>现在抽 LLMProvider 接口（chat/chatWithThinking），DeepSeekProvider 实现它。compile/audit/query 调 LLMProvider 不调具体类。"哪个步骤用哪个模型"收敛到 provider 配置——不散在 prefix.ts 和 listening.ts 里。跨模型审计（第三层防御）随时能加第二个实现</td>
+      <td class="exists">✅ 已确认</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td><strong>状态文件并发写入</strong></td>
+      <td>原子写入（write-to-temp + rename）。daemon 是状态文件主写入方，CLI 是 wiki + audit-gate 主写入方。graph.json 只有 daemon 有写权限——CLI fallback 只在内存中重建，不写文件。消除竞态丢失</td>
+      <td class="exists">✅ 已确认</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td><strong>向后兼容策略</strong></td>
+      <td>不兼容。当前 wiki 节点量少，全部清空后直接用新格式。chase.ts 只支持 prop marker，frontmatter 只用 propRefs。无 chunkRefs fallback 逻辑</td>
+      <td class="exists">✅ 已确认</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td><strong>inspire 的 CLI 调用方</strong></td>
+      <td>inspire 由人类通过 CLI 手动触发（<code>llmwiki inspire</code>）。daemon 职责⑤只是"执行 inspire 命令"——不是定时自动跑</td>
+      <td class="exists">✅ 已确认</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td><strong>propRefs vs chunkRefs 字段命名</strong></td>
+      <td>frontmatter 只用 <code>propRefs</code>。旧节点全部清空——不做双字段共存，不做迁移脚本。代码只读 propRefs，无 fallback</td>
+      <td class="exists">✅ 已确认</td>
+    </tr>
+  </table>
+
+  <div class="callout good">
+    <strong>所有 8 个架构决断已全部确认。</strong>架构设计文档 v1.0 的决断已闭环——可以进入施工细则阶段。
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <p>生成日期：2026-07-08 · v1.0 · 基于 <a href="./product-definition.html">产品定义 v3.1</a> + <a href="./user-guide.html">用户使用文档 v3.0</a><br>
+  本文档是系统架构设计——覆盖分层架构、数据模型、管线设计、进程模型、状态管理、模块映射。<br>
+  与产品定义（做什么·为什么）和用户指南（怎么用）配套——架构文档回答"怎么构建"。</p>
+</footer>
+</div>
+</body>
+</html>

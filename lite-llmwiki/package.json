@@ -35,6 +35,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@tobilu/qmd": "^2.5.3",
     "commander": "^13.0.0",
     "ink": "^7.0.4",
     "ink-text-input": "^6.0.0",

@@ -3,13 +3,13 @@
  *
  * 覆盖：
  * - runQueryCli 装配 board + 调 LLM
- * - 无 API key 时 board-only 模式（不调 LLM）
+ * - llmCaller 必填（设计决策：本产品必须有 API key）
  * - JSON 输出含 board + answer
  * - exit code 正确
  */
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppConfig, QueryBoard } from "../src/types.js";
 import { renderWikiNode } from "../src/knowledge/render.js";
@@ -37,13 +37,13 @@ afterEach(() => {
 function saveDraft(draft: WikiNodeDraft) {
   const relPath = draft.filePath.startsWith("wiki/") ? draft.filePath.slice(5) : draft.filePath;
   const fullPath = join(config.wikiDir, relPath);
-  require("node:fs").mkdirSync(require("node:path").dirname(fullPath), { recursive: true });
+  mkdirSync(dirname(fullPath), { recursive: true });
   writeFileSync(fullPath, renderWikiNode(draft), "utf-8");
 }
 
 function setupChase(content: string) {
   const dir = join(config.rawDir, "chase");
-  require("node:fs").mkdirSync(dir, { recursive: true });
+  mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "raw_x-abcd.md"), content, "utf-8");
 }
 
@@ -58,14 +58,14 @@ function makeDraft(overrides: Partial<WikiNodeDraft> = {}): WikiNodeDraft {
       kind: "concept",
       sourceIds: ["raw_x-abcd"],
       sourceChase: ["raw/chase/raw_x-abcd.md"],
-      chunkRefs: [1],
+      propRefs: ["1"],
       confidence: 0.8,
       status: "verified",
       tags: [],
       related: [],
     },
     claim: "claim about 1/e",
-    evidence: [{ sourceId: "raw_x-abcd", chunkRefs: [1], summary: "s" }],
+    evidence: [{ sourceId: "raw_x-abcd", propRefs: ["1"], summary: "s" }],
     ...overrides,
   };
 }
@@ -73,6 +73,14 @@ function makeDraft(overrides: Partial<WikiNodeDraft> = {}): WikiNodeDraft {
 function captureStdout(line: string) {
   stdoutSink.push(line);
 }
+
+// mock LLM caller
+const mockLlmCaller = vi.fn(async () => ({
+  answer: "mock answer",
+  fromWiki: [],
+  modelSynthesis: [],
+  missingEvidence: [],
+}));
 
 describe("runQueryCli — board 装配 + LLM 调用", () => {
   it("装配 board 并调 LLM caller", async () => {
@@ -96,15 +104,16 @@ describe("runQueryCli — board 装配 + LLM 调用", () => {
     expect(result.exitCode).toBe(0);
   });
 
-  it("无 API key + 无 LLM caller → board-only 模式", async () => {
+  it("llmCaller 必填 — 注入 mock caller 正常工作", async () => {
     setupChase("<!-- chunk 1 -->\nA\n");
     saveDraft(makeDraft());
     const result = await runQueryCli(config, "what is 1/e?", {
       mode: "ask",
       json: true,
+      llmCaller: mockLlmCaller,
       stdout: captureStdout,
     });
-    expect(result.answer).toMatch(/no api key|board-only/i);
+    expect(result.answer).toBe("mock answer");
     expect(result.board.seedNodes.length).toBeGreaterThan(0);
   });
 
@@ -114,6 +123,7 @@ describe("runQueryCli — board 装配 + LLM 调用", () => {
     const result = await runQueryCli(config, "what is 1/e?", {
       mode: "exact", // → trace
       json: true,
+      llmCaller: mockLlmCaller,
       stdout: captureStdout,
     });
     expect(result.board.mode).toBe("trace");

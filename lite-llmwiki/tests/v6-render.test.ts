@@ -24,7 +24,7 @@ function makeDraft(overrides: Partial<WikiNodeDraft> = {}): WikiNodeDraft {
       kind: "concept",
       sourceIds: ["raw_pdf_test-abcd"],
       sourceChase: ["raw/chase/raw_pdf_test-abcd.md"],
-      chunkRefs: [1, 2],
+      propRefs: ["1", "2"],
       confidence: 0.85,
       status: "verified",
       tags: ["math", "test"],
@@ -33,7 +33,7 @@ function makeDraft(overrides: Partial<WikiNodeDraft> = {}): WikiNodeDraft {
     claim: "This is the claim.",
     evidence: [{
       sourceId: "raw_pdf_test-abcd",
-      chunkRefs: [1, 2],
+      propRefs: ["1", "2"],
       summary: "Test summary.",
       excerpt: "Test excerpt.",
     }],
@@ -139,7 +139,7 @@ describe("v6 render — status 不再自动推断 (B1)", () => {
   });
 
   it("未声明 status 时不再自动推断为 verified", () => {
-    // 旧实现：缺 status 时若 evidence/sourceChase/chunkRefs 都有则自动 verified
+    // 旧实现：缺 status 时若 evidence/sourceChase/propRefs 都有则自动 verified
     // 新行为（B1）：render 不再自动推断为 verified
     const fm = { ...makeDraft().frontmatter };
     delete (fm as Record<string, unknown>).status;
@@ -196,7 +196,7 @@ describe("v6 render — Draft → Markdown → Parse 回环", () => {
     expect(parsed.frontmatter.claimType).toBe("source_claim");
     expect(parsed.frontmatter.inferenceLevel).toBe("none");
     expect(parsed.frontmatter.boardRoles).toEqual(["evidence", "concept"]);
-    expect(parsed.frontmatter.propRefs).toEqual(["prop-1"]);
+    expect(parsed.frontmatter.propRefs).toEqual(["prop-1", "1", "2"]);
     expect(parsed.frontmatter.claimHash).toBe("hash-abc");
   });
 

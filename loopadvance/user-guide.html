@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LiteWikiagent 用户使用文档 — 发动机操作手册</title>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "base",
+      themeVariables: {
+        fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+        primaryColor: "#eef6ff", primaryTextColor: "#172033", primaryBorderColor: "#77a6d9",
+        lineColor: "#5f748d", secondaryColor: "#f5f0ff", tertiaryColor: "#fff8e8", fontSize: "13px",
+      },
+      flowchart: { useMaxWidth: true, htmlLabels: true, curve: "basis" },
+    });
+  </script>
+  <style>
+    :root {
+      --ink: #172033; --muted: #617087; --soft: #eef3f8; --line: #d7e0ea;
+      --blue: #2f6fbd; --green: #3a8068; --amber: #9b6a1a; --rose: #b2485a;
+      --paper: #fbfcfe; --white: #ffffff; --code-bg: #182235;
+      --brand: #0D5C41; --accent: #00D97E;
+      --shadow: 0 18px 55px rgba(32,50,72,0.12);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+      color: var(--ink);
+      background: linear-gradient(180deg, rgba(238,246,255,0.9), rgba(251,252,254,0.9) 34rem), var(--paper);
+      line-height: 1.74;
+    }
+    a { color: var(--blue); text-underline-offset: 0.18em; }
+    .page { max-width: 1180px; margin: 0 auto; padding: 0 22px 72px; }
+    header { padding: 64px 0 38px; }
+    .eyebrow { display: inline-flex; align-items: center; gap: 10px; color: var(--green); font-size: 0.84rem; font-weight: 780; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 18px; }
+    .eyebrow::before { content: ""; width: 34px; height: 2px; background: var(--green); border-radius: 999px; }
+    .version-badge { display: inline-block; margin-left: 12px; padding: 2px 10px; background: var(--brand); color: #fff; border-radius: 999px; font-size: 0.78rem; font-weight: 700; vertical-align: middle; }
+    h1 { max-width: 950px; margin: 0; font-size: clamp(2.2rem, 5.5vw, 4.6rem); line-height: 1.04; }
+    .subtitle { max-width: 820px; margin: 24px 0 0; color: #34435a; font-size: clamp(1rem, 2vw, 1.3rem); line-height: 1.68; }
+    .quick-nav { display: flex; flex-wrap: wrap; gap: 10px; margin: 32px 0 0; }
+    .quick-nav a { display: inline-flex; align-items: center; min-height: 38px; padding: 7px 13px; color: #26354a; background: rgba(255,255,255,0.72); border: 1px solid var(--line); border-radius: 999px; text-decoration: none; font-size: 0.92rem; font-weight: 650; }
+    main { display: grid; gap: 22px; }
+    section { padding: 46px 0; border-top: 1px solid rgba(215,224,234,0.86); }
+    .section-head { display: grid; grid-template-columns: minmax(0,0.42fr) minmax(0,0.9fr); gap: 32px; align-items: start; margin-bottom: 26px; }
+    .kicker { color: var(--blue); font-size: 0.82rem; font-weight: 820; letter-spacing: 0.09em; text-transform: uppercase; }
+    h2 { margin: 0; font-size: clamp(1.6rem, 2.8vw, 2.5rem); line-height: 1.16; }
+    h3 { margin: 26px 0 10px; font-size: 1.22rem; line-height: 1.32; }
+    h4 { margin: 0 0 8px; font-size: 1.05rem; }
+    p { margin: 0 0 16px; }
+    .lead { color: #33445b; font-size: 1.06rem; line-height: 1.82; }
+    .diagram-wrap { margin: 24px 0; padding: 22px; background: var(--white); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; box-shadow: 0 10px 30px rgba(32,50,72,0.07); }
+    .mermaid { min-width: 600px; text-align: center; }
+    table { width: 100%; border-collapse: collapse; margin: 22px 0; background: var(--white); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; box-shadow: 0 10px 30px rgba(32,50,72,0.06); }
+    th, td { padding: 12px 16px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; font-size: 0.92rem; }
+    th { background: #eef4fb; color: #20324c; font-size: 0.82rem; letter-spacing: 0.04em; text-transform: uppercase; }
+    tr:last-child td { border-bottom: 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.88em; }
+    .cmd { padding: 16px 20px; background: var(--white); border: 1px solid var(--line); border-left: 4px solid var(--green); border-radius: 6px; margin: 16px 0; font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.88rem; line-height: 1.7; overflow-x: auto; }
+    .cmd .p { color: var(--green); font-weight: 700; }
+    .cmd .f { color: var(--blue); }
+    .cmd .c { color: var(--muted); }
+    .output { padding: 16px 20px; background: var(--code-bg); color: #eff6ff; border-radius: 6px; margin: 16px 0; font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.85rem; line-height: 1.7; overflow-x: auto; }
+    .output .k { color: #7ec8e3; } .output .s { color: #98d9a8; } .output .n { color: #f0c674; }
+    .callout { padding: 20px 24px; background: rgba(255,255,255,0.82); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 30px rgba(32,50,72,0.06); margin: 20px 0; }
+    .callout.warn { border-color: #ead5a4; background: #fffaf0; }
+    .callout.good { border-color: #b8d9cd; background: #f3fbf8; }
+    .callout.danger { border-color: #e8c4ca; background: #fdf5f6; }
+    .callout strong { color: #0f243d; }
+    .steps { counter-reset: step; display: grid; gap: 14px; margin: 24px 0; }
+    .step { counter-increment: step; display: grid; grid-template-columns: 54px minmax(0,1fr); gap: 16px; padding: 18px; background: var(--white); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(32,50,72,0.05); }
+    .step::before { content: counter(step); display: grid; place-items: center; width: 44px; height: 44px; color: #fff; background: var(--blue); border-radius: 50%; font-weight: 820; }
+    .step h3 { margin: 0 0 6px; } .step p { margin-bottom: 0; color: #405066; }
+    .scenario { padding: 24px; background: linear-gradient(135deg, rgba(238,246,255,0.6), rgba(243,251,248,0.6)); border: 1px solid var(--line); border-radius: 8px; margin: 20px 0; }
+    .scenario .label { color: var(--brand); font-weight: 800; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+    .scenario .quote { font-size: 1.05rem; font-style: italic; color: #33445b; margin: 0; }
+    .two-col { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 22px; align-items: start; }
+    .role-card { padding: 20px; background: var(--white); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(32,50,72,0.05); }
+    .role-card .icon { font-size: 1.5rem; margin-bottom: 8px; }
+    .role-card h4 { margin: 0 0 6px; } .role-card p { margin: 0; font-size: 0.9rem; color: #405066; }
+    footer { padding: 30px 0 10px; color: var(--muted); font-size: 0.9rem; }
+    @media (max-width: 860px) { .section-head, .two-col { grid-template-columns: 1fr; } .mermaid { min-width: 520px; } }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div class="eyebrow">User Guide v3 <span class="version-badge">2026-07-08 · 发动机操作手册</span></div>
+      <h1>LiteWikiagent 用户使用文档</h1>
+      <p class="subtitle">面向人类用户和 AI agent 的完整操作手册。基于产品定义 v3（发动机设计）编写——覆盖产品是什么、为什么要用它、使用前提、三角色分工、详细使用流程和完整场景复现。</p>
+      <nav class="quick-nav">
+        <a href="#what">产品是什么</a><a href="#why">为什么用</a><a href="#prereq">使用前提</a><a href="#roles">三角色</a><a href="#install">安装</a><a href="#okf">OKF 导出导入</a><a href="#workflow">核心工作流</a><a href="#ingest">场景一：导入</a><a href="#audit">场景二：审查</a><a href="#query">场景三：查询</a><a href="#inspire">场景四：启发</a><a href="#evolution">场景五：进化</a><a href="#confirm">场景六：确认</a><a href="#daemon">daemon 使用</a><a href="#agent">Agent 协议</a><a href="#troubleshoot">故障排查</a>
+      </nav>
+    </header>
+    <main>
+
+      <section id="what">
+        <div class="section-head"><div class="kicker">01 / What It Is</div><div><h2>产品是什么</h2><p class="lead">LiteWikiagent 是一个 agent 无关的可演化知识层。不是 RAG，不是笔记工具，不是搜索引擎。</p></div></div>
+        <p>它把原始材料编译成带审计信号的结构化 wiki，给任何 agent 提供统一的知识操作基础设施——编译、审计、局面、维护。agent 可以换，知识层的状态继承下来，wiki 随使用越来越准。</p>
+        <div class="diagram-wrap"><pre class="mermaid">
+flowchart LR
+  subgraph Human["👤 人类（主编）"]
+    H1["选材"] H2["终判"] H3["升级"]
+  end
+  subgraph Engine["⚙️ 发动机（知识层）"]
+    E1["编译<br/>raw → chase → wiki"]
+    E2["审计<br/>LLM Judge 5维度"]
+    E3["局面<br/>搜索+强制注入=残局"]
+    E4["维护<br/>daemon CI 管道"]
+  end
+  subgraph Agent["🤖 Agent（决策者）"]
+    A1["调用 CLI"] A2["读状态文件"] A3["在残局上推理"]
+  end
+  H1 -->|"放文件"| Engine
+  Engine -->|"wiki + 审计信号"| Agent
+  Agent -->|"query / inspire"| Engine
+  Agent -->|"需要判断"| H2
+  Engine -->|"解决不了"| H3
+        </pre></div>
+        <h3>发动机的三个组件</h3>
+        <table><thead><tr><th>组件</th><th>做什么</th><th>为什么不可缺</th></tr></thead><tbody>
+          <tr><td><strong>编译</strong></td><td>将 chase 命题提取为 9 种 kind 的 wiki 节点</td><td>没有编译就没有 wiki。必要但非壁垒——agent 自己也能调 LLM 提取节点</td></tr>
+          <tr><td><strong>审计</strong></td><td>LLM judge 判断 claim 是否忠实于 chase 命题原文</td><td><strong>第一壁垒。</strong>所有竞品都没做语义审计。命题级证据锚点 + 5 维度 verdict + 三层防御</td></tr>
+          <tr><td><strong>局面</strong></td><td>按 6 种 mode 装配上下文（搜索 + 强制注入 = 残局）</td><td><strong>第二壁垒。</strong>搜索找相关节点，强制注入确保关键棋子不遗漏。所有竞品只有一种查询模式</td></tr>
+        </tbody></table>
+        <div class="callout good"><strong>用 AlphaGo 做类比：</strong><p>wiki + 图谱 = 棋盘。6 种 board 模式 = 残局的摆法。LLM = 下棋高手。发动机的核心价值不是"把文档变成文本"（谁都能做），而是"给 LLM 摆出一个经过审计的残局"（所有竞品都没做）。</p></div>
+      </section>
+
+      <section id="why">
+        <div class="section-head"><div class="kicker">02 / Why Use It</div><div><h2>为什么要用 LiteWikiagent</h2><p class="lead">如果你遇到过以下任何一个问题，LiteWikiagent 就是为你的场景设计的。</p></div></div>
+        <div class="scenario"><div class="label">场景 A：RAG 的痛点</div><p class="quote">"我有一堆论文和笔记，每次问 LLM 问题它都要重新检索、重新拼接碎片。跨 5 篇文档的综合推理每次都是从零开始。知识不积累。"</p></div>
+        <p><strong>LiteWikiagent 怎么解决：</strong>编译一次，持续复合。wiki 是持久化资产——跨引用已存在、矛盾已被标记、综合结论已反映所有已读材料。query 读的是已编译的结构，不是每次重新检索。</p>
+        <div class="scenario"><div class="label">场景 B：LLM 幻觉的痛点</div><p class="quote">"LLM 给我的回答看起来很专业，但我不确定它是在说原文的事实还是在自己编。我不知道哪些可以信任。"</p></div>
+        <p><strong>LiteWikiagent 怎么解决：</strong>每个 claim 都有命题级证据锚点。LLM judge 对比 claim 与 chase 命题原文，给出 5 维度 verdict + 可信度评分。你不信任"LLM 说的"，你信任"经过审计的 claim"——而且审计信号本身也是诚实的（不假装客观）。</p>
+        <div class="scenario"><div class="label">场景 C：知识腐化的痛点</div><p class="quote">"我的知识库越来越臃肿。有些旧笔记已经过时了但我不知道是哪些。新笔记和旧笔记有矛盾但没人发现。孤立的知识点越来越多。"</p></div>
+        <p><strong>LiteWikiagent 怎么解决：</strong>daemon 定期跑 lint——检测孤立节点、断裂引用、过时声明、缺失概念。矛盾被自动标记（contradicts 边），人类确认后取代。缺口被主动写入 progress.md。wiki 不会腐化——它会越来越准。</p>
+        <div class="scenario"><div class="label">场景 D：Agent 换代的痛点</div><p class="quote">"我从 Claude Code 换到 Codex，之前积累的知识全丢了。每个 agent 都要我重新喂材料。"</p></div>
+        <p><strong>LiteWikiagent 怎么解决：</strong>agent 无关。知识层的状态（审计信号、待确认队列、图谱关系）全部继承。换 agent 不换知识层。engine 是 agent 的外挂知识基础设施，不是特定 agent 的工具。</p>
+        <h3>与 RAG / 笔记工具 / 搜索引擎的区别</h3>
+        <table><thead><tr><th></th><th>传统 RAG</th><th>笔记工具</th><th>搜索引擎</th><th>LiteWikiagent</th></tr></thead><tbody>
+          <tr><td>知识积累</td><td>❌ 每次重新推导</td><td>✅ 手动积累</td><td>❌ 不积累</td><td>✅ 编译一次持续复合</td></tr>
+          <tr><td>语义审计</td><td>❌ 无</td><td>❌ 无</td><td>❌ 无</td><td>✅ LLM judge 5 维度</td></tr>
+          <tr><td>矛盾处理</td><td>❌ 无系统性处理</td><td>❌ 手动发现</td><td>❌ 无</td><td>✅ 自动标记 + 人类确认取代</td></tr>
+          <tr><td>证据追溯</td><td>检索源可见</td><td>❌ 无</td><td>✅ 有链接</td><td>✅ 命题级 chunk 锚点</td></tr>
+          <tr><td>Agent 无关</td><td>⚠️ 绑定实现</td><td>❌ 人类工具</td><td>⚠️ 绑定平台</td><td>✅ 任何 agent 可接入</td></tr>
+          <tr><td>自进化</td><td>❌ 静态</td><td>❌ 手动维护</td><td>❌ 无</td><td>✅ daemon CI + 越来越准</td></tr>
+        </tbody></table>
+        <div class="callout warn"><strong>这个产品不是给所有人的。</strong><p>如果你有以下情况，LiteWikiagent 可能不是适合你的工具：</p><ul style="margin:6px 0 0; padding-left:18px;"><li><strong>你的材料不值得反复查阅。</strong>发动机每次编译的成本（LLM 调用）需要被多次查询摊薄。如果你只问一次就再也不碰那份材料了——RAG 更适合你。</li><li><strong>你不愿意每周投入 15-30 分钟做深度确认。</strong>确认清单是信息卫生的闸门。如果你会随手全点"确认"——wiki 会累积噪音，不如不用。</li><li><strong>你只想要"一键搜索 + AI 回答"的体验。</strong>搜索引擎或 ChatGPT 文件上传已经很好了——发动机需要你参与策展。</li></ul></div>
+      </section>
+
+      <section id="prereq">
+        <div class="section-head"><div class="kicker">03 / Prerequisites</div><div><h2>使用前提</h2><p class="lead">在开始之前，你需要准备什么。</p></div></div>
+        <table><thead><tr><th>前提</th><th>为什么需要</th><th>怎么获取</th></tr></thead><tbody>
+          <tr><td><strong>Node.js ≥22</strong></td><td>CLI 是 TypeScript + Node 实现，用了 Intl.Segmenter（Node 22+ 内置）</td><td><code>node --version</code> 检查</td></tr>
+          <tr><td><strong>DeepSeek API Key</strong></td><td>发动机的编译、审计、查询都需要调 LLM。系统必须有 API key 才能运行</td><td>在 platform.deepseek.com 注册获取</td></tr>
+          <tr><td><strong>原始材料</strong></td><td>Markdown / PDF / LaTeX 三种格式</td><td>放到 <code>raw/original/</code> 对应格式子目录</td></tr>
+          <tr><td><strong>Git（推荐）</strong></td><td>wiki 是纯文件——git 可 diff、可回滚、可审计</td><td>项目已经是 git repo</td></tr>
+          <tr><td><strong>一个 Agent（可选）</strong></td><td>Claude Code / Codex / opencode 等。没有 agent 也能用</td><td>安装任意 AI coding agent</td></tr>
+        </tbody></table>
+        <div class="callout warn"><strong>关于 API 成本：</strong><p>编译（ingest）：Pro 两步调用，每篇文档 ~2 次。审计（audit --semantic）：每节点 1 次 LLM judge。查询（query/inspire）：每次 1 次。命题提取：每篇文档一次、结果永久缓存。</p></div>
+      </section>
+
+      <section id="roles">
+        <div class="section-head"><div class="kicker">04 / Three Roles</div><div><h2>三角色分工：daemon · agent · 人类</h2><p class="lead">核心原则：daemon 是 CI 管道，agent 是决策者，人类是主编。</p></div></div>
+        <div class="two-col">
+          <div class="role-card"><div class="icon">⚙️</div><h4>daemon — CI pipeline</h4><p><strong>类比：</strong>CI pipeline——自动跑测试但不决定修不修 bug。</p><p><strong>职责：</strong>监听文件自动命题提取、自动结构审计、定期跑 lint（只修复机械问题）、接收人类 inspire 命令（只产出候选）、回流候选标记。</p><p><strong>不做：</strong>做语义判断、写回 wiki 内容、确认回流节点、确认取代关系、写入 edges——任何涉及"这个对不对"的决策。</p></div>
+          <div class="role-card"><div class="icon">🤖</div><h4>agent — 开发者 + 运维</h4><p><strong>类比：</strong>开发者——读 CI 报告，决定优先级。</p><p><strong>职责：</strong>调用 CLI 做 compile、query、inspire。读取 daemon 状态文件，自己判断优先级——要不要处理这个矛盾、要不要告诉人类有回流候选。在 wiki 局面上做推理。每次会话开头读待确认清单，帮人类做预筛选。</p><p><strong>不做：</strong>替人类确认回流、替人类确认 edges——这些决策需要人的判断力。</p></div>
+        </div>
+        <div style="margin-top:16px;"><div class="role-card"><div class="icon">👤</div><h4>人类 — 主编</h4><p><strong>三件事：</strong>选材、终判、升级。定期批量处理待确认队列——不碎片化打扰。</p><p><strong>不做：</strong>日常操作——这些是 agent 和 daemon 的事。</p></div></div>
+        <div class="callout"><strong>人类确认的批量处理：</strong><p>agent 预筛选（按风险+置信度排序）+ 积压上限自动降级（<20 正常，20-50 提醒，>50 降级）。</p></div>
+      </section>
+
+      <section id="install">
+        <div class="section-head"><div class="kicker">05 / Install</div><div><h2>安装与配置</h2><p class="lead">三步完成：clone、安装依赖、设置 API key。</p></div></div>
+        <div class="steps">
+          <div class="step"><div><h3>克隆并安装依赖</h3><div class="cmd"><span class="c"># 克隆项目</span><br>git clone &lt;repo-url&gt; LiteWikiagent<br><span class="c"># 安装 CLI 依赖</span><br><span class="p">cd</span> LiteWikiagent/lite-llmwiki<br><span class="p">npm</span> install</div></div></div>
+          <div class="step"><div><h3>设置 DeepSeek API Key</h3><p>系统<strong>必须有 API key 才能运行</strong>（无 key 时直接抛错，不做降级）。<strong>当前仅支持 DeepSeek。</strong></p><div class="cmd"><span class="c"># 方式 1：环境变量</span><br><span class="p">export</span> DEEPSEEK_API_KEY=sk-your-key-here<br><br><span class="c"># 方式 2：.env 文件（在 lite-llmwiki/ 下）</span></div></div></div>
+          <div class="step"><div><h3>构建与验证</h3><div class="cmd"><span class="c"># 构建</span><br><span class="p">npm</span> run build<br><br><span class="c"># 开发模式</span><br><span class="p">npm</span> run dev -- --help<br><br><span class="c"># 全局安装（可选）</span><br><span class="p">npm</span> link</div></div></div>
+        </div>
+        <div class="callout warn"><strong>当前代码健康度（2026-07-08）：</strong><p>代码处于 mid-refactor 状态。typecheck 1 error，26 test fail。build 可以成功。运行 <code>bash scripts/loop-health.sh</code> 可查看最新健康状态。</p></div>
+      </section>
+
+      <section id="okf">
+        <div class="section-head"><div class="kicker">09 / OKF Export & Import</div><div><h2>OKF 生态兼容：导出与导入</h2><p class="lead">LiteWikiagent 的 wiki 节点格式天然兼容 Google Cloud 的 Open Knowledge Format (OKF) v0.1——零改造成本的知识交换。</p></div></div>
+        <p>OKF 是一个用纯 Markdown + YAML frontmatter 表示知识的开放格式。你的 wiki 节点有 9 项 OKF 要求中 8 项零差距、1 项小映射（kind → type）。</p>
+        <h3>导出为 OKF</h3>
+        <div class="cmd"><span class="c"># 将整个 wiki/ 导出为 OKF bundle</span><br><span class="p">llmwiki</span> export <span class="f">--okf</span> --out ./my-kb-bundle<br><br><span class="c"># 按来源/类型过滤导出</span><br><span class="p">llmwiki</span> export <span class="f">--okf</span> <span class="f">--source</span> raw/pdf/my-paper <span class="f">--out</span> ./paper-kb<br><br><span class="c"># 导出产物：一个标准的 OKF bundle 目录</span><br><span class="c"># 别人不需要装 LiteWikiagent——任何 OKF 兼容工具都能读</span></div>
+        <h3>从 OKF 导入</h3>
+        <div class="cmd"><span class="c"># 导入外部 OKF bundle</span><br><span class="p">llmwiki</span> import <span class="f">--okf</span> ./external-bundle<br><br><span class="c"># 预检（dry-run，不实际导入）</span><br><span class="p">llmwiki</span> import <span class="f">--okf</span> ./external-bundle <span class="f">--dry-run</span></div>
+        <p>导入时每个 OKF concept 视为带完整 frontmatter 的 wiki 节点 draft——进入正常的编译管线，走 audit + gate 流程。外部内容不会绕过质量闸门。</p>
+        <div class="callout good"><strong>战略价值：</strong><p>LiteWikiagent 是唯一带语义审计的 OKF 兼容编译器。你的知识可以导出给任何人——对方的系统能看到审计信号、证据锚点。</p></div>
+      </section>
+
+      <section id="workflow">
+        <div class="section-head"><div class="kicker">06 / Core Workflow</div><div><h2>核心工作流</h2><p class="lead">从放入材料到获得回答，完整的工作流是六个场景的循环。</p></div></div>
+        <div class="diagram-wrap"><pre class="mermaid">
+flowchart TB
+  subgraph HUMAN["👤 你的主动操作"]
+    H1["① 放材料 → raw/"] --> H2["③ 提问 → query"]
+    H2 --> H3["④ 启发 → inspire（手动触发）"]
+    H3 --> H4["⑥ 确认清单 → 批量裁决"]
+    H4 --> H1
+  end
+
+  subgraph DAEMON["⚙️ daemon 后台持续运行"]
+    D1["② 编译 + 审计<br/>放材料后自动触发"]
+    D2["⑤ 持续维护<br/>定期 lint + 回流标记 + 强化检测"]
+    D1 -.-> D2
+  end
+
+  subgraph AGENT["🤖 agent 辅助"]
+    A1["读 daemon 状态"]
+    A2["装配 board 残局"]
+    A3["预筛选确认清单"]
+  end
+
+  H1 -.->|"触发"| D1
+  D1 -->|"状态文件"| A1
+  A1 --> A2 --> H2
+  D2 -->|"状态文件"| A1
+  A1 --> A3 --> H4
+        </pre></div>
+        <p><strong>关键理解：</strong>编译和审计（②）是放材料后自动触发的——不是手动步骤。定期 lint（⑤）是后台持续运行的——不和你的查询冲突。你永远不需要"等 daemon 跑完"再做下一步。</p>
+        <table><thead><tr><th>场景</th><th>谁做</th><th>命令</th><th>调 LLM?</th><th>产出</th></tr></thead><tbody>
+          <tr><td>① 导入</td><td>人类放文件 + agent/daemon</td><td><code>ingest</code></td><td>是</td><td>chase + wiki + 自动审查</td></tr>
+          <tr><td>② 审查</td><td>agent/daemon</td><td><code>audit [--semantic]</code></td><td>语义审查是</td><td>审计报告 + 关卡</td></tr>
+          <tr><td>③ 查询</td><td>agent</td><td><code>query --mode</code></td><td>是</td><td>分层回答 + board</td></tr>
+          <tr><td>④ 启发</td><td>人类手动触发</td><td><code>inspire</code></td><td>是</td><td>5 类启发项候选</td></tr>
+          <tr><td>⑤ 维护</td><td>daemon 后台自动</td><td>定时器</td><td>lint 调 LLM</td><td>状态文件 + 候选</td></tr>
+          <tr><td>⑥ 确认</td><td>人类批量</td><td>读 progress.md</td><td>否</td><td>确认/拒绝/升级</td></tr>
+        </tbody></table>
+      </section>
+
+      <section id="ingest">
+        <div class="section-head"><div class="kicker">07 / Scenario: Ingest</div><div><h2>场景一：导入材料</h2><p class="lead">把原始材料编译成可审计的 wiki。这是发动机的第一个组件。</p></div></div>
+        <div class="diagram-wrap"><pre class="mermaid">
+flowchart LR
+  RAW["raw/original/"] -->|loader| CHASE_TEXT["chase 纯文本"]
+  CHASE_TEXT -->|daemon 命题提取| CHASE_PROP["chase 命题层<br/>(带 prop marker)"]
+  CHASE_PROP -->|compile Pro两步| WIKI["wiki 节点 (9 kind)"]
+  WIKI -->|自动| AUDIT["audit"]
+  AUDIT -->|写回| WIKI
+  AUDIT -->|写| GATE["audit-gate.json"]
+        </pre></div>
+        <p><strong>命题是什么：</strong>命题 = 自包含的最小事实单元。不能再拆成更小的独立命题，但也不需要额外上下文就能理解。比如"Shor算法能在多项式时间内分解大整数"是一个命题，而"量子计算有很多优势"不是命题（太模糊）。命题级分块有 EMNLP 2024 论文的实验数据支撑——在精密检索任务上显著优于段落级和句子级分块。</p>
+        <h3>三种格式</h3>
+        <table><thead><tr><th>格式</th><th>位置</th><th>说明</th></tr></thead><tbody>
+          <tr><td>Markdown</td><td><code>raw/original/md/</code></td><td>直接读取，解析 frontmatter</td></tr>
+          <tr><td>PDF</td><td><code>raw/original/pdf/</code></td><td>提取文本后分块</td></tr>
+          <tr><td>LaTeX</td><td><code>raw/original/tex/&lt;project&gt;/</code></td><td>解析 \input/\include，处理 .bbl</td></tr>
+        </tbody></table>
+        <h3>自动模式（agent 推荐）</h3>
+        <div class="cmd"><span class="c"># 自动确认 + conservative + JSON</span><br><span class="p">llmwiki</span> ingest ../raw/original/pdf/my-paper.pdf <span class="f">--auto</span> <span class="f">--policy</span> conservative <span class="f">--json</span><br><br><span class="c"># TeX 项目文件夹</span><br><span class="p">llmwiki</span> ingest ../raw/original/tex/arXiv-paper/ <span class="f">--auto</span> <span class="f">--json</span><br><br><span class="c"># 带人类锚点</span><br><span class="p">llmwiki</span> ingest ../raw/original/md/notes.md <span class="f">--auto</span> <span class="f">--anchor</span> "1/e 的概率意义" <span class="f">--json</span></div>
+        <h3>交互模式（人类推荐）</h3>
+        <div class="cmd"><span class="p">llmwiki</span> ingest ../raw/original/pdf/my-paper.pdf<br><br><span class="c"># [a] 对齐 [s] 跳过 [m] 不同角度 [a all] 批量确认</span></div>
+        <h3>Policy 确认策略</h3>
+        <table><thead><tr><th>Policy</th><th>行为</th><th>适合</th></tr></thead><tbody>
+          <tr><td><code>conservative</code></td><td>只确认 confidence≥0.7 + 有 evidence 的 fact 类型</td><td>日常使用</td></tr>
+          <tr><td><code>balanced</code>（默认）</td><td>fact 类型 high/medium 都确认；soft types 需 evidence</td><td>需要总结</td></tr>
+          <tr><td><code>expansive</code></td><td>允许 insight/counter/question，需 limits</td><td>头脑风暴</td></tr>
+        </tbody></table>
+        <h3>JSON 输出</h3>
+        <div class="output">{ <span class="k">"ok"</span>: <span class="s">true</span>, <span class="k">"sourceId"</span>: <span class="s">"raw/pdf/my-paper-a1b2c3d4"</span>, <span class="k">"created"</span>: [<span class="s">"wiki/concepts/e-overview.md"</span>], <span class="k">"audit"</span>: { <span class="k">"structure"</span>: {<span class="k">"ok"</span>:<span class="s">true</span>}, <span class="k">"semantic"</span>: {<span class="k">"ok"</span>:<span class="s">true</span>, <span class="k">"averageScore"</span>:<span class="n">0.91</span>} } }</div>
+        <div class="callout good"><strong>自动审查：</strong><p><code>--auto</code> 模式下 ingest 完成后自动执行结构 + 语义 audit。审查结果写入 audit-gate.json。</p></div>
+      </section>
+
+      <section id="audit">
+        <div class="section-head"><div class="kicker">08 / Scenario: Audit</div><div><h2>场景二：审查知识</h2><p class="lead">双重审查：结构审查（硬关卡）+ 语义审查（软关卡）。这是发动机的第一壁垒。</p></div></div>
+        <h3>结构审查（无 LLM，硬关卡）</h3>
+        <div class="cmd"><span class="p">llmwiki</span> audit <span class="f">--json</span></div>
+        <p>检查 nodeId、kind、sourceChase、chunkRefs、Claim、Evidence。不合格 → <strong>阻止</strong>，exit 2。</p>
+        <h3>语义审查（LLM judge，软关卡）</h3>
+        <div class="cmd"><span class="c"># 全量</span><br><span class="p">llmwiki</span> audit <span class="f">--semantic</span> <span class="f">--json</span><br><br><span class="c"># 按来源</span><br><span class="p">llmwiki</span> audit <span class="f">--semantic</span> <span class="f">--source</span> raw/pdf/my-paper <span class="f">--json</span><br><br><span class="c"># 单节点</span><br><span class="p">llmwiki</span> audit <span class="f">--semantic</span> <span class="f">--node</span> one-over-e-unification <span class="f">--json</span></div>
+        <table><thead><tr><th>维度</th><th>问题</th><th>结果</th></tr></thead><tbody>
+          <tr><td>support</td><td>Claim 是否被命题支持？</td><td>aligned / stretched / unsupported</td></tr>
+          <tr><td>addition</td><td>是否加入原文没有的主张？</td><td>none / minor / major</td></tr>
+          <tr><td>inference</td><td>是否把推理标成事实？</td><td>ok / warning / failed</td></tr>
+          <tr><td>limits</td><td>是否遗漏限制条件？</td><td>ok / warning / failed</td></tr>
+          <tr><td>citation</td><td>chunkRefs 是否覆盖关键证据？</td><td>ok / warning / failed</td></tr>
+        </tbody></table>
+        <h3>三层防御</h3>
+        <div class="callout"><ul style="margin:0; padding-left:18px;"><li><strong>第一层（零额外成本）：</strong>evidence-anchored 输出——judge verdict 必须带原文锚点</li><li><strong>第二层（图谱免费信号）：</strong>矛盾检测交叉验证——contradicts 边的节点至少一个 audit 有问题</li><li><strong>第三层（按需付费）：</strong>跨模型二次审计——auditScore>0.9 且频繁引用的核心 claim 用不同模型重审</li></ul></div>
+        <h3>软关卡 + 诚实声明</h3>
+        <div class="diagram-wrap"><pre class="mermaid">
+flowchart TD
+  AUDIT["audit 完成"] --> WRITE["写回 frontmatter"]
+  WRITE --> GATE["写 audit-gate.json"]
+  GATE --> QUERY["query / inspire"]
+  QUERY --> CHECK{"关卡检查"}
+  CHECK -->|"结构失败"| BLOCK["❌ 阻止 (exit 2)"]
+  CHECK -->|"语义失败"| WARN["⚠️ 警告放行"]
+  CHECK -->|"全通过"| PASS["✅ 放行"]
+  WARN --> HONEST["board 中带 auditStatus<br/>LLM 能看到可信度"]
+  PASS --> HONEST
+        </pre></div>
+        <div class="callout good"><strong>诚实声明：</strong><p>不假装 LLM judge 是客观度量。审查信号是可信度辅助信号，不是最终判决。信任模型是"让错误可见"而不是"消灭错误"。</p></div>
+      </section>
+
+      <section id="query">
+        <div class="section-head"><div class="kicker">09 / Scenario: Query</div><div><h2>场景三：查询 — Board 残局</h2><p class="lead">6 种 mode = 6 种残局摆法。搜索负责相关性，强制注入负责完整性。</p></div></div>
+        <p>竞品的查询是"搜索 → 找节点 → 扔给 LLM"。问题是<strong>搜索有盲区</strong>——counter、limit、tension 节点可能排名靠后。发动机的方案：<strong>搜索找 seeds + 强制注入靠确定性字段确保关键棋子不遗漏 = 残局。</strong></p>
+        <table><thead><tr><th>mode</th><th>搜索</th><th>强制注入</th><th>适合</th></tr></thead><tbody>
+          <tr><td><code>ask</code></td><td>混合搜索 top seeds</td><td>evidence + related + 少量 counter</td><td>"这个概念是什么？"</td></tr>
+          <tr><td><code>trace</code></td><td>搜索 seeds</td><td>derived_from 链祖先 + chase 命题原文</td><td>"从哪来？""给我看依据"</td></tr>
+          <tr><td><code>expand</code></td><td>搜索 seeds</td><td>所有相关 method/case/equation</td><td>"还能怎么理解？"</td></tr>
+          <tr><td><code>compare</code></td><td>搜索 seeds</td><td>按 sourceId 强制分组</td><td>"这两个观点有什么区别？"</td></tr>
+          <tr><td><code>challenge</code></td><td>搜索 seeds</td><td>ALL counter + ALL limit</td><td>"站得住吗？""哪里可能错？"</td></tr>
+          <tr><td><code>inspire</code></td><td>搜索 seeds</td><td>tension 节点 + cross-kind related</td><td>"给我新问题"</td></tr>
+        </tbody></table>
+        <div class="cmd"><span class="c"># 基本问答</span><br><span class="p">llmwiki</span> query "为什么 1/e 是失败概率基线？" <span class="f">--mode</span> ask <span class="f">--json</span><br><br><span class="c"># 来源追溯</span><br><span class="p">llmwiki</span> query "从哪来？" <span class="f">--mode</span> trace <span class="f">--with-source</span> <span class="f">--json</span><br><br><span class="c"># 挑战审查</span><br><span class="p">llmwiki</span> query "什么条件下失效？" <span class="f">--mode</span> challenge <span class="f">--json</span><br><br><span class="c"># 兼容别名: exact→trace, explore→expand, counter→challenge</span></div>
+        <h3>JSON 输出</h3>
+        <div class="output">{ <span class="k">"ok"</span>:<span class="s">true</span>, <span class="k">"mode"</span>:<span class="s">"ask"</span>, <span class="k">"answer"</span>:<span class="s">"..."</span>, <span class="k">"fromWiki"</span>:[{<span class="k">"claim"</span>:<span class="s">"..."</span>,<span class="k">"nodeId"</span>:<span class="s">"..."</span>}], <span class="k">"modelSynthesis"</span>:[{<span class="k">"text"</span>:<span class="s">"..."</span>,<span class="k">"basedOn"</span>:[...]}], <span class="k">"missingEvidence"</span>:[...] }</div>
+      </section>
+
+      <section id="inspire">
+        <div class="section-head"><div class="kicker">10 / Scenario: Inspire</div><div><h2>场景四：启发（人类手动触发）</h2><p class="lead">inspire 是人类主动触发的探索命令——不是后台自动跑的。它装配 inspire 模式的 board（含 tension 节点），生成 5 类启发项候选。</p></div></div>
+        <div class="cmd"><span class="c"># 人类手动运行——不会自动触发</span><br><span class="p">llmwiki</span> inspire <span class="f">--json</span><br><br><span class="p">llmwiki</span> inspire <span class="f">--seed</span> "1/e" <span class="f">--json</span><br><br><span class="p">llmwiki</span> inspire <span class="f">--node</span> one-over-e-unification <span class="f">--json</span><br><br><span class="c"># 也可以 query --mode inspire</span></div>
+        <table><thead><tr><th>类型</th><th>含义</th></tr></thead><tbody>
+          <tr><td><code>connection</code></td><td>两个节点间的隐藏关联</td></tr>
+          <tr><td><code>hypothesis</code></td><td>基于 board 张力的假设</td></tr>
+          <tr><td><code>question</code></td><td>值得进一步探索的问题</td></tr>
+          <tr><td><code>action</code></td><td>建议的下一步行动</td></tr>
+          <tr><td><code>missingEvidence</code></td><td>缺失的证据或视角</td></tr>
+        </tbody></table>
+        <div class="callout warn"><strong>信息卫生：</strong><p>inspire 产出的 edges 候选<strong>不自动写入</strong>。daemon 只发现和标注——写入需要人类确认。</p></div>
+      </section>
+
+      <section id="evolution">
+        <div class="section-head"><div class="kicker">11 / Scenario: Evolution</div><div><h2>场景五：自进化 — wiki 越来越准</h2><p class="lead">五个方向让 wiki 随使用越来越准。其中 lint 是 daemon 定时自动跑的，inspire 和 reflow 是人类手动触发。</p></div></div>
+        <div class="diagram-wrap"><pre class="mermaid">
+flowchart TB
+  GOAL["🎯 wiki 越来越准"]
+  GOAL --> A["取代<br/>矛盾 → 标记 → 人类确认"]
+  GOAL --> B["自愈<br/>lint → 机械修复 + 语义工单"]
+  GOAL --> C["连接<br/>inspire → 人类确认写入"]
+  GOAL --> D["缺口<br/>missingEvidence → progress.md"]
+  GOAL --> E["强化<br/>新材料支持 → auditScore 提升"]
+  A & B & C & D & E --> DAEMON["daemon 是运行载体"]
+  DAEMON --> HUMAN["人类定期批量确认"]
+        </pre></div>
+        <table><thead><tr><th>方向</th><th>谁发现</th><th>谁确认</th><th>自动</th><th>不能自动</th></tr></thead><tbody>
+          <tr><td>取代</td><td>daemon 检测矛盾</td><td>人类</td><td>标记 contradicts 边</td><td>自动取代</td></tr>
+          <tr><td>自愈</td><td>daemon lint（定时）</td><td>机械自动 / 语义人类</td><td>断链修复、图重建</td><td>内容改写</td></tr>
+          <tr><td>连接</td><td>人类手动 inspire</td><td>人类</td><td>产出候选</td><td>写入 edges</td></tr>
+          <tr><td>缺口</td><td>query/inspire/lint</td><td>人类决定</td><td>写 progress.md</td><td>自动 ingest</td></tr>
+          <tr><td>强化</td><td>daemon 检测</td><td>人类</td><td>标记候选</td><td>自动提升 auditScore</td></tr>
+        </tbody></table>
+        <div class="callout danger"><strong>信息卫生硬原则：</strong><p>所有 LLM 二次生成内容必须人类确认才能进入 wiki。机械操作可自动——语义操作不能自动。</p></div>
+
+        <h3>你怎么知道发动机在变好</h3>
+        <p>使用一个月后，你应该能在日常使用中看到这些信号——不需要查看后台统计，它们会在你的工作流中自然出现：</p>
+        <table><thead><tr><th>你看到的</th><th>说明什么</th></tr></thead><tbody>
+          <tr><td>agent 回答里出现了新的引用节点——来自上个月还不存在的 source</td><td>wiki 在增长——新材料被编译、审计后投入使用</td></tr>
+          <tr><td>agent 告诉你某条 claim 的审计分是 0.6，建议谨慎使用</td><td>审计在起作用——LLM 能看到可信度信号并调整回答</td></tr>
+          <tr><td>challenge 模式下看到了你没想到的 counter 节点</td><td>board 强制注入在工作——搜索遗漏的棋子被图谱补上了</td></tr>
+          <tr><td>待确认清单里出现了 2 条矛盾标记——来自不同来源的同一主题</td><td>取代在运行——旧知识和新知识开始碰撞，等你来裁决</td></tr>
+          <tr><td>待确认清单里出现了 3 条关联候选——你扫一眼觉得确实有关联</td><td>连接在运行——跨来源隐藏关联被发现了</td></tr>
+          <tr><td>progress.md 的质量比上个月高了——低价值候选变少了</td><td>确认循环在优化——不是候选少了，是系统更准了</td></tr>
+          <tr><td>某个核心概念的 auditScore 从 0.6 升到了 0.8（你确认了 2 次强化）</td><td>强化在积累——多个独立来源让这条知识越来越可信</td></tr>
+        </tbody></table>
+      </section>
+
+      <section id="confirm">
+        <div class="section-head"><div class="kicker">12 / Scenario: Confirm</div><div><h2>场景六：人类批量确认</h2><p class="lead">人类定期批量处理待确认清单，不碎片化打扰。</p></div></div>
+        <table><thead><tr><th>类型</th><th>来源</th><th>存在哪</th><th>人类做什么</th></tr></thead><tbody>
+          <tr><td>回流候选</td><td>daemon 筛选</td><td>progress.md</td><td>确认写回或拒绝</td></tr>
+          <tr><td>edge 候选</td><td>inspire 发现</td><td>progress.md</td><td>确认写入 edges 或忽略</td></tr>
+          <tr><td>取代关系</td><td>矛盾检测</td><td>lint-report.json</td><td>确认 superseded 或保留</td></tr>
+          <tr><td>强化候选</td><td>daemon 检测语义一致</td><td>progress.md</td><td>判断是否 genuine reinforcement——读已有节点和新节点的 claim + 命题锚点，确认：① 它们在说同一件事吗？② 新来源提供了独立验证吗？（非 trivial）③ 新来源的权威度足够吗？确认则 auditScore 提升，拒绝则忽略</td></tr>
+          <tr><td>语义工单</td><td>daemon lint</td><td>lint-report.json</td><td>手动修复或升级</td></tr>
+        </tbody></table>
+        <div class="steps">
+          <div class="step"><div><h3>agent 预筛选</h3><p>按风险和置信度排序。高风险高置信度排前面。</p></div></div>
+          <div class="step"><div><h3>人类定期处理</h3><p>读 progress.md 和 lint-report.json，批量确认/拒绝/升级。定期集中处理（如每周）。</p></div></div>
+          <div class="step"><div><h3>积压保护</h3><p><20 正常。20-50 agent 提醒。>50 自动降级（低优先项跳过、中项合并）。</p></div></div>
+        </div>
+      </section>
+
+      <section id="daemon">
+        <div class="section-head"><div class="kicker">13 / Daemon Usage</div><div><h2>daemon 使用</h2><p class="lead">daemon 是 CI pipeline——常驻进程，自动监听 + 定时维护。</p></div></div>
+        <h3>七项职责</h3>
+        <table><thead><tr><th>#</th><th>职责</th><th>触发</th><th>daemon 决定</th><th>留给 agent/人类</th></tr></thead><tbody>
+          <tr><td>①</td><td>命题提取</td><td>新 chase 纯文本</td><td>调 LLM</td><td>质量复核</td></tr>
+          <tr><td>②</td><td>文件监听自动导入</td><td>chase 有 prop marker</td><td>触发 compile</td><td>选材</td></tr>
+          <tr><td>③</td><td>wiki 变化自动审查</td><td>wiki 文件变化</td><td>触发 audit</td><td>结果怎么用</td></tr>
+          <tr><td>④</td><td>定期 lint + 分级修复</td><td>定时器</td><td>机械问题自动修</td><td>语义工单优先级</td></tr>
+          <tr><td>⑤</td><td>启发发现</td><td>人类命令触发</td><td>跑 inspire、产出候选</td><td>哪个连接值得追查、是否写入 edges——人类在结果中勾选确认</td></tr>
+          <tr><td>⑥</td><td>回流候选标记</td><td>定时器</td><td>LLM judge 筛选</td><td>是否写回</td></tr>
+          <tr><td>⑦</td><td>强化检测</td><td>compile 后</td><td>标记候选</td><td>是否提升 auditScore</td></tr>
+        </tbody></table>
+        <h3>启动与运行</h3>
+        <div class="cmd"><span class="c"># 前台（开发调试）</span><br><span class="p">llmwiki</span> daemon<br><br><span class="c"># 后台（长期运行）</span><br><span class="p">llmwiki</span> daemon <span class="f">--background</span><br><br><span class="c"># 查看日志</span><br><span class="p">tail</span> -f loopadvance/daemon.log<br><br><span class="c"># 停止</span><br><span class="p">llmwiki</span> daemon <span class="f">--stop</span></div>
+        <table><thead><tr><th>文件</th><th>给谁</th><th>内容</th></tr></thead><tbody>
+          <tr><td><code>progress.md</code></td><td>人类</td><td>日志 + 工单</td></tr>
+          <tr><td><code>daemon-state.json</code></td><td>agent</td><td>时间戳 + 统计 + 队列</td></tr>
+          <tr><td><code>lint-report.json</code></td><td>agent/人类</td><td>问题清单</td></tr>
+          <tr><td><code>audit-gate.json</code></td><td>agent/daemon</td><td>审查关卡</td></tr>
+        </tbody></table>
+        <div class="callout good"><strong>daemon 与 agent 的关系：</strong><p>agent 不直接调 daemon，也不依赖 daemon 运行。agent 的标准流程完全自包含。daemon 是<strong>加速器</strong>——如果 daemon 在跑，agent 的 audit 可能已完成。</p></div>
+      </section>
+
+      <section id="agent">
+        <div class="section-head"><div class="kicker">14 / Agent Protocol</div><div><h2>Agent 协议</h2><p class="lead">外部 agent 的标准调用流程和 JSON 契约。</p></div></div>
+        <div class="diagram-wrap"><pre class="mermaid">
+flowchart TD
+  A1["1. plan --json"] --> A2["2. ingest --auto --json"]
+  A2 --> A3["3. 读 daemon 状态<br/>check audit-gate.json"]
+  A3 --> A4{"structure ok?"}
+  A4 -->|"否"| FAIL["停止 · 结构 audit 未通过"]
+  A4 -->|"是/不存在"| A5{"semantic ok?"}
+  A5 -->|"否/null"| A6["⚠️ 语义审计信号弱<br/>agent 根据 auditStatus 自行判断"]
+  A5 -->|"是"| A7["5. query / inspire --json"]
+  A6 --> A7
+        </pre></div>
+        <p><strong>关键区别：</strong>结构审计失败（如 nodeId 缺失）→ 硬关卡，agent 必须停止。语义审计失败（如 auditScore=0.3）→ 软关卡——agent 读取审计信号后自行判断是否继续 query，如果继续则在 board 中带上 audit 警告。</p>
+        <div class="cmd"><span class="p">llmwiki</span> plan ../raw/original/pdf/my-paper.pdf <span class="f">--json</span><br><span class="p">llmwiki</span> ingest ../raw/original/pdf/my-paper.pdf <span class="f">--auto</span> <span class="f">--policy</span> conservative <span class="f">--json</span><br><br><span class="c"># 读 daemon 状态——检查审计是否完成、关卡状态如何</span><br><span class="p">llmwiki</span> status <span class="f">--json</span><br><span class="c"># 或直接查关卡文件</span><br><span class="p">cat</span> wiki/audit-gate.json<br><br><span class="c"># 如果 daemon 的审计已完成且通过——直接 query</span><br><span class="p">llmwiki</span> query "核心问题" <span class="f">--mode</span> ask <span class="f">--json</span><br><br><span class="c"># 如果 daemon 未运行或审计信号缺失——agent 可自行补充</span><br><span class="p">llmwiki</span> audit <span class="f">--json</span><br><span class="p">llmwiki</span> audit <span class="f">--semantic</span> <span class="f">--json</span><br><br><span class="p">llmwiki</span> inspire <span class="f">--seed</span> "核心概念" <span class="f">--json</span></div>
+        <h3>失败 JSON（仅结构审计失败时）</h3>
+        <p>语义审计不产生 failure JSON——语义失败走警告放行，信号通过 frontmatter 告知 agent。只有结构审计失败（nodeId/kind/chunkRefs/Claim/Evidence 缺失）才产生 failure JSON。stage 值必须精确：</p>
+        <div class="output">{ <span class="k">"ok"</span>:<span class="s">false</span>, <span class="k">"stage"</span>:<span class="s">"audit-structure"</span>, <span class="k">"error"</span>:<span class="s">"structure audit failed — required fields missing"</span>, <span class="k">"blockingIssues"</span>:[<span class="s">"missing-nodeId"</span>,<span class="s">"missing-claim"</span>], <span class="k">"suggestedNextActions"</span>:[<span class="s">"run audit --json to see details"</span>] }</div>
+        <div class="callout danger"><strong>Agent 禁止行为：</strong><ul style="margin:0; padding-left:18px;"><li>ingest 失败后继续 query</li><li>结构审计失败后（nodeId/kind 缺失）把 wiki 当可靠来源</li><li>语义信号弱时不告知用户——即使不阻止 query，也必须在回答中声明"本回答包含 auditStatus=warning 的节点"</li><li>把 modelSynthesis 当 fromWiki</li><li>隐藏 missingEvidence</li><li>替人类确认回流、edges、取代——这些需要人的判断力</li></ul></div>
+      </section>
+
+      <section id="troubleshoot">
+        <div class="section-head"><div class="kicker">15 / Troubleshooting</div><div><h2>故障排查</h2><p class="lead">常见问题与解决方案。</p></div></div>
+        <div class="callout danger"><strong>❌ "DEEPSEEK_API_KEY not set"</strong><p>系统必须有 API key。设置环境变量或 .env 文件。</p></div>
+        <div class="callout warn"><strong>⚠️ "structure audit failed"</strong><p>检查 <code>audit --json</code> 的 issues。常见：缺少 sourceChase、chunkRefs 为空、Evidence 缺失。</p></div>
+        <div class="callout warn"><strong>⚠️ "semantic audit failed"（警告放行）</strong><p>不阻止查询。检查 dimension 和 reason。这是信号——agent 和人类根据信号决定是否信任。</p></div>
+        <div class="callout"><strong>ℹ️ query 被关卡阻止 (exit 2)</strong><p>这是<strong>结构审查</strong>的硬关卡（nodeId/kind/chunkRefs/Claim/Evidence 缺失）。先运行 <code>audit --json</code> 修复结构问题。语义审计失败<strong>不阻止</strong>——警告放行，信号随 board 告知 LLM。</p></div>
+        <div class="callout"><strong>ℹ️ chunkRefs 越界</strong><p>clampChunkRefs 会自动过滤。如果审查报 citation=failed，检查 evidence 是否引用了不存在的 chunk。</p></div>
+        <div class="callout good"><strong>✅ 开发命令速查</strong><div class="cmd" style="margin-top:12px;"><span class="p">cd</span> lite-llmwiki<br><span class="p">npm</span> run typecheck<br><span class="p">npm</span> run test<br><span class="p">npm</span> run build<br><span class="p">npm</span> run dev -- ingest ../raw/original/md/test.md <span class="f">--auto</span> <span class="f">--json</span><br><br><span class="c"># Loop health</span><br><span class="p">bash</span> ../scripts/loop-health.sh</div></div>
+      </section>
+
+    </main>
+    <footer>
+      <p>生成日期：2026-07-08 · v3.0 · 基于 <a href="./product-definition.html">产品定义 v3（发动机设计）</a> 编写<br>
+      与 <a href="./architecture-baseline.html">架构基线文档</a> 配套使用。<br>
+      覆盖：产品定义、使用前提、三角色分工、六场景完整流程、daemon 使用、Agent 协议、故障排查。</p>
+    </footer>
+  </div>
+</body>
+</html>

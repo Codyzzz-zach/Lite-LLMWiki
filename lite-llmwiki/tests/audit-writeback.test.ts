@@ -37,8 +37,8 @@ sourceIds:
   - raw/pdf/test
 sourceChase:
   - raw/chase/test.md
-chunkRefs:
-  - 1
+propRefs:
+  - "1"
 confidence: 0.9
 tags:
   - test
@@ -65,8 +65,8 @@ sourceIds:
   - raw/pdf/test
 sourceChase:
   - raw/chase/test.md
-chunkRefs:
-  - 1
+propRefs:
+  - "1"
 confidence: 0.9
 tags:
   - test

@@ -36,8 +36,8 @@ sourceIds:
   - raw/pdf/test
 sourceChase:
   - raw/chase/test.md
-chunkRefs:
-  - 1
+propRefs:
+  - "1"
 tags:
   - physics
 auditStatus: passed
@@ -62,8 +62,8 @@ sourceIds:
   - raw/pdf/test
 sourceChase:
   - raw/chase/test.md
-chunkRefs:
-  - 1
+propRefs:
+  - "1"
 tags:
   - physics
 auditStatus: failed
@@ -87,8 +87,8 @@ sourceIds:
   - raw/pdf/test
 sourceChase:
   - raw/chase/test.md
-chunkRefs:
-  - 1
+propRefs:
+  - "1"
 tags:
   - physics
 auditStatus: warning
@@ -113,8 +113,8 @@ sourceIds:
   - raw/pdf/test
 sourceChase:
   - raw/chase/test.md
-chunkRefs:
-  - 1
+propRefs:
+  - "1"
 tags:
   - physics
 ---

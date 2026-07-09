@@ -45,7 +45,7 @@ new（无重叠）/ overlap（高度重叠）/ extension（扩展已有）
 ### 新建页面
 每个页面：
 - nodeId（英文短横线）、kind、标题
-- claim、evidence（引用 chunkRefs）、interpretation
+- claim、evidence（引用 propRefs）、interpretation
 - useFor、limits
 
 ### 更新页面（与已有页面有关系时）
@@ -116,7 +116,7 @@ export const PRO_FORMAT_SYSTEM = `你是结构化数据提取引擎。你的唯�
       },
       "claim": "...",
       "evidence": [
-        { "sourceId": "材料ID", "chunkRefs": [1], "summary": "摘要", "excerpt": "原文关键句" }
+        { "sourceId": "材料ID", "propRefs": ["1"], "summary": "摘要", "excerpt": "原文关键句" }
       ],
       "interpretation": "...",
       "useFor": ["用途"],
@@ -177,7 +177,7 @@ export const PRO_SYSTEM = `你是 lite-llmwiki 的"认知陪练引擎"。你的�
 // ─── Workspace Rules ──────────────────────────────────────────────
 
 export function buildWorkspaceRules(config: AppConfig): string {
-  return `# Workspace Rules
+	return `# Workspace Rules
 
 ## 目录结构
 - raw/original/<md|pdf|tex>/  原始材料副本
@@ -189,7 +189,7 @@ export function buildWorkspaceRules(config: AppConfig): string {
   - equations/
 
 ## wiki 文件 frontmatter
-- nodeId / kind / title / sourceIds / sourceChase / chunkRefs / confidence / status / tags / related / createdAt / updatedAt
+- nodeId / kind / title / sourceIds / sourceChase / propRefs / confidence / status / tags / related / createdAt / updatedAt
 
 ## 路径
 - raw dir: ${config.rawDir}
@@ -199,204 +199,221 @@ export function buildWorkspaceRules(config: AppConfig): string {
 // ─── Material Prefix ──────────────────────────────────────────────
 
 export interface MaterialPrefixInput {
-  source: Source;
-  existingNodes?: Array<{ id: string; name: string; summary: string }>;
+	source: Source;
+	existingNodes?: Array<{ id: string; name: string; summary: string }>;
 }
 
 export function buildMaterialPrefix(input: MaterialPrefixInput): string {
-  const source = input.source;
-  let prefix = `# Material\n\n`;
-  prefix += `ID: ${source.id}\n`;
-  prefix += `Title: ${source.title}\n`;
-  prefix += `Type: ${source.type}\n`;
-  prefix += `Chunks: ${source.chunks.length}\n`;
-  prefix += `Total tokens: ~${source.totalTokens}\n`;
-  prefix += `File: ${source.path}\n`;
+	const source = input.source;
+	let prefix = `# Material\n\n`;
+	prefix += `ID: ${source.id}\n`;
+	prefix += `Title: ${source.title}\n`;
+	prefix += `Type: ${source.type}\n`;
+	prefix += `Chunks: ${source.chunks.length}\n`;
+	prefix += `Total tokens: ~${source.totalTokens}\n`;
+	prefix += `File: ${source.path}\n`;
 
-  if (input.existingNodes && input.existingNodes.length > 0) {
-    prefix += `\n## Existing wiki nodes\n`;
-    for (const node of input.existingNodes) {
-      prefix += `- ${node.id}: ${node.summary}\n`;
-    }
-  }
-  return prefix;
+	if (input.existingNodes && input.existingNodes.length > 0) {
+		prefix += `\n## Existing wiki nodes\n`;
+		for (const node of input.existingNodes) {
+			prefix += `- ${node.id}: ${node.summary}\n`;
+		}
+	}
+	return prefix;
 }
 
 // ─── Variables ────────────────────────────────────────────────────
 
 export interface VariablesInput {
-  chunks: Array<{ text: string }>;
-  anchor?: string;
+	chunks: Array<{ text: string }>;
+	anchor?: string;
 
-  confirmedPropositionsJson?: string;
+	confirmedPropositionsJson?: string;
 
-  // reread
-  claim?: string;
-  humanAngle?: string;
-  targetChunkRefs?: number[];
+	// reread
+	claim?: string;
+	humanAngle?: string;
+	targetChunkRefs?: number[];
 
-  // compile: 已有 wiki 页面（用于 cross-page update）
-  existingPages?: Array<{ filePath: string; title: string; summary: string }>;
+	// compile: 已有 wiki 页面（用于 cross-page update）
+	existingPages?: Array<{ filePath: string; title: string; summary: string }>;
 }
 
 export function buildVariables(input: VariablesInput): string {
-  const isCompile = !!input.confirmedPropositionsJson;
-  const isReread = !!input.humanAngle;
-  const isExtract = !isCompile && !isReread;
-  const mode = isCompile ? "compile" : isReread ? "reread" : "extract";
+	const isCompile = !!input.confirmedPropositionsJson;
+	const isReread = !!input.humanAngle;
+	const isExtract = !isCompile && !isReread;
+	const mode = isCompile ? "compile" : isReread ? "reread" : "extract";
 
-  let vars = `MODE: ${mode}\n\n`;
+	let vars = `MODE: ${mode}\n\n`;
 
-  if (input.anchor) vars += `## Human Anchor\n${input.anchor}\n\n`;
+	if (input.anchor) vars += `## Human Anchor\n${input.anchor}\n\n`;
 
-  if (isCompile && input.confirmedPropositionsJson) {
-    vars += `## Confirmed Propositions\n${input.confirmedPropositionsJson}\n\n`;
-  }
+	if (isCompile && input.confirmedPropositionsJson) {
+		vars += `## Confirmed Propositions\n${input.confirmedPropositionsJson}\n\n`;
+	}
 
-  if ((isCompile || isExtract) && input.existingPages && input.existingPages.length > 0) {
-    vars += `## Existing Wiki Pages (可能需要更新)\n`;
-    for (const p of input.existingPages) {
-      vars += `- ${p.filePath}: "${p.title}" — ${p.summary.slice(0, 150)}\n`;
-    }
-    vars += "\n";
-  }
+	if (
+		(isCompile || isExtract) &&
+		input.existingPages &&
+		input.existingPages.length > 0
+	) {
+		vars += `## Existing Wiki Pages (可能需要更新)\n`;
+		for (const p of input.existingPages) {
+			vars += `- ${p.filePath}: "${p.title}" — ${p.summary.slice(0, 150)}\n`;
+		}
+		vars += "\n";
+	}
 
-  if (isReread) {
-    vars += `## Re-read Context\n`;
-    vars += `原 Claim: ${input.claim}\n`;
-    vars += `Human 新角度: ${input.humanAngle}\n\n`;
-    vars += `## Target Chunks（仅重新阅读这些 chunk）\n`;
-    const targetSet = new Set(input.targetChunkRefs);
-    for (let i = 0; i < input.chunks.length; i++) {
-      if (targetSet.has(i + 1)) {
-        vars += `### Chunk ${i + 1}\n${input.chunks[i]!.text}\n\n`;
-      }
-    }
-    return vars;
-  }
+	if (isReread) {
+		vars += `## Re-read Context\n`;
+		vars += `原 Claim: ${input.claim}\n`;
+		vars += `Human 新角度: ${input.humanAngle}\n\n`;
+		vars += `## Target Chunks（仅重新阅读这些 chunk）\n`;
+		const targetSet = new Set(input.targetChunkRefs);
+		for (let i = 0; i < input.chunks.length; i++) {
+			if (targetSet.has(i + 1)) {
+				vars += `### Chunk ${i + 1}\n${input.chunks[i]!.text}\n\n`;
+			}
+		}
+		return vars;
+	}
 
-  // extract/compile: 全部 chunks
-  vars += `## Source Content\n`;
-  const SAFETY_TOKEN_CAP = 80_000;
-  const EST_CHARS_PER_TOKEN = 4;
-  let totalChars = 0;
-  const cap = SAFETY_TOKEN_CAP * EST_CHARS_PER_TOKEN;
+	// extract/compile: 全部 chunks
+	vars += `## Source Content\n`;
+	const SAFETY_TOKEN_CAP = 80_000;
+	const EST_CHARS_PER_TOKEN = 4;
+	let totalChars = 0;
+	const cap = SAFETY_TOKEN_CAP * EST_CHARS_PER_TOKEN;
 
-  for (let i = 0; i < input.chunks.length; i++) {
-    const chunkText = input.chunks[i]!.text;
-    const chunkLen = chunkText.length;
-    if (totalChars + chunkLen > cap) {
-      vars += `### Chunk ${i + 1} (truncated)\n${chunkText.slice(0, cap - totalChars)}...\n\n`;
-      vars += `[WARNING: ${input.chunks.length - i - 1} remaining chunks omitted]\n\n`;
-      break;
-    }
-    vars += `### Chunk ${i + 1}\n${chunkText}\n\n`;
-    totalChars += chunkLen;
-  }
-  return vars;
+	for (let i = 0; i < input.chunks.length; i++) {
+		const chunkText = input.chunks[i]!.text;
+		const chunkLen = chunkText.length;
+		if (totalChars + chunkLen > cap) {
+			vars += `### Chunk ${i + 1} (truncated)\n${chunkText.slice(0, cap - totalChars)}...\n\n`;
+			vars += `[WARNING: ${input.chunks.length - i - 1} remaining chunks omitted]\n\n`;
+			break;
+		}
+		vars += `### Chunk ${i + 1}\n${chunkText}\n\n`;
+		totalChars += chunkLen;
+	}
+	return vars;
 }
 
 // ─── 前缀组装器 ───────────────────────────────────────────────────
 
 export interface BuildPrefixOptions {
-  config: AppConfig;
-  source: Source;
-  anchor?: string;
-  existingNodes?: Array<{ id: string; name: string; summary: string }>;
+	config: AppConfig;
+	source: Source;
+	anchor?: string;
+	existingNodes?: Array<{ id: string; name: string; summary: string }>;
 
-  // compile
-  confirmedPropositionsJson?: string;
-  // reread
-  claim?: string;
-  humanAngle?: string;
-  targetChunkRefs?: number[];
+	// compile
+	confirmedPropositionsJson?: string;
+	// reread
+	claim?: string;
+	humanAngle?: string;
+	targetChunkRefs?: number[];
 
-  // compile: 已有 wiki 页面
-  existingPages?: Array<{ filePath: string; title: string; summary: string }>;
+	// compile: 已有 wiki 页面
+	existingPages?: Array<{ filePath: string; title: string; summary: string }>;
 }
 
 /** 单步模式（reread）的 prompt 组装 */
 export function buildIngestPrefix(opts: BuildPrefixOptions): {
-  systemPrompt: string;
-  userMessage: string;
+	systemPrompt: string;
+	userMessage: string;
 } {
-  const systemPrompt = [
-    PRO_SYSTEM,
-    "",
-    buildWorkspaceRules(opts.config),
-    "",
-    buildMaterialPrefix({ source: opts.source, existingNodes: opts.existingNodes }),
-  ].join("\n");
+	const systemPrompt = [
+		PRO_SYSTEM,
+		"",
+		buildWorkspaceRules(opts.config),
+		"",
+		buildMaterialPrefix({
+			source: opts.source,
+			existingNodes: opts.existingNodes,
+		}),
+	].join("\n");
 
-  const userMessage = buildVariables({
-    chunks: opts.source.chunks,
-    anchor: opts.anchor,
-    confirmedPropositionsJson: opts.confirmedPropositionsJson,
-    claim: opts.claim,
-    humanAngle: opts.humanAngle,
-    targetChunkRefs: opts.targetChunkRefs,
-    existingPages: opts.existingPages,
-  });
+	const userMessage = buildVariables({
+		chunks: opts.source.chunks,
+		anchor: opts.anchor,
+		confirmedPropositionsJson: opts.confirmedPropositionsJson,
+		claim: opts.claim,
+		humanAngle: opts.humanAngle,
+		targetChunkRefs: opts.targetChunkRefs,
+		existingPages: opts.existingPages,
+	});
 
-  return { systemPrompt, userMessage };
+	return { systemPrompt, userMessage };
 }
 
 // ─── 两步模式的 prompt 组装 ──────────────────────────────────────────
 
 /** 深度思考材料前缀（extract/compile 共用） */
 function buildThinkContext(opts: BuildPrefixOptions): string {
-  const parts: string[] = [];
+	const parts: string[] = [];
 
-  parts.push(buildMaterialPrefix({ source: opts.source, existingNodes: opts.existingNodes }));
+	parts.push(
+		buildMaterialPrefix({
+			source: opts.source,
+			existingNodes: opts.existingNodes,
+		}),
+	);
 
-  if (opts.anchor) parts.push(`\n## Human Anchor\n${opts.anchor}\n`);
+	if (opts.anchor) parts.push(`\n## Human Anchor\n${opts.anchor}\n`);
 
-  if (opts.existingPages && opts.existingPages.length > 0) {
-    parts.push(`\n## Existing Wiki Pages (可能需要更新)\n`);
-    for (const p of opts.existingPages) {
-      parts.push(`- ${p.filePath}: "${p.title}" — ${p.summary.slice(0, 150)}\n`);
-    }
-  }
+	if (opts.existingPages && opts.existingPages.length > 0) {
+		parts.push(`\n## Existing Wiki Pages (可能需要更新)\n`);
+		for (const p of opts.existingPages) {
+			parts.push(
+				`- ${p.filePath}: "${p.title}" — ${p.summary.slice(0, 150)}\n`,
+			);
+		}
+	}
 
-  return parts.join("\n");
+	return parts.join("\n");
 }
 
 /** 第一步：深度思考（给 Pro 模型） */
-export function buildThinkStepPrefix(opts: BuildPrefixOptions, thinkMode: "think-extract" | "think-compile"): {
-  systemPrompt: string;
-  userMessage: string;
+export function buildThinkStepPrefix(
+	opts: BuildPrefixOptions,
+	thinkMode: "think-extract" | "think-compile",
+): {
+	systemPrompt: string;
+	userMessage: string;
 } {
-  const systemPrompt = PRO_THINK_SYSTEM;
+	const systemPrompt = PRO_THINK_SYSTEM;
 
-  let userMessage = `MODE: ${thinkMode}\n\n`;
+	let userMessage = `MODE: ${thinkMode}\n\n`;
 
-  if (thinkMode === "think-extract") {
-    // 发送全部 chunks
-    userMessage += buildThinkContext(opts);
-    userMessage += buildSourceChunks(opts.source.chunks);
-  } else {
-    // compile: 发送已确认的 propositions
-    userMessage += buildThinkContext(opts);
-    if (opts.confirmedPropositionsJson) {
-      userMessage += `\n## Confirmed Propositions\n${opts.confirmedPropositionsJson}\n`;
-    }
-  }
+	if (thinkMode === "think-extract") {
+		// 发送全部 chunks
+		userMessage += buildThinkContext(opts);
+		userMessage += buildSourceChunks(opts.source.chunks);
+	} else {
+		// compile: 发送已确认的 propositions
+		userMessage += buildThinkContext(opts);
+		if (opts.confirmedPropositionsJson) {
+			userMessage += `\n## Confirmed Propositions\n${opts.confirmedPropositionsJson}\n`;
+		}
+	}
 
-  return { systemPrompt, userMessage };
+	return { systemPrompt, userMessage };
 }
 
 /** 第二步：结构化提取（给 Flash 模型） */
 export function buildFormatStepPrefix(
-  opts: BuildPrefixOptions,
-  formatMode: "format-extract" | "format-compile",
-  thinkResult: string,
+	opts: BuildPrefixOptions,
+	formatMode: "format-extract" | "format-compile",
+	thinkResult: string,
 ): {
-  systemPrompt: string;
-  userMessage: string;
+	systemPrompt: string;
+	userMessage: string;
 } {
-  const systemPrompt = PRO_FORMAT_SYSTEM;
+	const systemPrompt = PRO_FORMAT_SYSTEM;
 
-  const userMessage = `MODE: ${formatMode}
+	const userMessage = `MODE: ${formatMode}
 
 ## 材料信息
 - 材料ID: ${opts.source.id}
@@ -406,27 +423,27 @@ export function buildFormatStepPrefix(
 ## 上一步深度分析结果
 ${thinkResult}`;
 
-  return { systemPrompt, userMessage };
+	return { systemPrompt, userMessage };
 }
 
 /** 构建 chunks 文本 */
 function buildSourceChunks(chunks: Array<{ text: string }>): string {
-  let vars = `\n## Source Content\n`;
-  const SAFETY_TOKEN_CAP = 80_000;
-  const EST_CHARS_PER_TOKEN = 4;
-  let totalChars = 0;
-  const cap = SAFETY_TOKEN_CAP * EST_CHARS_PER_TOKEN;
+	let vars = `\n## Source Content\n`;
+	const SAFETY_TOKEN_CAP = 80_000;
+	const EST_CHARS_PER_TOKEN = 4;
+	let totalChars = 0;
+	const cap = SAFETY_TOKEN_CAP * EST_CHARS_PER_TOKEN;
 
-  for (let i = 0; i < chunks.length; i++) {
-    const chunkText = chunks[i]!.text;
-    const chunkLen = chunkText.length;
-    if (totalChars + chunkLen > cap) {
-      vars += `### Chunk ${i + 1} (truncated)\n${chunkText.slice(0, cap - totalChars)}...\n\n`;
-      vars += `[WARNING: ${chunks.length - i - 1} remaining chunks omitted]\n\n`;
-      break;
-    }
-    vars += `### Chunk ${i + 1}\n${chunkText}\n\n`;
-    totalChars += chunkLen;
-  }
-  return vars;
+	for (let i = 0; i < chunks.length; i++) {
+		const chunkText = chunks[i]!.text;
+		const chunkLen = chunkText.length;
+		if (totalChars + chunkLen > cap) {
+			vars += `### Chunk ${i + 1} (truncated)\n${chunkText.slice(0, cap - totalChars)}...\n\n`;
+			vars += `[WARNING: ${chunks.length - i - 1} remaining chunks omitted]\n\n`;
+			break;
+		}
+		vars += `### Chunk ${i + 1}\n${chunkText}\n\n`;
+		totalChars += chunkLen;
+	}
+	return vars;
 }

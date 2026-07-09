@@ -33,7 +33,7 @@ function makeInput(overrides: Partial<SemanticAuditInput> = {}): SemanticAuditIn
     interpretation: "Therefore Z.",
     limits: ["Only tested in lab"],
     sourceChase: ["raw/chase/test.md"],
-    chunkRefs: [1, 2],
+    propRefs: ["1", "2"],
     chaseExcerpts: [
       { index: 1, text: "Original text for chunk 1..." },
       { index: 2, text: "Original text for chunk 2..." },
@@ -134,9 +134,9 @@ describe("semantic-audit-prompt — buildSemanticAuditPrompt", () => {
     expect(prompt).toMatch(/no chase excerpt|chase\s*缺失|missing\s*chase/i);
   });
 
-  it("chunkRefs 为空时显式标注（spec 7.7）", () => {
-    const prompt = buildSemanticAuditPrompt(makeInput({ chunkRefs: [] }));
-    expect(prompt).toMatch(/missing\s*chunkrefs|chunkref\s*缺失|no\s*chunk/i);
+  it("propRefs 为空时显式标注（spec 7.7）", () => {
+    const prompt = buildSemanticAuditPrompt(makeInput({ propRefs: [] }));
+    expect(prompt).toMatch(/missing\s*propRefs|propRef\s*缺失|no\s*prop/i);
   });
 });
 

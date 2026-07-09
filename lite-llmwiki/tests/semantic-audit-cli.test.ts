@@ -90,14 +90,14 @@ function makeDraft(overrides: Partial<WikiNodeDraft> = {}): WikiNodeDraft {
       kind: "concept",
       sourceIds: ["raw_x-abcd"],
       sourceChase: ["raw/chase/raw_x-abcd.md"],
-      chunkRefs: [1],
+      propRefs: ["1"],
       confidence: 0.8,
       status: "verified",
       tags: [],
       related: [],
     },
     claim: "c",
-    evidence: [{ sourceId: "raw_x-abcd", chunkRefs: [1], summary: "s" }],
+    evidence: [{ sourceId: "raw_x-abcd", propRefs: ["1"], summary: "s" }],
     ...overrides,
   };
 }

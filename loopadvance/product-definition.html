@@ -1,0 +1,909 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LiteWikiagent 产品定义 v3 — 发动机设计</title>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "base",
+      themeVariables: {
+        fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+        primaryColor: "#eef6ff", primaryTextColor: "#172033", primaryBorderColor: "#77a6d9",
+        lineColor: "#5f748d", secondaryColor: "#f5f0ff", tertiaryColor: "#fff8e8", fontSize: "13px",
+      },
+      flowchart: { useMaxWidth: true, htmlLabels: true, curve: "basis" },
+    });
+  </script>
+  <style>
+    :root {
+      --ink: #172033; --muted: #617087; --soft: #eef3f8; --line: #d7e0ea;
+      --blue: #2f6fbd; --green: #3a8068; --amber: #9b6a1a; --rose: #b2485a;
+      --paper: #fbfcfe; --white: #ffffff; --code-bg: #182235;
+      --shadow: 0 18px 55px rgba(32,50,72,0.12);
+      --brand: #0D5C41; --accent: #00D97E;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+      color: var(--ink);
+      background: linear-gradient(180deg, rgba(238,246,255,0.9), rgba(251,252,254,0.9) 34rem), var(--paper);
+      line-height: 1.74;
+    }
+    a { color: var(--blue); text-underline-offset: 0.18em; }
+    .page { max-width: 1180px; margin: 0 auto; padding: 0 22px 72px; }
+    header { padding: 64px 0 38px; }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 10px;
+      color: var(--green); font-size: 0.84rem; font-weight: 780;
+      letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 18px;
+    }
+    .eyebrow::before { content: ""; width: 34px; height: 2px; background: var(--green); border-radius: 999px; }
+    .version-badge {
+      display: inline-block; margin-left: 12px; padding: 2px 10px;
+      background: var(--brand); color: #fff; border-radius: 999px;
+      font-size: 0.78rem; font-weight: 700; vertical-align: middle;
+    }
+    h1 { max-width: 950px; margin: 0; font-size: clamp(2.2rem, 5.5vw, 4.6rem); line-height: 1.04; }
+    .subtitle { max-width: 820px; margin: 24px 0 0; color: #34435a; font-size: clamp(1rem, 2vw, 1.3rem); line-height: 1.68; }
+    .quick-nav { display: flex; flex-wrap: wrap; gap: 10px; margin: 32px 0 0; }
+    .quick-nav a {
+      display: inline-flex; align-items: center; min-height: 38px; padding: 7px 13px;
+      color: #26354a; background: rgba(255,255,255,0.72); border: 1px solid var(--line);
+      border-radius: 999px; text-decoration: none; font-size: 0.92rem; font-weight: 650;
+    }
+    .quick-nav a.highlight { border-color: var(--brand); color: var(--brand); font-weight: 750; }
+    main { display: grid; gap: 22px; }
+    section { padding: 46px 0; border-top: 1px solid rgba(215,224,234,0.86); }
+    .section-head { display: grid; grid-template-columns: minmax(0,0.42fr) minmax(0,0.9fr); gap: 32px; align-items: start; margin-bottom: 26px; }
+    .kicker { color: var(--blue); font-size: 0.82rem; font-weight: 820; letter-spacing: 0.09em; text-transform: uppercase; }
+    h2 { margin: 0; font-size: clamp(1.6rem, 2.8vw, 2.5rem); line-height: 1.16; }
+    h3 { margin: 26px 0 10px; font-size: 1.22rem; line-height: 1.32; }
+    h4 { margin: 0 0 8px; font-size: 1.05rem; }
+    p { margin: 0 0 16px; }
+    .lead { color: #33445b; font-size: 1.06rem; line-height: 1.82; }
+    table { width: 100%; border-collapse: collapse; margin: 22px 0; background: var(--white); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; box-shadow: 0 10px 30px rgba(32,50,72,0.06); }
+    th, td { padding: 12px 16px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; font-size: 0.92rem; }
+    th { background: #eef4fb; color: #20324c; font-size: 0.82rem; letter-spacing: 0.04em; text-transform: uppercase; }
+    tr:last-child td { border-bottom: 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.88em; }
+    .pre-block {
+      padding: 18px; color: #eff6ff; background: var(--code-bg);
+      border-radius: 8px; overflow-x: auto; line-height: 1.6; font-size: 0.88rem; margin: 20px 0;
+    }
+    .diagram-wrap {
+      margin: 24px 0; padding: 22px; background: var(--white);
+      border: 1px solid var(--line); border-radius: 8px; overflow-x: auto;
+      box-shadow: 0 10px 30px rgba(32,50,72,0.07);
+    }
+    .mermaid { min-width: 600px; text-align: center; }
+    /* callouts */
+    .callout {
+      padding: 20px 24px; background: rgba(255,255,255,0.82); border: 1px solid var(--line);
+      border-radius: 8px; box-shadow: 0 10px 30px rgba(32,50,72,0.06); margin: 20px 0;
+    }
+    .callout.warn { border-color: #ead5a4; background: #fffaf0; }
+    .callout.good { border-color: #b8d9cd; background: #f3fbf8; }
+    .callout.danger { border-color: #e8c4ca; background: #fdf5f6; }
+    .callout strong { color: #0f243d; }
+    /* definition box */
+    .definition-box {
+      padding: 32px; background: linear-gradient(135deg, rgba(238,246,255,0.9), rgba(243,251,248,0.9));
+      border: 2px solid var(--blue); border-radius: 12px; margin: 24px 0; box-shadow: var(--shadow);
+    }
+    .definition-box .label { color: var(--blue); font-size: 0.82rem; font-weight: 820; letter-spacing: 0.09em; text-transform: uppercase; margin-bottom: 12px; }
+    .definition-box .text { font-size: clamp(1.2rem, 2.2vw, 1.7rem); line-height: 1.4; font-weight: 700; }
+    /* principle cards */
+    .card-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; margin: 24px 0; }
+    .card-grid.three { grid-template-columns: repeat(3, minmax(0,1fr)); }
+    .principle-card { padding: 20px; background: var(--white); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(32,50,72,0.05); }
+    .principle-card .tag { display: inline-block; margin-bottom: 10px; padding: 4px 10px; border-radius: 999px; font-size: 0.76rem; font-weight: 780; color: #fff; }
+    .tag-blue { background: var(--blue); } .tag-green { background: var(--green); }
+    .tag-amber { background: var(--amber); } .tag-rose { background: var(--rose); } .tag-brand { background: var(--brand); }
+    .principle-card p { margin: 0; color: #405066; font-size: 0.92rem; }
+    /* moat cards */
+    .moat-card {
+      padding: 16px 18px; background: linear-gradient(135deg, rgba(13,92,65,0.04), rgba(0,217,126,0.04));
+      border: 1px solid rgba(13,92,65,0.2); border-radius: 8px;
+    }
+    .moat-card h4 { margin: 0 0 6px; font-size: 0.98rem; color: var(--brand); }
+    .badge-sm { font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; display: inline-block; margin-bottom: 6px; }
+    .badge-built { background: #d4edda; color: #155724; } .badge-design { background: #fff3cd; color: #856404; }
+    .moat-card p { margin: 6px 0 0; font-size: 0.88rem; color: #405066; }
+    /* row highlight */
+    .row-danger { background: rgba(184,72,90,0.06); }
+    .row-warn { background: rgba(155,106,26,0.04); }
+    footer { padding: 30px 0 10px; color: var(--muted); font-size: 0.9rem; }
+    @media (max-width: 860px) {
+      .section-head, .card-grid, .card-grid.three { grid-template-columns: 1fr; }
+      .mermaid { min-width: 520px; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <div class="eyebrow">Product Definition v3 <span class="version-badge">2026-07-07 · 发动机设计</span></div>
+  <h1>LiteWikiagent 发动机设计</h1>
+  <p class="subtitle">
+    本文档是 LiteWikiagent 的<strong>产品定义</strong>——明确回答"我们到底在做什么"、"为什么这么做"、
+    "和别人的本质区别是什么"。基于 2026-07-07 的 14 轮设计追问 + 六大 GitHub 竞品深度调研，
+    本文档聚焦于发动机的设计决策，所有内容均为产品形态的决断，不包含工程实施细节和优先级排序。
+  </p>
+  <nav class="quick-nav">
+    <a href="#what" class="highlight">产品是什么</a>
+    <a href="#engine">发动机</a>
+    <a href="#boundary">系统边界</a>
+    <a href="#chase">Chase 证据层</a>
+    <a href="#compile">编译</a>
+    <a href="#audit">审计</a>
+    <a href="#board">局面</a>
+    <a href="#evolution">自进化</a>
+    <a href="#hats">角色分工</a>
+    <a href="#moat">竞争壁垒</a>
+    <a href="#landscape">竞品全景</a>
+    <a href="#okf">OKF 兼容</a>
+    <a href="#search">搜索基础设施</a>
+    <a href="#principles">设计原则</a>
+    <a href="#signals">信号与失败</a>
+    <a href="#decisions">决断索引</a>
+  </nav>
+</header>
+
+<main>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="what">
+  <div class="section-head">
+    <div class="kicker">01 / What We're Building</div>
+    <div>
+      <h2>产品是什么</h2>
+      <p class="lead">LiteWikiagent 是一个 agent 无关的可演化知识层。不是 RAG，不是笔记工具，不是搜索引擎。</p>
+    </div>
+  </div>
+
+  <div class="definition-box">
+    <div class="label">产品定义</div>
+    <p class="text">
+      LiteWikiagent 是一个 agent 无关的可演化知识层：
+      它把原始材料编译成带审计信号的结构化 wiki，
+      给任何 agent 提供统一的知识操作基础设施——编译、审计、局面、维护。
+      agent 可以换，知识层的状态继承下来，wiki 随使用越来越准。
+    </p>
+  </div>
+
+  <p>关键术语的精确含义：</p>
+  <table>
+    <tr><td><strong>agent 无关</strong></td><td>任何 agent 都可以接入——从 Claude Code 换到 Codex，知识层的审计信号、待确认队列、图谱状态全部继承。engine 不是特定 agent 的工具，是 agent 的外挂知识基础设施。</td></tr>
+    <tr><td><strong>可演化知识层</strong></td><td>不只是一个静态 wiki 文件目录。是一个带有审计信号、board 装配策略、待确认队列、图谱关系的<strong>有状态系统</strong>。随使用变更准——旧错误被标记、新连接被标注、缺口被识别。</td></tr>
+    <tr><td><strong>编译</strong></td><td>raw → chase 命题层 → wiki 节点的忠实转换。不是自由生成——每个 claim 锚定在命题级证据上。</td></tr>
+    <tr><td><strong>审计</strong></td><td>LLM judge 对比 claim 与 chase 命题原文，给出 5 维度 verdict + 可信度评分。不是完美度量——是<strong>诚实声明</strong>：信号写入 frontmatter，告诉 agent 这条 claim 的可信度。配有三层防御防止审计错误。</td></tr>
+    <tr><td><strong>局面</strong></td><td>wiki + 图谱 = LLM 的棋盘。board 装配 = 搜索（找相关节点）+ 强制注入（靠 kind、auditStatus、图谱 edges 确保关键棋子不被搜索遗漏）= 残局。6 种 mode 不是 prompt engineering——是 6 种不同的残局摆法。</td></tr>
+    <tr><td><strong>越来越准</strong></td><td>旧错误被标记矛盾、人类确认后取代。新连接被 LLM 发现并标注候选、人类确认后写入 edges。知识缺口被主动标记。不是只增不减的堆叠——是信息卫生约束下的定向进化。</td></tr>
+  </table>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="engine">
+  <div class="section-head">
+    <div class="kicker">02 / The Engine</div>
+    <div>
+      <h2>发动机：三个不可缺一的组件</h2>
+      <p class="lead">LiteWikiagent 的发动机由三个组件构成：编译、审计、局面。缺一个——发动机就不成立。</p>
+    </div>
+  </div>
+
+  <p>用 AlphaGo 做类比：<strong>wiki + 图谱 = 棋盘，6 种 board 模式 = 残局的摆法，LLM = 下棋高手。</strong>发动机的核心价值不是"把文档变成文本"（谁都能做），而是"给 LLM 摆出一个经过审计的残局"（所有竞品都没做）。</p>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart LR
+  subgraph Engine["发动机"]
+    CHASE["Chase<br/>命题级原文"]
+    COMPILE["Compile<br/>LLM 提取 wiki 节点"]
+    AUDIT["Audit<br/>LLM Judge<br/>5 维度 + 三层防御"]
+    BOARD["Board 装配<br/>搜索 + 强制注入<br/>= 残局"]
+    QUERY["Query<br/>LLM 在残局上推理"]
+  end
+
+  CHASE --> COMPILE
+  COMPILE --> AUDIT
+  COMPILE --> BOARD
+  AUDIT -->|"auditScore<br/>auditStatus"| BOARD
+  BOARD --> QUERY
+    </pre>
+  </div>
+
+  <table>
+    <tr><th>组件</th><th>做什么</th><th>输入</th><th>输出</th><th>为什么不可缺</th></tr>
+    <tr>
+      <td><strong>编译</strong></td>
+      <td>将 chase 命题提取为 9 种 kind 的 wiki 节点</td>
+      <td>chase（带命题 marker）</td>
+      <td>wiki 节点（frontmatter + body）</td>
+      <td>没有编译就没有 wiki——这是前提条件。但<strong>编译不是产品壁垒</strong>——agent 自己也能调 LLM 从原文提取节点（jackwener 就是这么做的）。编译是必要的前提，但不是核心竞争力。</td>
+    </tr>
+    <tr>
+      <td><strong>审计</strong></td>
+      <td>LLM judge 判断 claim 是否忠实于 chase 命题原文</td>
+      <td>wiki 节点 + chase 命题</td>
+      <td>auditStatus + auditScore 写入 frontmatter</td>
+      <td><strong>这是产品第一壁垒。</strong>竞品没有语义审计——它们最多做断链检查和人在回路审批。engine 的审计是体系化的：命题级证据锚点 + 5 维度 verdict + 三层防御（evidence-anchored 输出、矛盾交叉验证、跨模型二次审计）。agent 自己做不了这种体系化审计。</td>
+    </tr>
+    <tr>
+      <td><strong>局面</strong></td>
+      <td>按 6 种 mode 装配上下文，交给 LLM 推理</td>
+      <td>wiki 节点 + 图谱 + audit 信号</td>
+      <td>结构化的 board → LLM answer</td>
+      <td><strong>这是产品第二壁垒。</strong>竞品的查询是"关键词搜索 → 相关节点 → 扔给 LLM"。engine 的 board 是搜索 + 强制注入：搜索负责相关性，强制注入负责完整性——靠 kind、auditStatus、图谱 edges 确保 challenge 模式不遗漏 counter、trace 模式不遗漏 derived_from 链。这不是搜索优化的升级——是不同维度的信息补齐。</td>
+    </tr>
+  </table>
+
+  <div class="callout good">
+    <strong>编译 + 审计 + 局面是一条链——去掉任何一个，另外两个的信息学职能就废了。</strong>
+    去掉审计 → chase 层是多余的（竞品不需要 chase 是因为不做审计）。去掉 chase → 审计没有证据锚点。
+    去掉 board → 审计信号无法被 query 有效利用。审计和局面共同构成产品的不可替代价值。
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="boundary">
+  <div class="section-head">
+    <div class="kicker">03 / System Boundary</div>
+    <div>
+      <h2>系统边界：发动机 vs 外围</h2>
+      <p class="lead">发动机从 chase MD 开始。之前的格式转换是可插拔的外围组件。</p>
+    </div>
+  </div>
+
+  <div class="pre-block">                              ── 发动机边界 ──
+                    │
+raw/ ──┬── PDF loader ──→ chase MD ──→ compile ──→ wiki
+       ├── DOCX loader ─→ chase MD      │
+       ├── EPUB loader ─→ chase MD      ├── audit ──→ wiki + gate
+       ├── MD loader  ──→ chase MD      │
+       └── TeX loader ──→ chase MD      └── board ──→ answer
+       │                                │
+       可插拔 loader 层                    发动机本体</div>
+
+  <table>
+    <tr><th>层</th><th>什么</th><th>调不调 LLM</th><th>合同法</th></tr>
+    <tr>
+      <td><strong>loader 层</strong></td>
+      <td>格式转换——PDF/DOCX/TeX 转成纯文本 Markdown</td>
+      <td>不调 LLM，纯机械操作</td>
+      <td>接收 raw 文件 → 产出 chase MD（不带命题 marker 的纯文本）</td>
+    </tr>
+    <tr>
+      <td><strong>daemon 命题提取</strong></td>
+      <td>LLM 将 chase 纯文本分割为自包含的原子命题</td>
+      <td>调一次 LLM（每篇文档一次，结果永久缓存）</td>
+      <td>接收 chase 纯文本 → 产出带 prop marker 的 chase MD</td>
+    </tr>
+    <tr class="row-warn">
+      <td><strong>发动机本体</strong></td>
+      <td>编译、审计、board 装配、维护</td>
+      <td>compile 调 LLM · audit 调 LLM · query 调 LLM</td>
+      <td>接收带 prop marker 的 chase MD → 输出可审计 wiki + 残局</td>
+    </tr>
+  </table>
+
+  <div class="callout">
+    <strong>为什么边界画在这里：</strong>loader 层是可替换的——以后要加 EPUB loader、DOCX loader，加新的就行，发动机不用改。
+    竞品的 loader 和 engine 是耦合在一起的——这也是为什么它们能支持 30+ 格式而你不需要：你只要求 loader 遵守一个简单的合同（产出纯文本），剩下的命题提取由 daemon 统一处理。发动机的集中化设计让 loader 层可以无限扩展而不影响内核。
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="chase">
+  <div class="section-head">
+    <div class="kicker">04 / Chase Layer</div>
+    <div>
+      <h2>Chase 证据层：命题级分块</h2>
+      <p class="lead">chase 不是纯格式转换——它是审计的证据基础设施。chunk 粒度为命题级，由 daemon 触发一次性 LLM 调用。</p>
+    </div>
+  </div>
+
+  <h3>为什么是命题级 chunk</h3>
+  <p>EMNLP 2024 (Chen et al., Dense X Retrieval) 的实验证据：命题级分块在检索 Recall@20 上比段落级提升 2-10%、比句子级提升约 6%。命题 = <strong>自包含的最小事实单元</strong>——不能再拆成更小的独立命题，但也不需要额外上下文就能理解。</p>
+  <p>这对 engine 的含义：judge 对比 "claim X 是否被命题 7 支持" 时，输入是一个自包含的原子事实，没有无关上下文干扰。段落级 chunk 可能让 judge 在无关部分找到"看起来支持"的文字（false pass），残缺句子让 judge 读不懂上下文（false fail）。命题级在这两种误判上都是最优的。</p>
+
+  <h3>命题提取由 daemon 触发</h3>
+  <p>loader 产出 chase 纯文本（不带任何 marker）→ daemon 监听到新文件 → 调 LLM 做命题提取 → 在 chase 文件里插入 prop marker → chase 准备就绪。</p>
+  <p>这是一个<strong>一次性的、结果永久缓存的</strong> LLM 调用。每篇文档调一次，compile 和 audit 都复用同一个命题编号。命题提取失败或质量差——daemon 写状态报告，agent 读到后决定下一步。</p>
+
+  <div class="pre-block">&lt;!-- prop 1 --&gt;
+Shor算法能在多项式时间内分解大整数。
+
+&lt;!-- prop 2 --&gt;
+Shor算法对RSA加密构成威胁。
+
+&lt;!-- prop 3 --&gt;
+量子纠错需要大量物理量子比特。
+
+&lt;!-- prop 4 --&gt;
+当前量子计算机只有约1000个物理量子比特。</div>
+
+  <p>compile LLM 看到的是编号好的命题序列——它只需说 "claim X 来自命题 1 和命题 2"。audit judge 只需看编号对应的命题——两句话、一个事实、没有干扰。</p>
+
+  <div class="callout good">
+    <strong>chase 不是独有壁垒——"chase + 审计"组合拳才是。</strong>
+    竞品（如 nashsu）有两步 LLM 调用（分析 → 生成），但中间产物是 LLM 的语义理解（"关键实体有哪些"），不是持久化的证据锚点。
+    竞品不做审计，所以不需要 chase。engine 做审计，所以 chase 是前提条件。chase 的价值不是独立存在的——是和审计配套的系统属性。
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="compile">
+  <div class="section-head">
+    <div class="kicker">05 / Compile</div>
+    <div>
+      <h2>编译：Pro 两步提取 + Policy 确认 + 9 Kind Schema</h2>
+      <p class="lead">编译是发动机的第一个组件——必要但非壁垒。核心设计是 Pro 深度思考 → Flash 结构化输出的分工。</p>
+    </div>
+  </div>
+
+  <h3>Pro 两步提取</h3>
+  <p>Step 1 (deepseek-v4-pro)：深度阅读 chase 命题序列，输出对材料主题、论点结构、关键关系的理解。Step 2 (deepseek-v4-flash)：基于 Step 1 的理解，将命题序列结构化提取为 wiki 节点——包括 frontmatter 字段、body sections、edges 候选。Pro 负责推理质量，Flash 负责 JSON 格式约束——同一次 ingest 里两种能力分工。</p>
+
+  <h3>9 种 WikiKind · 固定 Schema</h3>
+  <p>发动机 v1 使用固定的 9 种 kind 预设：concept（原子定义）、claim（断言+证据）、method（可复现过程）、case（具体实例）、equation（公式+解释）、question（开放问题）、insight（跨来源综合）、anchor（用户锚点直觉）、counter（反直觉视角）。kind 不是装饰性标签——它嵌在五个系统逻辑里（目录路由、编译 prompt、Policy 确认、Board 强制注入、图谱边类型）。换 kind 意味着五个地方都要改——v1 不做 Schema 定制。</p>
+  <p>远期方向：发动机代码不硬编码 kind 名称，从 Schema 配置文件读取——让不同领域的发动机实例可以有不同的 Schema 预设。</p>
+
+  <h3>Policy 自动确认</h3>
+  <p>编译产出的 proposition 需要确认才能进入 compile。三级策略决定自动确认的严格度：conservative（只确认 fact types + confidence≥0.7 + 有 evidence）、balanced（fact types 直接确认，soft types 需要 evidence）、expansive（几乎所有类型都确认，insight/counter/question 需要 limits）。不是入库价值判断——是编译质量闸门。</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="audit">
+  <div class="section-head">
+    <div class="kicker">06 / Audit</div>
+    <div>
+      <h2>审计：LLM Judge + 诚实声明 + 三层防御</h2>
+      <p class="lead">审计是发动机的第一壁垒。engine 是所有竞品中唯一让 LLM 自动做语义审计的产品。</p>
+    </div>
+  </div>
+
+  <h3>双重审查</h3>
+  <p><strong>结构审计（无 LLM）：</strong>检查 nodeId、kind、sourceChase、chunkRefs、Claim、Evidence——纯规则检查。结构不合格 → 阻止，exit 2。<br>
+  <strong>语义审计（LLM judge）：</strong>5 维度判断——claim 是否被 chase 命题支持、是否引入原文没有的强判断、是否把解释写成事实、是否遗漏限制条件、evidence 是否真的支撑 claim。语义不合格 → 警告放行——不阻止，但必须告知。</p>
+
+  <h3>三层防御</h3>
+  <p>发动机的三层 LLM 调用（compiler 提取 → judge 审查 → query LLM 推理）存在系统风险：compiler 和 judge 可能共享认知偏差，对同一段原文犯同样的理解错误。这是 engine 独有的问题——因为竞品不做语义审计，不存在这个风险。用三层防御应对：</p>
+
+  <div class="card-grid">
+    <div class="principle-card">
+      <span class="tag tag-blue">第一层 · 零额外成本</span>
+      <h4>evidence-anchored 输出</h4>
+      <p>judge 的 verdict 必须带原文锚点。不输出 "support=passed, score=0.85"，而是输出 "命题 3 第 2 句：'X 提升 Y 15%' → claim 忠实"。人类 review 成本从"重读整篇原文"降到"看一眼 judge 引用的那句话"。</p>
+    </div>
+    <div class="principle-card">
+      <span class="tag tag-green">第二层 · 图谱免费信号</span>
+      <h4>矛盾检测交叉验证</h4>
+      <p>节点 A 和 B 有 contradicts 边 → 至少一个的 audit 是错的。矛盾检测不告诉哪个错了，但它标注"这里有问题"——agent 或人类重点审查该区域。</p>
+    </div>
+    <div class="principle-card">
+      <span class="tag tag-amber">第三层 · 按需付费</span>
+      <h4>跨模型二次审计</h4>
+      <p>auditScore > 0.9 且被 query/challenge 模式频繁引用的核心 claim——用不同模型（如 Claude）重新跑一次审计。两个不同模型犯同样错误的概率远低于同一个模型犯两次。不覆盖所有节点，只覆盖"高信任 + 高风险"节点。</p>
+    </div>
+  </div>
+
+  <h3>诚实声明</h3>
+  <p>审计结果写入 frontmatter：auditStatus + auditScore + judge 的 evidence anchor。query 的 board 中带节点的 audit 状态——LLM 能看到"这条 claim 的 semanticAudit 给了 0.6，judge 标注了 support 为 warning"。不假装 LLM judge 是客观度量——它是辅助信号，不是最终判决。系统的信任模型是"让错误可见"而不是"消灭错误"。</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="board">
+  <div class="section-head">
+    <div class="kicker">07 / Board</div>
+    <div>
+      <h2>局面：搜索 + 强制注入 = 残局</h2>
+      <p class="lead">Board 是发动机的第二壁垒。6 种 mode 不是 prompt engineering——是 6 种不同的残局摆法。</p>
+    </div>
+  </div>
+
+  <h3>为什么要摆残局</h3>
+  <p>竞品的查询模式是：混合搜索 → 找出最相关的节点 → 扔给 LLM。这个方案的问题是：<strong>搜索有盲区。</strong>搜索基于相似度——auditStatus=failed 的 tension 节点排名靠后、counter 节点和 claim 节点的相似度可能不高、derived_from 链上的节点可能没有共同关键词。给 LLM 一个空棋盘（只有相关性排名），LLM 可能漏掉关键棋子。</p>
+  <p>engine 的方案：<strong>搜索负责相关性（找最匹配的 seed nodes）+ 强制注入负责完整性（靠确定性字段确保关键棋子不遗漏）。</strong>两者组合 = 残局。</p>
+
+  <h3>6 种 mode 的强制注入规则</h3>
+  <table>
+    <tr><th>mode</th><th>搜索做什么</th><th>强制注入什么</th><th>注入的数据源（确定性）</th></tr>
+    <tr><td><strong>ask</strong></td><td>混合搜索找 top seeds</td><td>light——相关节点的 evidence + related + 少量 counter</td><td>graph edges（related）</td></tr>
+    <tr><td><strong>trace</strong></td><td>搜索 seeds</td><td>全链追溯——derived_from 边上的所有祖先节点 + chase 命题原文</td><td>graph edges（derived_from）+ chase prop marker</td></tr>
+    <tr><td><strong>expand</strong></td><td>搜索 seeds</td><td>methods/cases/equations——不管搜索排名，强制带入所有相关 kind 的节点</td><td>kind 字段</td></tr>
+    <tr><td><strong>compare</strong></td><td>搜索 seeds</td><td>按 sourceId 分组——不是搜出来的，是靠来源元数据强制分的</td><td>sourceId frontmatter</td></tr>
+    <tr><td><strong>challenge</strong></td><td>搜索 seeds</td><td>ALL counter + ALL limit——搜索可能全漏了，必须强制全部摆上</td><td>graph edges（contradicts）+ kind（counter）</td></tr>
+    <tr><td><strong>inspire</strong></td><td>搜索 seeds</td><td>tension nodes（auditStatus=failed）+ cross-kind related</td><td>auditStatus + graph edges</td></tr>
+  </table>
+
+  <p><strong>强制注入依赖的数据源——kind、sourceId、auditStatus、图谱 edges——都是编译和审计阶段产生的确定性字段。</strong>强制注入的可靠性取决于这些字段的质量。图谱（P0 优先级最高的需求）是强制注入的升级——让 challenge 模式的 contradicts 边和 trace 模式的 derived_from 边不再依赖搜索，而是靠图谱的确定性关系。</p>
+
+  <h3>为什么不是"简化成一个 mode + 让 LLM 自己判断"</h3>
+  <p>如果只给 LLM 所有相关节点（方案 B），LLM 确实可能自己找出矛盾和追溯链。但搜索可能遗漏的关键节点——不在相关性排名前面的 counter、limit、tension——LLM 根本看不到。强制注入确保这些棋子出现在棋盘上。6 种 mode 不是限制 LLM 的推理——是<strong>补偿搜索的结构性盲区</strong>。</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="evolution">
+  <div class="section-head">
+    <div class="kicker">08 / Evolution</div>
+    <div>
+      <h2>自进化：「越来越准」的五个方向</h2>
+      <p class="lead">发动机不只是编译一次——它通过取代、自愈、连接、缺口让 wiki 随使用越来越准。</p>
+    </div>
+  </div>
+
+  <div class="card-grid">
+    <div class="principle-card">
+      <span class="tag tag-blue">取代</span>
+      <h4>新材料淘汰旧声明</h4>
+      <p>新材料入库时与已有声明矛盾 → 系统标记 contradicts 边 → 旧声明标记为候选 superseded → <strong>人类确认后取代生效</strong>。取代不是自动的——LLM judge 是主观的，自动取代有误杀风险。只标记不自动取代，裁决权在人类。</p>
+    </div>
+    <div class="principle-card">
+      <span class="tag tag-green">自愈</span>
+      <h4>定期 lint + 分级修复</h4>
+      <p>daemon 定期扫描：孤立节点、断裂引用、过时声明、缺失概念。<strong>机械问题自动修复</strong>（断链引用更新、图重建）。<strong>语义问题生成工单</strong>（内容改写、claim 更新）——等待人类确认而非自动修复。</p>
+    </div>
+    <div class="principle-card">
+      <span class="tag tag-amber">连接</span>
+      <h4>发现隐藏关联</h4>
+      <p>daemon inspire 产出跨来源、跨 tag 的候选 edges。<strong>系统只负责发现和标注——写入 frontmatter edges 需要人类确认。</strong>LLM 发现的关联可能是"看起来有关但其实无关"的伪关联，人类必须做终判。</p>
+    </div>
+    <div class="principle-card">
+      <span class="tag tag-rose">缺口</span>
+      <h4>标记知识空白</h4>
+      <p>系统知道 wiki 不覆盖什么——query 的 missingEvidence 标记、inspire 的 missingEvidence 类型、lint 的孤立节点检测。缺口被写入 progress.md，等人类决定是否填补。</p>
+    </div>
+    <div class="principle-card">
+      <span class="tag tag-brand">强化</span>
+      <h4>新材料支持已有声明时提升可信度</h4>
+      <p>取代机制处理矛盾（contradicts），强化机制处理一致（reinforcement）。新编译节点与已有节点语义一致 → 标记 reinforcement 候选 → 人类确认 → auditScore 提升。不是遗忘曲线——是 evidence accumulation。知识不因不访问而贬值，但新证据让旧声明更可信。</p>
+    </div>
+  </div>
+
+  <h3>回流：好答案写回 wiki</h3>
+  <p>agent query 产生的答案如果 LLM judge 判断值得固化（有 fromWiki 引用、基于 board、有新 insight），daemon 标记为 reflow 候选。<strong>不自动写回——人类确认后才进入 wiki。</strong>回流节点标 reflowOrigin + derived_from 边指向推理来源节点。它们没有 chase 命题原文——audit 不能用于回流节点，信任层级天然低于编译节点。</p>
+
+  <h3>强化：新材料支持已有声明时提升可信度</h3>
+  <p>取代机制处理的是"新材料与旧声明矛盾"的场景（矛盾 → 标记 contradicts → 人类确认 → 取代）。但还有一个对称的场景：<strong>新材料支持了已有声明。</strong>当新编译的节点与已有 wiki 节点语义一致时（同样的 claim，来自不同来源），这说明已有节点的可信度应该提升——不是一个一次性评分，而是一个随 reinforcement 不断增强的信号。</p>
+  <p><strong>关键区分：trivial reinforcement vs genuine reinforcement。</strong>如果新来源只是在复述同一个事实而没有提供独立的经验证据（如两本书都说"1/e ≈ 0.368"——这是一个数学常数，不存在"独立验证"），这种强化不应提升 auditScore——不是因为它错误，是因为它不增加可信度。只有当新来源提供了旧来源没有的独立验证（如"我们在实验中复现了这个结果"）时，才是 genuine reinforcement——应该确认并提升。daemon judge 在做一致性判断时必须输出两个维度：<strong>语义一致度</strong>（两个 claim 是否在说同一件事，0-1）和<strong>证据增量度</strong>（新来源是否提供了独立的经验证据，0-1）。只有当证据增量度超过阈值时，才标记为强化候选提交人类确认。</p>
+  <p>强化确认时人类看到的最小信息集：已有节点的 claim + 当前 auditScore + chase 命题锚点、新节点的 claim + source 信息 + chase 命题锚点、daemon judge 的一致性判断和增量判断、建议的新 auditScore。人类判断三个维度：语义一致性（真的在说同一件事吗？）、证据增量（新来源提供独立验证了吗？）、来源权威度（足够支撑提升吗？）。</p>
+  <p>这不是自动的——遵循信息卫生原则。daemon 只标记候选，人类确认后 auditScore 才更新。强化不修改节点内容，只更新 audit 元数据信号。这是"越来越准"的第五个方向：除了取代、自愈、连接、缺口——还有<strong>强化</strong>。</p>
+
+  <h3>信息卫生原则</h3>
+  <div class="callout danger">
+    <strong>所有 LLM 二次生成的内容必须经过人类确认才能进入 wiki。</strong>这是防止 wiki 从"知识库"退化为"LLM 对话日志"的硬原则。
+    <ul style="margin:8px 0 0; padding-left:18px;">
+      <li><strong>可以自动做（机械操作）：</strong>格式转换、chunk 分割、结构审计、embedding 生成、增量检测、图重建、断链修复</li>
+      <li><strong>不能自动做（必须人类确认）：</strong>回流节点写入、LLM 发现的 edges 写入、语义 lint 修复、取代关系确认、任何 LLM 判断为"应该这样改"的内容变更</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="hats">
+  <div class="section-head">
+    <div class="kicker">09 / Roles</div>
+    <div>
+      <h2>三角色分工：daemon · agent · 人类</h2>
+      <p class="lead">发动机的运行需要三个角色的明确分工。核心原则：daemon 是 CI 管道，agent 是决策者，人类是主编。</p>
+    </div>
+  </div>
+
+  <table>
+    <tr><th>角色</th><th>类比</th><th>职责</th><th>不可以做</th></tr>
+    <tr>
+      <td><strong>daemon</strong></td>
+      <td>CI pipeline</td>
+      <td>监听文件自动命题提取、自动结构审计、定期跑 lint（只修复机械问题）、接收人类 inspire 命令（只产出候选）、回流候选标记。把结果写到状态文件（lint-report.json、progress.md）。</td>
+      <td>做语义判断、写回 wiki 内容、确认回流节点、确认取代关系、写入 edges——任何涉及"这个对不对"的决策</td>
+    </tr>
+    <tr>
+      <td><strong>agent</strong></td>
+      <td>开发者 + 运维</td>
+      <td>调用 CLI 做 compile、query、inspire。读取 daemon 状态文件，自己判断优先级——要不要处理这个矛盾、要不要告诉人类有回流候选。在 wiki 局面上做推理。每次会话开头读待确认清单，帮人类做预筛选。</td>
+      <td>替人类确认回流、替人类确认 edges——这些决策需要人的判断力</td>
+    </tr>
+    <tr>
+      <td><strong>人类</strong></td>
+      <td>主编</td>
+      <td>三件事：选材（放什么进 raw/）、终判（audit 结果是信号不是判决）、升级（daemon 和 agent 都处理不了的语义冲突）。定期批量处理待确认队列——不碎片化打扰。</td>
+      <td>日常操作——这些是 agent 和 daemon 的事</td>
+    </tr>
+  </table>
+
+  <h3>Daemon 七项职责</h3>
+  <table>
+    <tr><th>#</th><th>职责</th><th>触发</th><th>daemon 决定什么</th><th>留给 agent/人类决定什么</th></tr>
+    <tr><td>①</td><td>命题提取</td><td>新 chase 纯文本</td><td>调 LLM 做命题提取</td><td>命题提取质量是否需要人工复核</td></tr>
+    <tr><td>②</td><td>文件监听自动导入</td><td>chase 已有 prop marker</td><td>触发 compile</td><td>人类已经通过"放文件"做了选材决定。daemon 只执行</td></tr>
+    <tr><td>③</td><td>wiki 变化自动审查</td><td>wiki 文件变化</td><td>触发 audit</td><td>audit 结果怎么用——agent 自己决定是否继续 query</td></tr>
+    <tr><td>④</td><td>定期 lint + 分级修复</td><td>定时器</td><td>何时跑 lint、哪些机械问题可自动修复</td><td>语义工单的优先级——agent 读 lint-report.json 后判断</td></tr>
+    <tr><td>⑤</td><td>启发发现</td><td>人类命令触发</td><td>跑 inspire、产出候选（不写入 edges）</td><td>哪个连接值得追查、是否写入 edges——人类触发命令 → daemon 执行 → 人类在结果中勾选确认</td></tr>
+    <tr><td>⑥</td><td>回流候选标记</td><td>定时器</td><td>用 LLM judge 筛选候选</td><td>是否写回——人类确认后才写入 wiki</td></tr>
+    <tr><td>⑦</td><td>强化检测</td><td>compile 后</td><td>新节点语义一致时标记 reinforcement 候选</td><td>是否提升已有节点 auditScore——人类确认后生效</td></tr>
+  </table>
+
+  <h3>人类确认的批量处理</h3>
+  <p>人类确认不是通知驱动的碎片化操作——知识策展需要深度注意力。人类定期批量处理待确认清单（回流候选、edge 候选、语义 lint 工单、取代关系确认）。两个防护机制：</p>
+  <ul>
+    <li><strong>agent 预筛选：</strong>agent 在会话开头读待确认清单，用 LLM 按两个维度排序——风险（这条如果错了对 query 质量的影响）和置信度（daemon 判断的把握）。高风险 + 高置信度的排前面。低风险 + 低置信度的可以滞后。</li>
+    <li><strong>积压上限 + 自动降级：</strong>待确认数 < 20 → 正常积压。20-50 → agent 每次会话提醒人类。> 50 → 自动降级：低优先级项标记超时跳过，中项合并同类，只保留核心风险项。</li>
+  </ul>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="moat">
+  <div class="section-head">
+    <div class="kicker">10 / Competitive Moat</div>
+    <div>
+      <h2>竞争壁垒：七个维度</h2>
+      <p class="lead">在 6 个竞品中，LiteWikiagent 在以下 7 个维度上具有不可替代的差异。不是所有维度都是壁垒——编译不是，但审计和局面是。</p>
+    </div>
+  </div>
+
+  <div class="card-grid three">
+    <div class="moat-card">
+      <h4>🎯 Agent-agnostic 知识层</h4>
+      <span class="badge-sm badge-built">已构建</span>
+      <p>engine 是任何 agent 的外挂知识基础设施。agent 换了，审计信号、待确认队列、图谱状态全部继承。竞品的 agent 集成是单向工具调用——engine 是双向的（agent 调 engine 推理 + engine 回馈 agent 审计信号和待确认清单）。</p>
+    </div>
+    <div class="moat-card">
+      <h4>⚖️ LLM Judge 语义审计</h4>
+      <span class="badge-sm badge-built">已构建</span>
+      <p>5 维度 verdict + 命题级证据锚点 + 三层防御。竞品没有语义审计——它们的"审查"是规则 lint 或人在回路审批。engine 是所有竞品中唯一让 LLM 自动做语义审计的产品。</p>
+    </div>
+    <div class="moat-card">
+      <h4>♟️ Board 残局模型</h4>
+      <span class="badge-sm badge-built">已构建</span>
+      <p>6 种 mode = 搜索 + 强制注入。不是 prompt engineering——是补偿搜索结构性盲区的装配策略。所有竞品只有一种查询模式（搜索 + LLM）。</p>
+    </div>
+    <div class="moat-card">
+      <h4>📋 Chase 证据粒度层</h4>
+      <span class="badge-sm badge-built">已构建</span>
+      <p>命题级 chunk 提供精确的证据锚点。竞品有"分析→生成"两步但中间产物是语义分析（不持久化、不做 chunk 级追溯）。chase 是审计的前提——没有 chase 就没有命题级证据对比。</p>
+    </div>
+    <div class="moat-card">
+      <h4>🔧 Pro 两步 Ingest</h4>
+      <span class="badge-sm badge-built">已构建</span>
+      <p>deepseek-v4-pro 深度思考 → deepseek-v4-flash 结构化输出。分离推理质量和格式约束。nashsu 有类似两步但 Pro/Flash 的分工更精确。</p>
+    </div>
+    <div class="moat-card">
+      <h4>🎛️ Policy 确认策略</h4>
+      <span class="badge-sm badge-built">已构建</span>
+      <p>conservative/balanced/expansive 三级自动确认。竞品要么全自动要么全手动——没有分级策略。基于 kind + confidence + evidence + limits 的多维过滤。</p>
+    </div>
+    <div class="moat-card">
+      <h4>🤖 Daemon CI 管道</h4>
+      <span class="badge-sm badge-design">设计完成</span>
+      <p>daemon 做 CI 驱动的自动命题提取、lint、inspire、回标——不是对话驱动的。竞品依赖人在对话中触发维护操作。daemon 让自动维护成为系统属性。</p>
+    </div>
+  </div>
+
+  <div class="callout good">
+    <strong>7 个壁垒中 6 个已构建、1 个设计完成。</strong>这些能力是竞品很难复制的——不是技术难度问题，而是<strong>架构哲学差异</strong>。竞品要从"人类对话驱动"改为"agent-agnostic 知识层 + LLM judge 审计 + board 残局"需要重写整个产品模型。守在这 7 个壁垒上——这是差异化竞争的唯一正确策略。
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="landscape">
+  <div class="section-head">
+    <div class="kicker">11 / Competition</div>
+    <div>
+      <h2>竞品全景</h2>
+      <p class="lead">2026 年 4 月 Karpathy 发布 LLM Wiki Gist 后 3 个月涌现 7+ 开源项目。以下是 6 个代表性竞品的定位分析和借鉴方向。</p>
+    </div>
+  </div>
+
+  <h3>逐项能力对比</h3>
+  <table>
+    <tr><th>能力</th><th>LiteWikiagent</th><th>atomicstrata</th><th>nashsu</th><th>jackwener</th><th>xiaobai</th><th>SwarmVault</th></tr>
+    <tr><td><strong>Agent-agnostic 知识层</strong></td><td>✅ 核心定位</td><td>⚠️ MCP</td><td>❌ 人类 GUI</td><td>✅ Agent-native</td><td>✅ Agent 构建</td><td>⚠️ MCP</td></tr>
+    <tr><td><strong>LLM judge 语义审计</strong></td><td>✅ 5 维度 + 三层防御</td><td>⚠️ 审查策略</td><td>❌ 无</td><td>❌ 无</td><td>❌ 无</td><td>⚠️ 矛盾检测</td></tr>
+    <tr><td><strong>Board 6 种 mode</strong></td><td>✅ 搜索 + 强制注入</td><td>❌ 无</td><td>❌ 无</td><td>❌ 无</td><td>❌ 无</td><td>❌ 无</td></tr>
+    <tr><td><strong>Chase 命题层</strong></td><td>✅ 独有</td><td>❌ 无</td><td>❌ 无</td><td>❌ 无</td><td>❌ 无</td><td>❌ 无</td></tr>
+    <tr><td><strong>Policy 确认策略</strong></td><td>✅ 3 级</td><td>❌ 无</td><td>❌ 无</td><td>❌ 无</td><td>❌ 无</td><td>❌ 无</td></tr>
+    <tr><td><strong>知识图谱</strong></td><td>❌ 设计中</td><td>✅</td><td>✅ 4 信号</td><td>✅ 社区检测</td><td>⚠️</td><td>✅ 3 边</td></tr>
+    <tr><td><strong>混合搜索</strong></td><td>❌ 仅关键词</td><td>✅</td><td>✅</td><td>✅ BM25+RRF</td><td>❌</td><td>✅</td></tr>
+    <tr><td><strong>多 Provider</strong></td><td>❌ 仅 DeepSeek</td><td>✅ 5</td><td>✅ 5</td><td>⚠️</td><td>✅</td><td>✅ 12</td></tr>
+    <tr><td><strong>MCP/SDK</strong></td><td>❌ 无</td><td>✅</td><td>✅</td><td>✅ Skills</td><td>❌</td><td>✅</td></tr>
+  </table>
+
+  <p class="lead">LiteWikiagent 在 Board、审计、Chase、Policy 四个方面所有竞品都没有——这是真正的差异化。图谱、混合搜索、多 Provider、MCP 是基础设施缺失——这些都是可以借的（竞品已有成熟方案），不是发动机本身的问题。</p>
+
+  <h3>每个竞品最值得借鉴的东西</h3>
+  <table>
+    <tr><th>竞品</th><th>最应该借鉴</th><th>为什么</th></tr>
+    <tr>
+      <td><strong>jackwener/llm-wiki</strong></td>
+      <td>双层 Agent 引导 + RRF 融合 + CJK 分词</td>
+      <td>设计哲学最接近——Agent-native、工具与 LLM 解耦、Agent Skills 规范兼容。入口文件极简（降上下文成本）+ 技能文件按需加载（完整操作手册）——这个模式可以直接复用。</td>
+    </tr>
+    <tr>
+      <td><strong>atomicstrata/llm-wiki-compiler</strong></td>
+      <td>Eval Harness 健康评分 + 审核策略自动化</td>
+      <td>页面健康分布、图谱健康、引用覆盖/精度、回归增量——完整的评估体系。失效闭合配置（错误时中止而非静默跳过）——质量保障的硬底线。</td>
+    </tr>
+    <tr>
+      <td><strong>xiaobai-agent/llm-wiki</strong></td>
+      <td>Meta 策略记忆层 + 三层蒸馏 + Schema 驱动</td>
+      <td>让 AI 不仅存储知识，还存储"如何学习"的方法。从对话提取 Timeline → Atomic Facts → Backlog Ideas 的渐进蒸馏。零依赖纯 Markdown——无锁定、可移植。</td>
+    </tr>
+    <tr>
+      <td><strong>nashsu/llm_wiki</strong></td>
+      <td>4 信号相关性模型 + Louvain 社区检测 + Purpose.md</td>
+      <td>直接链接、源重叠、Adamic-Adar、类型亲和性——四种信号量化页面关联。Louvain 社区检测自动发现知识集群。Purpose.md 注入方向性意图。</td>
+    </tr>
+    <tr>
+      <td><strong>SwarmVault</strong></td>
+      <td>3 种边类型 + Context Packs + 矛盾检测</td>
+      <td>extracted/inferred/ambiguous——每条边标注来源。Token 有界的代理交接包（显式标注遗漏）。跨源矛盾自动检测。</td>
+    </tr>
+    <tr>
+      <td><strong>nvk/llm-wiki</strong></td>
+      <td>多 Agent 并行 + 论文驱动研究</td>
+      <td>5-10 Agent 并行、正反方验证、反确认偏差第二轮。适合"大量材料快速入库"场景。</td>
+    </tr>
+  </table>
+
+  <div class="callout warn">
+    <strong>关键判断：竞品不会想做审计。</strong>SwarmVault 如果加 LLM judge 语义审计，就能覆盖 engine 的功能加上它自己的全栈。但它大概率不会——审计增加复杂度和 LLM 调用成本，和它的本地优先、零配置定位冲突。engine 的壁垒不在于"别人做不到"——在于"别人不想做"。这不是弱点，是产品哲学的选择性壁垒。
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="okf">
+  <div class="section-head">
+    <div class="kicker">12 / OKF Compatibility</div>
+    <div>
+      <h2>OKF 生态兼容：零改造成本的格式标准化</h2>
+      <p class="lead">Google Cloud 2026-06-12 发布的 Open Knowledge Format v0.1 与 LiteWikiagent 的 wiki 节点格式天然对齐。兼容 OKF 是零改造成本的生态占位。</p>
+    </div>
+  </div>
+
+  <h3>OKF 是什么</h3>
+  <p>OKF (Open Knowledge Format) 是 Google Cloud 提出的厂商中立知识格式规范——用纯 Markdown + YAML frontmatter 表示组织知识。核心理念：知识应该可以像数据一样被打包、被传递、被版本化管理。任何一个 OKF bundle 就是一个 Markdown 文件目录——不需要任何工具就能读，clone 一个 git repo 就能分发。</p>
+
+  <h3>LiteWikiagent 天然兼容</h3>
+  <table>
+    <tr><th>OKF 要求</th><th>LiteWikiagent 做法</th><th>差距</th></tr>
+    <tr><td>UTF-8 Markdown + YAML frontmatter</td><td>✅ 全量 wiki 节点就是这个格式</td><td>零差距</td></tr>
+    <tr><td><code>type</code> 字段（必填）</td><td>kind 字段——语义等价</td><td>映射关系：9 kind → OKF type</td></tr>
+    <tr><td><code>title</code> + <code>description</code></td><td>已有</td><td>零差距</td></tr>
+    <tr><td><code>tags</code></td><td>已有</td><td>零差距</td></tr>
+    <tr><td><code>timestamp</code></td><td>createdAt / updatedAt</td><td>小映射</td></tr>
+    <tr><td>index.md + log.md</td><td>已有</td><td>零差距</td></tr>
+    <tr><td>Citations section</td><td>chase 命题引用——细粒度远超 OKF</td><td>向下兼容</td></tr>
+    <tr><td>Bundle 概念</td><td>wiki/ 目录 = 一个 bundle</td><td>零差距</td></tr>
+    <tr><td>Cross-linking (绝对/相对路径)</td><td>[[wikilink]] + graph edges</td><td>wikilink 可映射到 Markdown link</td></tr>
+  </table>
+
+  <h3>兼容策略</h3>
+  <p>不需要修改任何现有字段。只需：</p>
+  <ol>
+    <li><strong>导出功能：</strong>新增 <code>llmwiki export --okf</code> 命令——将 wiki/ 目录转换为 OKF 兼容的 bundle（kind → type 映射、createdAt → timestamp 映射、Chase 引用 → Citations section 映射）</li>
+    <li><strong>导入功能：</strong><code>llmwiki import --okf &lt;bundle&gt;</code>——读取 OKF bundle → 提取 concept 文档 → 进入编译管线（每个 concept 视为一个带完整 frontmatter 的节点 draft，走 audit + gate 流程）</li>
+    <li><strong>frontmatter 扩展：</strong>可选增加 <code>okf_type</code> 字段——不改变 kind 的语义，仅作为导出映射的显式声明</li>
+  </ol>
+
+  <div class="callout good">
+    <strong>OKF 对 LiteWikiagent 的战略价值：</strong>不是"改用 OKF 格式"——是"可以声明 OKF 兼容"。这让你在开源生态中占据一个独特位置：唯一一个带语义审计的 OKF 兼容编译器。其他 OKF 工具只是格式转换器——你的发动机是"格式兼容 + 质量验证"。
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="search">
+  <div class="section-head">
+    <div class="kicker">13 / Search Infrastructure</div>
+    <div>
+      <h2>搜索基础设施：qmd 集成</h2>
+      <p class="lead">混合搜索是发动机 board 装配的必要能力。Karpathy V1 Gist 推荐的 qmd 提供了 BM25 + Vector + RRF + LLM 重排序的完整方案——比自己从零造混合搜索更轻量、更成熟。</p>
+    </div>
+  </div>
+
+  <h3>qmd 是什么</h3>
+  <p>qmd (Query Markup Documents) 是一个完全本地运行的文档搜索引擎。搜索管道：用户查询 → LLM 查询扩展 → 每个扩展查询并行执行 BM25 (SQLite FTS5) + Vector (本地 GGUF 模型) → RRF 融合 (K=60) → Top 30 候选 → LLM 重排序 (Qwen3-Reranker) → 位置感知混合评分 → 最终结果。总计约 2GB 本地模型，无需任何外部 API。</p>
+
+  <h3>为什么用 qmd 而不是自建</h3>
+  <table>
+    <tr><th>维度</th><th>自建混合搜索</th><th>集成 qmd</th></tr>
+    <tr><td>BM25 后端</td><td>需要集成 SQLite FTS5 或 Tantivy</td><td>✅ 已内置，开箱即用</td></tr>
+    <tr><td>向量嵌入</td><td>需要调 DeepSeek API 或本地模型</td><td>✅ 本地 GGUF embedding 模型，零 API 成本</td></tr>
+    <tr><td>RRF 融合</td><td>需要自己实现融合公式</td><td>✅ RRF K=60 + Top-rank bonus 已实现</td></tr>
+    <tr><td>LLM 重排序</td><td>需要额外 LLM 调用或自建</td><td>✅ Qwen3-Reranker 本地重排序，yes/no + logprobs</td></tr>
+    <tr><td>CJK 中文支持</td><td>需要做分词优化</td><td>⚠️ 默认 embedding 为英文优化，需切换 Qwen3-Embedding</td></tr>
+    <tr><td>MCP 服务器</td><td>需要自己搭建</td><td>✅ 完整 MCP 服务器 (stdio + HTTP)，query/get/multi_get 工具</td></tr>
+    <tr><td>Agent 集成</td><td>只支持 CLI</td><td>✅ CLI --json 输出 + MCP + TypeScript SDK</td></tr>
+  </table>
+
+  <h3>集成架构</h3>
+  <div class="pre-block">LiteWikiagent Board 装配
+    │
+    ├── seed nodes ← qmd search (BM25 + Vector + RRF + Rerank)
+    │                    │
+    │                    └── 索引对象：wiki/*.md + chase/*.md
+    │
+    ├── forced injection ← graph.json edges + kind/auditStatus
+    │
+    └── final board → LLM query</div>
+
+  <p>引擎不绑定 qmd——qmd 是可替换的搜索后端。如果后续出现更好的方案或需要切换，engine 的 board 装配逻辑不变（只依赖搜索结果和强制注入的数据源）。qmd 的 CLI JSON 输出格式与 board 装配的输入接口对齐。</p>
+
+  <div class="callout">
+    <strong>与自建的关系：</strong>qmd 处理搜索端（混合搜索 + 重排序），engine 处理 board 端（强制注入 + 局面装配）。两部分通过搜索结果（nodeId 列表 + relevance 分数）衔接。不是"用 qmd 替代自建"——是"用 qmd 处理搜索、engine 处理装配"，两者分工明确。
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="principles">
+  <div class="section-head">
+    <div class="kicker">14 / Principles</div>
+    <div>
+      <h2>不可动摇的设计原则</h2>
+      <p class="lead">以下原则是产品定义的硬约束。违反任何一条 = 发动机设计不一致。</p>
+    </div>
+  </div>
+
+  <table>
+    <tr><th>#</th><th>原则</th><th>含义</th></tr>
+    <tr class="row-danger">
+      <td>1</td>
+      <td><strong>信息卫生</strong></td>
+      <td>所有 LLM 二次生成内容必须经过人类确认才能进入 wiki。机械操作可以自动——语义操作不能。（见 §8 §9）</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td><strong>编译·审计·局面三者一体</strong></td>
+      <td>发动机的三个组件不可分割。去掉任何一个，另外两个的信息学职能失效。编译是前提、审计是第一壁垒、局面是第二壁垒。（见 §2）</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td><strong>诚实声明</strong></td>
+      <td>审计信号不是完美度量——是可信度辅助信号。LLM judge 是主观的，系统不假装客观。语义审计失败不阻止查询，但必须告知。错误要可见，不能隐形。（见 §6）</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td><strong>daemon 是 CI——不替 agent 做决策</strong></td>
+      <td>daemon 负责执行和报告（发现 → 写状态文件），agent 负责判断和决策（读状态文件 → 定优先级）。daemon 的自动操作仅限于机械操作——不涉语义判断。（见 §9）</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td><strong>人类定期批量确认</strong></td>
+      <td>人类确认不是碎片化通知——知识策展需要深度注意力。待确认清单积压到一定量后批量处理。agent 做预筛选排序。积压超过上限自动降级。（见 §9）</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td><strong>发动机与 loader 解耦</strong></td>
+      <td>发动机本体不依赖任何特定 loader。loader 层是可插拔的——遵守一个合同（产 pure text chase MD）即可。命题提取由 daemon 统一处理——不在 loader 层调 LLM。（见 §3）</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td><strong>Board = 搜索 + 强制注入</strong></td>
+      <td>搜索找最相关的节点，强制注入确保完整性（不依赖搜索排名的节点也上棋盘）。6 种 mode 是强制注入的不同配置。图谱是强制注入的升级——让 contradicts/derived_from 边不再依赖搜索。（见 §7）</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td><strong>命题级 chunk 是审计的前提</strong></td>
+      <td>chase 层的 chunk 粒度为命题级（自包含的原子事实单元）。不是段落级、不是句子级——有 EMNLP 2024 论文的实验证据支撑。命题提取由 daemon 触发，一次性 LLM 调用，结果持久化。（见 §4）</td>
+    </tr>
+    <tr>
+      <td>9</td>
+      <td><strong>回流节点信任层级低于编译节点</strong></td>
+      <td>回流节点没有 chase 命题原文——audit 不能用于回流节点。它们的可信度天然低于编译节点。标 reflowOrigin + derived_from 边指向来源。Query 时 LLM 能区分"这是原文说的"和"这是 LLM 推的"。（见 §8）</td>
+    </tr>
+  </table>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="signals">
+  <div class="section-head">
+    <div class="kicker">15 / Signals &amp; Failure</div>
+    <div>
+      <h2>信号与失败：怎么知道发动机在变好/变坏</h2>
+      <p class="lead">成功标准是"wiki 越来越准"——但必须定义反面：什么状态出现时说明发动机失败了。</p>
+    </div>
+  </div>
+
+  <h3>越来越可信的可观测信号</h3>
+  <table>
+    <tr><th>好的信号</th><th>坏的信号</th><th>谁看</th></tr>
+    <tr>
+      <td>wiki 中出现 contradicts 边标记的矛盾对 → 人类确认后出现 status: superseded 的节点</td>
+      <td>出现了大量 auditStatus=warning 的节点但待确认清单积压超过 50 且无人处理</td>
+      <td>agent 每次会话读 status --json 中的 audit 统计</td>
+    </tr>
+    <tr>
+      <td>query board 中 auditStatus 透传给 LLM，LLM 能引用 audit 信号做推理决策</td>
+      <td>agent 基于某个 claim 推理出错误结论——且该 claim 的 auditScore 是 0.9（说明 audit 给了 false pass）</td>
+      <td>人类在定期确认时发现</td>
+    </tr>
+  </table>
+
+  <h3>越来越连通的可观测信号</h3>
+  <table>
+    <tr><th>好的信号</th><th>坏的信号</th><th>谁看</th></tr>
+    <tr>
+      <td>graph.json 中 edges 数量随节点增长而增长（非孤立节点比例 > 80%）</td>
+      <td>孤立节点比例上升（> 30% 的节点没有任何 edge）——说明 inspire 没产生有效候选</td>
+      <td>daemon lint-report.json 中的图谱健康统计</td>
+    </tr>
+    <tr>
+      <td>trace 模式的 derived_from 链完整（无断点）</td>
+      <td>trace 模式跑不通——derived_from 边缺失导致追溯链断裂</td>
+      <td>agent query trace 后在输出中检查</td>
+    </tr>
+    <tr>
+      <td>board.relatedNodes 包含关键词搜索找不到的语义关联节点</td>
+      <td>强制注入的节点（counter, limit, tension）在 board 中为 0——说明 kind 标注或图谱边缺失</td>
+      <td>agent 每次 query 后检查 board 统计</td>
+    </tr>
+  </table>
+
+  <h3>越来越完整的可观测信号</h3>
+  <table>
+    <tr><th>好的信号</th><th>坏的信号</th><th>谁看</th></tr>
+    <tr>
+      <td>progress.md 中有正在被处理的 missingEvidence 工单</td>
+      <td>query 频繁返回同一个 missingEvidence 但连续多次未填补</td>
+      <td>agent 在 query 后跟踪 missingEvidence 的重复模式</td>
+    </tr>
+    <tr>
+      <td>回流候选被定期确认并写回——wiki 中出现 reflowOrigin 标记的新节点</td>
+      <td>回流候选堆积超 30 天未被确认——说明待确认清单过载</td>
+      <td>人类定期检查 progress.md</td>
+    </tr>
+  </table>
+
+  <div class="callout">
+    <strong>daemon 负责产出信号——但不负责"超标了怎么办"。agent 负责读取信号并定优先级，人类负责最终裁决。</strong>
+    待确认积压超过 50 触发自动降级——这是一个硬阈值。其他阈值的精确数值（孤立节点超过多少算坏、missingEvidence 重复多少次算缺口）后续通过 loop engineering 调参。
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section id="decisions">
+  <div class="section-head">
+    <div class="kicker">16 / Decision Index</div>
+    <div>
+      <h2>关键决断索引</h2>
+      <p class="lead">本文档中所有关键设计决断的索引，每个决策标注了为什么选这个而不是另一个。</p>
+    </div>
+  </div>
+
+  <table>
+    <tr><th>#</th><th>决断</th><th>为什么是这个</th><th>对应章节</th></tr>
+    <tr><td>1</td><td>发动机 = 编译 + 审计 + 局面（三者不可分割）</td><td>编译是前提（非壁垒）、审计是第一壁垒、局面是第二壁垒。去掉任何一个，另外两个的信息学职能失效</td><td>§2</td></tr>
+    <tr><td>2</td><td>发动机边界在 chase 入口</td><td>loader 层是纯机械的格式转换——可插拔、可扩展。发动机从 chase MD 开始，loader 和 engine 解耦</td><td>§3</td></tr>
+    <tr><td>3</td><td>chase chunk 为命题级</td><td>EMNLP 2024 实验证据支持命题级 > 段落/句子级。命题级减少 judge 误判。一次 LLM 调用，结果持久化，compile 和 audit 复用</td><td>§4</td></tr>
+    <tr><td>4</td><td>命题提取由 daemon 触发（非 loader 层、非 compile 前）</td><td>loader 层保持纯机械。daemon 集中处理命题提取逻辑。不对 compile 延迟造成影响</td><td>§4 §9</td></tr>
+    <tr><td>5</td><td>9 种 WikiKind 固定 Schema（v1）</td><td>kind 嵌在五个系统逻辑里——v1 不做 Schema 定制。v1 预设 9 kind，远期从配置文件读取</td><td>§5</td></tr>
+    <tr><td>6</td><td>语义审计 = 软关卡（警告放行）+ 三层防御</td><td>LLM judge 是主观的——不应用主观判断做硬关卡。三层防御（evidence-anchored + 矛盾验证 + 跨模型二次审计）降低 judge 误判风险</td><td>§6</td></tr>
+    <tr><td>7</td><td>6 种 Board mode = 搜索 + 强制注入</td><td>只靠搜索 → 关键节点可能遗漏（counter、limit、tension 排名靠后）。强制注入靠确定性的 kind/auditStatus/edges 补齐搜索盲区</td><td>§7</td></tr>
+    <tr><td>8</td><td>所有 LLM 二次生成内容必须人类确认</td><td>防止 wiki 从"知识库"退化为"LLM 对话日志"。机械操作可自动，语义操作不能自动</td><td>§8 §12</td></tr>
+    <tr><td>9</td><td>取代 = 只标记不自动取代</td><td>LLM judge 是主观的——自动取代有误杀风险。裁决权在人类</td><td>§8</td></tr>
+    <tr><td>10</td><td>daemon 是 CI 管道（不替 agent 做决策）</td><td>daemon 负责执行和报告，agent 负责判断和决策。类比 CI pipeline：自动跑测试，开发者决定修不修 bug</td><td>§9</td></tr>
+    <tr><td>11</td><td>人类确认 = 定期批量 + agent 预筛选 + 积压自动降级</td><td>知识策展需要深度注意力——不适合碎片化通知。积压 > 50 自动降级——低优先项超时跳过，高优先项合并</td><td>§9</td></tr>
+    <tr><td>12</td><td>回流节点信任层级 < 编译节点</td><td>回流节点没有 chase 命题原文——audit 不可用。可信度天然低于编译节点。标 reflowOrigin 确保 LLM 能区分来源</td><td>§8</td></tr>
+    <tr><td>13</td><td>不要遗忘曲线</td><td>知识不因"很久没访问"变错。过时问题由矛盾检测处理。遗忘曲线增加复杂度不增价值——6/6 竞品都没有</td><td>§8</td></tr>
+    <tr><td>14</td><td>竞品借鉴重点：图谱 + 混合搜索 + 多 Provider + MCP</td><td>这些都是可借的基础设施——竞品已有成熟方案。不是发动机的核心竞争力，但需要补齐以支持 board 强制注入和 agent 集成</td><td>§11</td></tr>
+    <tr><td>15</td><td>OKF 生态兼容（导出/导入）</td><td>wiki 节点格式天然匹配 OKF——零改造成本。增加 llmwiki export --okf 和 import --okf 命令。战略价值：唯一带语义审计的 OKF 兼容编译器</td><td>§12</td></tr>
+    <tr><td>16</td><td>搜索基础设施用 qmd 而非自建</td><td>qmd (Karpathy 推荐) 提供 BM25+Vector+RRF+LLM Rerank 的完整本地搜索方案。引擎通过 qmd CLI --json / MCP 接入。比自建混合搜索轻量 10x</td><td>§13</td></tr>
+    <tr><td>17</td><td>强化提升 auditScore</td><td>新材料支持已有声明时（非矛盾、非取代）→ 标记 reinforcement 候选 → 人类确认后提升已有节点 auditScore。不是遗忘曲线（不要），是 evidence accumulation（要）</td><td>§8</td></tr>
+  </table>
+</section>
+
+</main>
+
+<footer>
+  <p>生成日期：2026-07-07 · v3.1 · 基于 14 轮产品追问 + 六大竞品调研 + Karpathy V1+V2 + OKF + qmd 深度分析<br>
+  本文档是产品形态的决断——不是 spec，不是 roadmap，不包含工程实施细节和优先级排序。<br>
+  发动机边界、审计体系、board 模型、角色分工、信息卫生原则、人类确认机制、OKF 兼容、qmd 搜索集成——均已在此文档中确定。</p>
+</footer>
+</div>
+</body>
+</html>

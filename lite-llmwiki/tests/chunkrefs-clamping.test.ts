@@ -1,5 +1,5 @@
 /**
- * chunkRefs clamping 测试
+ * propRefs clamping 测试（clampChunkRefs 内部函数）
  *
  * 验证 compile pipeline 中的 clampChunkRefs 逻辑：
  * - LLM 输出的越界 chunkRefs 被过滤
@@ -27,18 +27,18 @@ function clampChunkRefsImpl(refs: number[], maxChunkRef: number): number[] {
   return result.length > 0 ? result : [1];
 }
 
-describe("clampChunkRefs — chunkRefs clamping logic", () => {
-  it("过滤越界的 chunkRefs（[7,8,9] → 空 → 回退 [1]）", () => {
+describe("clampChunkRefs — propRefs clamping logic（number 数组）", () => {
+  it("过滤越界的 refs（[7,8,9] → 空 → 回退 [1]）", () => {
     const result = clampChunkRefsImpl([7, 8, 9], 4);
     expect(result).toEqual([1]); // 越界全部过滤，回退到 [1]
   });
 
-  it("部分越界的 chunkRefs（[1,5,9] → [1]）", () => {
+  it("部分越界的 refs（[1,5,9] → [1]）", () => {
     const result = clampChunkRefsImpl([1, 5, 9], 4);
     expect(result).toEqual([1]); // 5 和 9 越界过滤，只剩 1
   });
 
-  it("正常范围内的 chunkRefs 不受影响", () => {
+  it("正常范围内的 refs 不受影响", () => {
     const result = clampChunkRefsImpl([1, 2, 3], 4);
     expect(result).toEqual([1, 2, 3]);
   });
@@ -65,7 +65,7 @@ describe("clampChunkRefs — chunkRefs clamping logic", () => {
     expect(result).toEqual([1, 2, 3]);
   });
 
-  it("maxChunkRef=0 时不过滤（无 chunks 信息）", () => {
+  it("maxRef=0 时不过滤（无 chunks 信息）", () => {
     const result = clampChunkRefsImpl([7, 8, 9], 0);
     expect(result).toEqual([7, 8, 9]); // 不过滤，信任原值
   });
@@ -85,8 +85,8 @@ describe("clampChunkRefs — chunkRefs clamping logic", () => {
 
 // ─── 间接测试：通过 proIngest 的 Source 构造验证 ─────────────────────
 
-describe("chunkRefs clamping — Source 传参验证", () => {
-  it("Source.chunks.length 作为 maxChunkRef 的来源", () => {
+describe("propRefs clamping — Source 传参验证", () => {
+  it("Source.chunks.length 作为 maxRef 的来源", () => {
     // 验证 Source 类型包含 chunks 字段
     const source = {
       id: "raw_test",

@@ -32,21 +32,32 @@ function testConfig(): AppConfig {
 describe("queryKnowledge", () => {
   it("returns empty result when no matching nodes exist", async () => {
     const config = { ...testConfig(), wikiDir: "/tmp/nonexistent-wiki" };
-    const result = await queryKnowledge({ question: "测试", config });
+    const mockCaller = async () => ({
+      answer: "no matching nodes found",
+      usage: null,
+      modelSynthesis: [],
+    });
+    const result = await queryKnowledge({ question: "测试", config, mode: "ask", llmCaller: mockCaller });
 
     expect(result.answer).toBeTruthy();
     expect(result.fromWiki).toEqual([]);
     expect(result.usage).toBeNull();
   });
 
-  it("无 API key + 无匹配 wiki → board-only 模式（不调 LLM，不 throw）", async () => {
+  it("无匹配 wiki 时返回空结果（llmCaller 必须提供）", async () => {
     const config = testConfig();
+    const mockCaller = async () => ({
+      answer: "no matching nodes found",
+      usage: null,
+      modelSynthesis: [],
+    });
     const result = await queryKnowledge({
       question: "xyznonexistent_12345",
       config,
+      mode: "ask",
+      llmCaller: mockCaller,
     });
     expect(result.fromWiki).toEqual([]);
-    expect(result.answer).toBeTruthy();
-    expect(result.answer).toMatch(/no api key|board-only/i);
+    expect(result.answer).toBe("no matching nodes found");
   });
 });
