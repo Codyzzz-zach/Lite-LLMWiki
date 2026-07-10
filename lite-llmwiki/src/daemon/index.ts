@@ -16,6 +16,10 @@
 
 import { mkdirSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
+import {
+	runSemanticAudit,
+	writeSemanticAuditResults,
+} from "../knowledge/semantic-audit.js";
 import { loadConfig } from "../config.js";
 import { createLLMProvider } from "../core/llm-provider.js";
 import { runIngestPipeline } from "../ingest/pipeline.js";
@@ -53,6 +57,46 @@ export async function runDaemon(): Promise<void> {
 
 	const llm = createLLMProvider(config);
 
+	// ── Audit 串行化（Finding 2 修复）──
+	// onWikiChange 可能被快速连续触发（一次 ingest 写多个 wiki 节点）。
+	// 串行链 + dirty 标志：audit 串行执行，多次变更合并成一次 audit，
+	// 避免并发 read-modify-write 写坏 frontmatter。
+	let auditChain: Promise<void> = Promise.resolve();
+	let auditDirty = false;
+	const llmJudge = async (prompt: string) => {
+		const result = await (llm as any).chat({
+			model: config.model,
+			systemPrompt: "",
+			messages: [{ role: "user", content: prompt }],
+			responseFormat: "json_object",
+			thinkingDisabled: true,
+			maxTokens: 4096,
+		});
+		return result.content;
+	};
+	const runOneAudit = async (wikiPath: string): Promise<void> => {
+		const semResult = await runSemanticAudit(config, { llmJudge });
+		writeSemanticAuditResults(config, semResult);
+		state.queue.pendingAudit = state.queue.pendingAudit.filter(
+			(p) => p !== wikiPath,
+		);
+		log("info", `[daemon] ③ audit complete — ${semResult.summary.passed}P/${semResult.summary.warning}W/${semResult.summary.failed}F`);
+		writeDaemonState(projectRoot, state);
+	};
+	const scheduleAudit = (wikiPath: string): void => {
+		auditDirty = true;
+		// 串行链：若上一个 audit 在跑，等它跑完再跑这个；dirty 标志让连续变更合并
+		auditChain = auditChain
+			.then(async () => {
+				if (!auditDirty) return;
+				auditDirty = false;
+				await runOneAudit(wikiPath).catch((err) => {
+					log("error", `[daemon] ③ audit failed: ${(err as Error).message}`);
+				});
+			})
+			.catch(() => { /* 链不断 */ });
+	};
+
 	// ── Watcher ──
 	const watcher = startWatcher(config, {
 		onNewChase: (chasePath: string) => {
@@ -83,6 +127,8 @@ export async function runDaemon(): Promise<void> {
 			log("info", `[daemon] ③ wiki changed: ${wikiPath}`);
 			state.queue.pendingAudit.push(wikiPath);
 			writeDaemonState(projectRoot, state);
+			// 串行调度（Finding 2：避免并发 audit 写坏 frontmatter）
+			scheduleAudit(wikiPath);
 		},
 	});
 

@@ -125,6 +125,67 @@ export function getExcerpt(
 	}));
 }
 
+/**
+ * 按 propRefs 选取命题邻近窗口的正文，作为语义审计上下文。
+ *
+ * 设计决策 #2 / §02 改造点③：审计上下文改用 prop 邻近窗口（±window 个 prop）
+ * 替代 chunk 选择。给定节点引用的 propRefs，取这些 prop 及其前后 ±window 个
+ * prop 的正文，去重合并——既覆盖节点 claim 的直接依据，又保留邻近上下文。
+ *
+ * 与 chunk 选择不同：prop 窗口按命题粒度取，不依赖 chunk 标记（chunk 消灭后仍可用）。
+ * 无 prop marker 时回退到整个 chase 正文（兼容旧格式，等价于无窗口）。
+ *
+ * @returns 拼接后的上下文文本（各 prop 正文以换行分隔）
+ */
+export function selectPropsContext(
+	config: AppConfig,
+	sourceChase: string[],
+	propRefs: (string | number)[],
+	window = 3,
+): string {
+	const path = resolveChasePath(config, sourceChase);
+	if (!path) return "";
+	const content = readFileSync(path, "utf-8");
+	return selectPropsContextFromContent(content, propRefs, window);
+}
+
+/** selectPropsContext 的纯函数版本——直接操作 chase 正文 */
+export function selectPropsContextFromContent(
+	content: string,
+	propRefs: (string | number)[],
+	window = 3,
+): string {
+	const props = parseChaseProps(content);
+	if (props.length === 0) {
+		// 无 prop marker——回退到整个正文（兼容旧 chase）
+		return content.trim();
+	}
+
+	// prop index → 在有序列表中的位置
+	const indexToPos = new Map<number, number>();
+	props.forEach((p, i) => indexToPos.set(p.index, i));
+
+	// 收集所有需要包含的 prop 位置（去重）
+	const positions = new Set<number>();
+	for (const ref of propRefs) {
+		const num = typeof ref === "number" ? ref : Number(ref);
+		if (isNaN(num)) continue;
+		const pos = indexToPos.get(num);
+		if (pos === undefined) continue;
+		const lo = Math.max(0, pos - window);
+		const hi = Math.min(props.length - 1, pos + window);
+		for (let i = lo; i <= hi; i++) positions.add(i);
+	}
+
+	if (positions.size === 0) return "";
+
+	// 按位置升序取正文
+	return [...positions]
+		.sort((a, b) => a - b)
+		.map((i) => props[i]!.text)
+		.join("\n\n");
+}
+
 /** 收集 chase 文件中的所有 chunk 索引 */
 export function collectChunkIndices(content: string): Set<number> {
 	const indices = new Set<number>();
@@ -141,10 +202,6 @@ export function collectPropIndices(content: string): Set<number> {
 	const re = new RegExp(PROP_MARKER.source, PROP_MARKER.flags);
 	for (const m of content.matchAll(re)) {
 		indices.add(Number(m[1]));
-	}
-	// 无 prop marker 时回退到 chunk 索引（兼容旧 chase 格式）
-	if (indices.size === 0) {
-		return collectChunkIndices(content);
 	}
 	return indices;
 }

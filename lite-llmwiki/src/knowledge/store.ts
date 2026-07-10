@@ -77,16 +77,6 @@ export class KnowledgeStore {
 
 		const bodyContent =
 			source.body || source.chunks.map((c) => c.text).join("\n\n");
-		const chunkMarkers =
-			source.chunks.length > 0
-				? "\n" +
-					source.chunks
-						.map(
-							(c) =>
-								`<!-- chunk:${c.index + 1} id=${c.id} charStart=${c.charStart} charEnd=${c.charEnd} -->\n${c.text}\n<!-- /chunk:${c.index + 1} -->`,
-						)
-						.join("\n")
-				: "";
 
 		const content = [
 			"---",
@@ -96,12 +86,11 @@ export class KnowledgeStore {
 			...(source.sourceRoot ? [`sourceRoot: ${source.sourceRoot}`] : []),
 			`sourceType: ${source.type}`,
 			`fingerprint: ${source.fingerprint}`,
-			`chunkCount: ${source.chunks.length}`,
-			"loaderVersion: v5.0",
+			"loaderVersion: v6.0",
 			`createdAt: ${source.createdAt.toISOString()}`,
 			"---",
 			"",
-			bodyContent + chunkMarkers,
+			bodyContent,
 		].join("\n");
 
 		writeFileSync(destPath, content, "utf-8");

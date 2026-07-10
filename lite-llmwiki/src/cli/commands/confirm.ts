@@ -168,7 +168,7 @@ function applyEdgeConfirmation(
 		const newEdge = {
 			from: fromNode,
 			to: toNode,
-			type: "relates_to" as const,
+			type: "related" as const,
 			confidence: 0.5,
 			source: "inspire",
 		};
@@ -204,8 +204,7 @@ function applyEdgeConfirmation(
 			const updated = raw.slice(0, fmEnd) + "\n" + edgeYaml + raw.slice(fmEnd);
 			writeFileSync(filePath, updated, "utf-8");
 		}
-		return true;
-		console.error(`  🔗 Edge written: ${fromNode} → ${toNode} (relates_to)`);
+		console.error(`  🔗 Edge written: ${fromNode} → ${toNode} (related)`);
 		return true;
 	}
 	console.error(`  ⚠️  Source node not found: ${fromNode}`);

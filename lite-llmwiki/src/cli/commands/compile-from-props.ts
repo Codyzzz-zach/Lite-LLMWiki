@@ -26,6 +26,7 @@ import {
 	parseWikiContent,
 } from "../../knowledge/wiki-parser.js";
 import { parseWikiFile, scanWikiFiles } from "../../knowledge/wiki-parser.js";
+import { compileInputBudget } from "../../ingest/pipeline.js";
 import type {
 	Evidence,
 	WikiKind,
@@ -56,8 +57,13 @@ export function registerCompileFromPropsCommand(program: Command): void {
 					: join(config.projectRoot, chasePath);
 
 				let content: string;
+			let chaseFingerprint: string | undefined = undefined;
 				try {
 					content = readFileSync(fullPath, "utf-8");
+
+				// 读取 chase fingerprint（内容哈希）
+				const fpMatch = content.match(/^fingerprint:\s*(\S+)/m);
+				chaseFingerprint = fpMatch ? fpMatch[1] : undefined;
 				} catch {
 					console.error(`❌ Chase file not found: ${fullPath}`);
 					process.exit(1);
@@ -87,7 +93,7 @@ export function registerCompileFromPropsCommand(program: Command): void {
 				const prompt = `你是一个知识编译器。请基于以下原子命题，编译出 wiki 知识节点。
 
 # 命题列表
-${propTexts.slice(0, 12000)}
+${propTexts.slice(0, compileInputBudget(16384))}
 
 # 要求
 输出 JSON 对象，nodeDrafts 字段包含节点数组。每个节点包含：
@@ -99,14 +105,28 @@ ${propTexts.slice(0, 12000)}
 - interpretation: 你的解读
 - useFor: 适用场景
 - limits: 限制条件
-- edges: 与其他节点的关系数组。每项含 to(目标nodeId)、type("derived_from"或"related")、confidence(0-1，你对这个关系的把握程度)。
+- edges: 与其他节点的关系数组。每项含 to(目标nodeId)、type("derived_from" | "related" | "supports" | "superseded_by")、confidence(0-1，你对这个关系的把握程度)。
   * derived_from: 本节点的推理依据来自目标节点
-  * related: 本节点与目标节点有语义关联（同主题、同来源、claim相关）
+  * related: 与目标节点有语义关联（同主题、同来源、claim相关）
+  * supports: 与目标节点在同一主题上证据互相支持
+  * superseded_by: 本节点被目标节点取代（目标节点更正或扩展了本节点claim）
 
 # 原则
 - 3-6个节点即可——将相近命题聚合为综合概念
 - claim 必须基于命题原文——不编造
 - 优先 concept/claim/method 类型
+# 最重要规则 — 适用于所有 kind（包括 method/insight）
+- claim 必须逐句可追溯到 prop 原文——每一个断言都能在命题列表中找到对应的原文句子
+- 不添加原文没有的概率保证、策略建议、价值判断
+- 不要「保证至少 N%」除非 prop 原文里有这个数字
+- 不要「可作为稳健策略」除非 prop 原文里明确建议这样做
+- 概念类节点（concept）：直接复述 prop 中的数学/科学事实
+- 方法类节点（method）：描述原文中的方法步骤，不添加工具有效性断言
+- 洞察类节点（insight）：仅综合 prop 中已明确陈述的关联，不做推测性解读
+- limits: 必须列出该 claim 的适用条件或已知限制。如果没有明确的限制条件，写「暂无」
+
+counter 提取（v2 新增）：如果材料中有与主流观点矛盾或提出反例的命题，也编译为 kind=counter 的节点。counter 节点的 claim 应以「通常认为…但…」的形式呈现反方观点。
+
 - 如果节点间存在推理依赖或语义关联，务必标注 edges`;
 
 				console.error("🤖 Compiling wiki nodes...");
@@ -229,7 +249,7 @@ ${propTexts.slice(0, 12000)}
 									from: draft.nodeId,
 									to: e.to,
 									type:
-										e.type === "derived_from" || e.type === "related"
+										e.type === "derived_from" || e.type === "related" || e.type === "supports" || e.type === "superseded_by"
 											? e.type
 											: "related",
 									confidence:
@@ -249,7 +269,11 @@ ${propTexts.slice(0, 12000)}
 					let cleaned = 0;
 					for (const fp of existingFiles) {
 						const p = parseWikiFile(fp);
-						if (p && p.frontmatter.sourceIds?.includes(sourceId)) {
+						if (p && (
+						(chaseFingerprint && p.frontmatter.fingerprint === chaseFingerprint) ||
+						p.frontmatter.sourceIds?.includes(sourceId) ||
+						p.frontmatter.sourceChase?.includes(sourceChase[0] ?? '')
+					)) {
 							try {
 								unlinkSync(fp);
 								cleaned++;

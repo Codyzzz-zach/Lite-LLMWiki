@@ -29,7 +29,7 @@ import type {
 import {
 	ChaseNotFoundError,
 	resolveChasePath,
-	selectChaseChunks,
+	selectPropsContext,
 } from "./chase.js";
 import {
 	buildSemanticAuditInput,
@@ -157,15 +157,12 @@ async function auditOneNode(
 		return failedNoLLM(node, "citation", "missing propRefs", issues);
 	}
 
-	// ── 读 chase excerpts ──
+	// ── 读 chase excerpts（v2: prop 邻近窗口 ±3）──
+	const numPropRefs = propRefs.map(Number).filter((n) => !isNaN(n));
 	let excerpts: { index: number; text: string }[];
 	try {
-		const result = selectChaseChunks(
-			config,
-			sourceChase,
-			propRefs.map(Number).filter((n) => !isNaN(n)),
-		);
-		excerpts = result.found.map((c) => ({ index: c.index, text: c.text }));
+		const contextText = selectPropsContext(config, sourceChase, numPropRefs, 3);
+		excerpts = [{ index: numPropRefs[0] ?? 0, text: contextText }];
 	} catch (e) {
 		if (e instanceof ChaseNotFoundError) {
 			return failedNoLLM(node, "citation", e.message, issues);

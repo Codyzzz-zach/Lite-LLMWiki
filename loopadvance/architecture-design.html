@@ -1166,12 +1166,12 @@ flowchart TB
       <td>不做语义修复——内容改写需人类确认</td>
     </tr>
     <tr>
-      <td>⑤</td>
-      <td>启发发现</td>
-      <td>人类命令触发<br/><code>llmwiki inspire</code></td>
-      <td>跑 inspire → 装配 inspire 模式 board → 产出 5 类候选</td>
-      <td>progress.md 追加 edge/connection 候选</td>
-      <td>不写入 edges——人类在结果中勾选确认后才写入</td>
+      <td>—</td>
+      <td><s>启发发现</s>（不属于 daemon）</td>
+      <td>独立 CLI 命令<br/><code>llmwiki inspire</code></td>
+      <td>由人类独立触发——daemon 源码注释「不在此自动执行」</td>
+      <td>—</td>
+      <td>Inspire 是 L5 Interface 层的独立命令，不属于 L3 Maintenance</td>
     </tr>
     <tr>
       <td>⑥</td>
@@ -1411,6 +1411,13 @@ flowchart TB
   H4 & H5 & H6 --> WRITE
   AUTO --> A1 & A2 & A3 & A4 & A5
     </pre>
+  </div>
+
+  <div class="callout good">
+    <strong>⚠️ 关键前提：自进化的起点是 wiki 节点，不是原材料。</strong><br>
+    原材料 &rarr; wiki 是一次性引导（bootstrap）：人类放材料到 <code>raw/</code> &rarr; <code>daemon onNewChase</code> 触发 ingest（extract props &rarr; compile &rarr; audit &rarr; contradict/reinforce）。<br>
+    Wiki &rarr; wiki 是持续进化：daemon 对已有 wiki 节点运行 lint/contradict/reinforce——不重新处理原材料。<br>
+    <strong>重新 ingest 同一篇材料是人类的主动决策</strong>（CLI <code>ingest2</code>），不是 daemon 的自动化任务。覆盖式 cleanup 确保旧节点被替换。
   </div>
 
   <h3>五个方向详解</h3>
@@ -1925,10 +1932,22 @@ flowchart TB
       <td>frontmatter 只用 <code>propRefs</code>。旧节点全部清空——不做双字段共存，不做迁移脚本。代码只读 propRefs，无 fallback</td>
       <td class="exists">✅ 已确认</td>
     </tr>
+    <tr>
+      <td>9</td>
+      <td><strong>自进化的起点是 wiki 不是原材料</strong></td>
+      <td>原材料 → wiki 是一次性引导（bootstrap），人类手动触发，高成本。Wiki → wiki 是持续进化，daemon 自动运行，低成本。daemon 不做自动 re-ingest——重复处理原材料是人类的主动决策。</td>
+      <td class="confirmed">✅ 2026-07-09 确认</td>
+    </tr>
+    <tr>
+      <td>10</td>
+      <td><strong>覆盖式 ingest 的标识符应基于内容哈希（fingerprint）而非文件路径</strong></td>
+      <td>当前 <code>sourceId</code> 从 chase 文件路径推导——重命名即失效。应改为优先使用 chase frontmatter 的 <code>fingerprint</code> 字段（内容哈希），回退到路径推导 + sourceChase 匹配。</td>
+      <td class="confirmed">✅ 2026-07-09 确认</td>
+    </tr>
   </table>
 
   <div class="callout good">
-    <strong>所有 8 个架构决断已全部确认。</strong>架构设计文档 v1.0 的决断已闭环——可以进入施工细则阶段。
+    <strong>所有 10 个架构决断已全部确认。</strong>架构设计文档 v1.0 的决断已闭环——可以进入施工细则阶段。
   </div>
 </section>
 

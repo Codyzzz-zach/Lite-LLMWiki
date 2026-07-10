@@ -1,6 +1,10 @@
 /**
  * reflow — daemon 回流候选标记
  *
+ * DEFERRED: 依赖三路搜索 + qmd embed 就绪后启用。
+ * 当前为存根——screenAndWriteReflow() 返回 0。
+ * 设计决策: §08 回流标记，Phase C 后实施的增强功能。
+ *
  * daemon 职责⑥：定期筛选 query 结果中的高质量内容作为 wiki 节点候选。
  * 不调 LLM——纯启发式筛选（依赖 reflow.ts 的 screenReflowCandidates）。
  *

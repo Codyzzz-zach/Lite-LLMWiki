@@ -101,12 +101,13 @@ describe("wiki-parser — frontmatter 类型归一化 (C3)", () => {
     expect(r.frontmatter.auditScore).toBeUndefined();
   });
 
-  it("chunkRefs 由 string 数组归一为 number 数组（存入 propRefs）", () => {
+  it("v6: chunkRefs 不再合并到 propRefs（设计决策 #1）", () => {
     const r = parseWikiContent(
       "---\nnodeId: r\nkind: concept\ntitle: r\nchunkRefs: [1, 2, 3]\n---\n## Claim\nx\n",
       "wiki/concepts/r.md",
     );
-    expect(r.frontmatter.propRefs).toEqual(["1", "2", "3"]);
+    // v6: chunkRefs 不再作为 propRefs 来源——旧数据保留但不合并
+    expect(r.frontmatter.propRefs).toBeUndefined();
   });
 });
 

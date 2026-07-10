@@ -108,7 +108,7 @@ function captureStdout(line: string) {
 
 describe("runAuditCli — 结构 audit（默认）", () => {
   it("audit --json 走结构 audit 不调 LLM", async () => {
-    setupChase("<!-- chunk 1 -->\nA\n");
+    setupChase("A\n<!-- prop 1 -->\nA\n<!-- /prop 1 -->");
     saveDraft(makeDraft());
     const judge = vi.fn();
     const result = await runAuditCli(config, { json: true, llmJudge: judge, stdout: captureStdout });
@@ -122,7 +122,7 @@ describe("runAuditCli — 结构 audit（默认）", () => {
   });
 
   it("audit --json 输出包含 nodes 字段", async () => {
-    setupChase("<!-- chunk 1 -->\nA\n");
+    setupChase("A\n<!-- prop 1 -->\nA\n<!-- /prop 1 -->");
     saveDraft(makeDraft());
     await runAuditCli(config, { json: true, stdout: captureStdout });
     const out = JSON.parse(stdoutSink.join(""));
@@ -133,7 +133,7 @@ describe("runAuditCli — 结构 audit（默认）", () => {
 
 describe("runAuditCli --semantic", () => {
   it("--semantic + llmJudge → 调 LLM judge", async () => {
-    setupChase("<!-- chunk 1 -->\nA\n");
+    setupChase("A\n<!-- prop 1 -->\nA\n<!-- /prop 1 -->");
     saveDraft(makeDraft());
     const judge = vi.fn(async () => JSON.stringify(okVerdict("test/concept/x")));
     const result = await runAuditCli(config, { semantic: true, json: true, llmJudge: judge, stdout: captureStdout });
@@ -166,7 +166,7 @@ describe("runAuditCli --semantic", () => {
 
 describe("runAuditCli — 过滤", () => {
   it("--node 过滤只审指定 node", async () => {
-    setupChase("<!-- chunk 1 -->\nA\n");
+    setupChase("A\n<!-- prop 1 -->\nA\n<!-- /prop 1 -->");
     saveDraftWithId("test/concept/a", "wiki/concepts/test-a.md");
     saveDraftWithId("test/concept/b", "wiki/concepts/test-b.md");
     const judge = vi.fn(async (p: string) => {
@@ -185,7 +185,7 @@ describe("runAuditCli — 过滤", () => {
   });
 
   it("--source 过滤只审匹配 source", async () => {
-    setupChase("<!-- chunk 1 -->\nA\n");
+    setupChase("A\n<!-- prop 1 -->\nA\n<!-- /prop 1 -->");
     saveDraftWithId("test/concept/a", "wiki/concepts/test-a.md");
     const judge = vi.fn(async () => JSON.stringify(okVerdict("test/concept/a")));
     const result = await runAuditCli(config, {
@@ -209,7 +209,7 @@ describe("runAuditCli — JSON 输出 shape", () => {
   });
 
   it("--semantic 时输出是 { structure, semantic }", async () => {
-    setupChase("<!-- chunk 1 -->\nA\n");
+    setupChase("A\n<!-- prop 1 -->\nA\n<!-- /prop 1 -->");
     saveDraft(makeDraft());
     const judge = vi.fn(async () => JSON.stringify(okVerdict("test/concept/x")));
     await runAuditCli(config, {
@@ -221,5 +221,21 @@ describe("runAuditCli — JSON 输出 shape", () => {
     const out = JSON.parse(stdoutSink.join(""));
     expect(out).toHaveProperty("structure");
     expect(out).toHaveProperty("semantic");
+  });
+
+  it("--semantic 时 LLM 抛异常 → 输出包含 blockingIssues + suggestedNextActions", async () => {
+    setupChase("A\n<!-- prop 1 -->\nA\n<!-- /prop 1 -->");
+    saveDraft(makeDraft());
+    const judge = vi.fn(async () => { throw new Error("LLM down"); });
+    await runAuditCli(config, {
+      semantic: true,
+      json: true,
+      llmJudge: judge,
+      stdout: captureStdout,
+    });
+    const out = JSON.parse(stdoutSink.join(""));
+    expect(out).toHaveProperty("stage", "semantic-audit");
+    expect(out).toHaveProperty("blockingIssues");
+    expect(out).toHaveProperty("suggestedNextActions");
   });
 });

@@ -203,9 +203,7 @@ function normalizeFrontmatter(
 	if (sourceIds.length > 0) out.sourceIds = sourceIds;
 	const sourceChase = parseStringList(raw["sourceChase"]);
 	if (sourceChase.length > 0) out.sourceChase = sourceChase;
-	const chunkRefs = parseChunkRefs(raw["chunkRefs"]);
-	if (chunkRefs.length > 0)
-		out.propRefs = [...(out.propRefs ?? []), ...chunkRefs.map(String)];
+	const chunkRefs: number[] = []; // v2: chunkRefs 不再作为 propRefs 的来源——旧 chunkRefs 数据保留但不合并
 	const confidence = parseNumber(scalar(raw["confidence"]));
 	if (confidence !== undefined) out.confidence = confidence;
 	const status = scalar(raw["status"]);

@@ -86,13 +86,17 @@ export async function runAuditCli(
 	}
 
 	// ── JSON 输出 ──
-	const jsonOutput: Record<string, unknown> = { structure, semantic };
-	if (!semantic?.ok) {
-		jsonOutput.stage = "semantic-audit";
-		jsonOutput.blockingIssues = (semantic?.issues || []).filter((i: any) => i.severity === "error").map((i: any) => i.reason);
-		jsonOutput.suggestedNextActions = ["run `audit --semantic --json` to see details", "re-ingest if claims are stretched"];
+	if (semantic) {
+		const jsonOutput: Record<string, unknown> = { structure, semantic };
+		if (!semantic.ok) {
+			jsonOutput.stage = "semantic-audit";
+			jsonOutput.blockingIssues = (semantic.issues || []).filter((i: any) => i.severity === "error").map((i: any) => i.reason);
+			jsonOutput.suggestedNextActions = ["run `audit --semantic --json` to see details", "re-ingest if claims are stretched"];
+		}
+		out(JSON.stringify(jsonOutput, null, 2));
+	} else {
+		out(JSON.stringify(structure, null, 2));
 	}
-	out(JSON.stringify(jsonOutput, null, 2));
 
 	const ok = structure.ok && (semantic?.ok ?? true);
 

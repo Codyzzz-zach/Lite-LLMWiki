@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Advance Point #1 · Loader → Proposition 管线细化</title>
+  <style>
+    :root { --ink: #172033; --muted: #617087; --soft: #eef3f8; --line: #d7e0ea; --blue: #2f6fbd; --green: #3a8068; --amber: #9b6a1a; --rose: #b2485a; --paper: #fbfcfe; --white: #ffffff; --code-bg: #182235; --brand: #0D5C41; }
+    * { box-sizing: border-box; } html { scroll-behavior: smooth; }
+    body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif; color: var(--ink); background: linear-gradient(180deg, rgba(238,246,255,0.9), rgba(251,252,254,0.9) 34rem), var(--paper); line-height: 1.74; }
+    .page { max-width: 1000px; margin: 0 auto; padding: 0 22px 72px; }
+    header { padding: 64px 0 38px; border-bottom: 1px solid var(--line); margin-bottom: 38px; }
+    .eyebrow { display: inline-flex; align-items: center; gap: 10px; color: var(--green); font-size: 0.84rem; font-weight: 780; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 18px; }
+    .eyebrow::before { content: ""; width: 34px; height: 2px; background: var(--green); border-radius: 999px; }
+    .version-badge { display: inline-block; margin-left: 12px; padding: 2px 10px; background: var(--brand); color: #fff; border-radius: 999px; font-size: 0.78rem; font-weight: 700; vertical-align: middle; }
+    h1 { max-width: 950px; margin: 0; font-size: clamp(2.2rem, 5.5vw, 3.5rem); line-height: 1.04; }
+    h2 { margin: 48px 0 18px; font-size: clamp(1.3rem, 2.5vw, 1.8rem); line-height: 1.16; padding-top: 36px; border-top: 1px solid rgba(215,224,234,0.86); }
+    h3 { margin: 30px 0 12px; font-size: 1.15rem; }
+    p { margin: 0 0 14px; }
+    table { width: 100%; border-collapse: collapse; margin: 18px 0; background: var(--white); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+    th, td { padding: 10px 14px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; font-size: 0.9rem; }
+    th { background: #eef4fb; color: #20324c; font-size: 0.8rem; letter-spacing: 0.04em; text-transform: uppercase; }
+    tr:last-child td { border-bottom: 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.88em; background: var(--soft); padding: 1px 4px; border-radius: 3px; }
+    .code { padding: 16px; color: #eff6ff; background: var(--code-bg); border-radius: 8px; overflow-x: auto; line-height: 1.6; font-size: 0.86rem; margin: 14px 0; }
+    .box { padding: 18px 22px; border-radius: 8px; margin: 18px 0; }
+    .box-finding { background: #fff3f3; border: 1px solid #f5c6cb; }
+    .box-decision { background: #fffaf0; border: 1px solid #ead5a4; }
+    .box-plan { background: #f3fbf8; border: 1px solid #b8d9cd; }
+    .box::before { display: block; font-size: 0.76rem; font-weight: 800; letter-spacing: 0.08em; margin-bottom: 10px; text-transform: uppercase; }
+    .box-finding::before { content: "🔍 发现"; color: var(--rose); }
+    .box-decision::before { content: "⚡ 决策"; color: var(--amber); }
+    .box-plan::before { content: "📋 计划"; color: var(--green); }
+    .tag { display: inline-block; padding: 1px 7px; border-radius: 3px; font-size: 0.72rem; font-weight: 700; vertical-align: middle; }
+    .tag-bug { background: #f8d7da; color: #721c24; } .tag-design { background: #fdf2d0; color: #7a5e1b; } .tag-clean { background: #d4edda; color: #155724; }
+    .flow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.92rem; margin: 14px 0; padding: 12px 16px; background: var(--soft); border-radius: 6px; }
+    .flow-item { padding: 4px 10px; background: var(--white); border: 1px solid var(--line); border-radius: 4px; white-space: nowrap; }
+    .flow-arrow { color: var(--muted); font-weight: 700; }
+    footer { padding: 30px 0 10px; color: var(--muted); font-size: 0.9rem; border-top: 1px solid var(--line); margin-top: 48px; }
+    @media (max-width: 700px) { .page { padding: 0 14px 48px; } }
+  </style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <div class="eyebrow">Advance Point #1 <span class="version-badge">2026-07-09 · v1.0</span></div>
+  <h1>Loader → Proposition → Compile<br>管线细化方案</h1>
+  <p style="color:#34435a; font-size:1.05rem; max-width:700px;">
+    基于 architecture-design v1.0 §04 和决策表 #6/#8 的精化。<br>
+    目标：消灭 chunk 标记系统，统一为 prop-only 管线。
+  </p>
+</header>
+
+<!-- ═══════════════════════════════════════════════ 对齐后的共识 ═══ -->
+<h2>1 · 对齐后的共识</h2>
+
+<p>经过 Q1–Q4 四轮讨论，以下结论已确认：</p>
+
+<table>
+  <tr><th>#</th><th>结论</th><th>依据</th></tr>
+  <tr>
+    <td>A</td>
+    <td><strong>chunk 标记系统是设计违规残留。</strong>设计文档明确说「无 chunk 标记、无 fallback」，代码未完全执行。</td>
+    <td>architecture-design §04, 决策表 #6, #8</td>
+  </tr>
+  <tr>
+    <td>B</td>
+    <td><strong>命题提取不影响语义理解。</strong>全文一次送 LLM，chunk 标记只是内联注释——不破坏语义流。</td>
+    <td>源码: <code>proposition.ts → buildPropositionPrompt(chaseContent)</code></td>
+  </tr>
+  <tr>
+    <td>C</td>
+    <td><strong>DeepSeek 大上下文使 chunk 失去存在理由。</strong>chunk 存在是因为 v5 时代 context window 小——现在已经不是瓶颈。</td>
+    <td>DeepSeek V3: 128K input context</td>
+  </tr>
+  <tr>
+    <td>D</td>
+    <td><strong>审计上下文是 chunk 唯一提供的合法功能——但可用 prop 窗口替代。</strong>±3 个邻近 prop 的原文 = 同等效果的上下文，不依赖 chunk 标记。</td>
+    <td>源码分析: <code>selectChaseChunks()</code> → <code>selectPropsContext()</code></td>
+  </tr>
+  <tr>
+    <td>E</td>
+    <td><strong>compile 12000 字符截断是无设计依据的拍脑袋实现。</strong>正确做法是基于 maxTokens 反推安全输入上限。</td>
+    <td>源码: <code>pipeline.ts → propTexts.slice(0, 12000)</code></td>
+  </tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════ 发现的问题 ═══ -->
+<h2>2 · 发现的问题</h2>
+
+<div class="box box-finding">
+  <p><strong>P1 · selectChaseChunks 类型混淆</strong> <span class="tag tag-bug">bug</span></p>
+  <p><code>semantic-audit.ts:166</code> — <code>selectChaseChunks(config, sourceChase, propRefs)</code>。函数签名期望 <code>chunkRefs: number[]</code>，但传入的是 prop 索引。e 基本画像有 8 个 chunk、104 个 prop——prop 50 → 查找 chunk 50（不存在）→ excerpts 空 → judge 无上下文。</p>
+</div>
+
+<div class="box box-finding">
+  <p><strong>P2 · collectPropIndices chunk fallback</strong> <span class="tag tag-design">设计违规</span></p>
+  <p><code>chase.ts:collectPropIndices()</code> — 无 prop 时回退到 <code>collectChunkIndices()</code>。设计明确说「无 fallback」。</p>
+</div>
+
+<div class="box box-finding">
+  <p><strong>P3 · wiki-parser 解析 chunkRefs</strong> <span class="tag tag-design">设计违规</span></p>
+  <p><code>wiki-parser.ts:206-208</code> — 仍在解析 <code>raw["chunkRefs"]</code> 并转换为 propRefs。设计说「frontmatter 只用 propRefs」。</p>
+</div>
+
+<div class="box box-finding">
+  <p><strong>P4 · compile 硬截断</strong> <span class="tag tag-bug">实现缺陷</span></p>
+  <p><code>pipeline.ts:propTexts.slice(0, 12000)</code> — 12000 是拍脑袋的。实际安全上限应基于 maxTokens×3.5 计算（对 8192 输出 ≈ 28672 字符）。30 页论文的核心瓶颈在这里。</p>
+</div>
+
+<div class="box box-finding">
+  <p><strong>P5 · extract-props CLI 配置不一致</strong> <span class="tag tag-bug">实现缺陷</span></p>
+  <p><code>extract-props.ts</code> — <code>model: "deepseek-chat"</code> 硬编码，<code>maxTokens: 16000</code>，无 <code>thinkingDisabled</code>。pipeline.ts 使用 <code>config.model</code> + <code>maxTokens: 32768</code> + <code>thinkingDisabled: true</code>。</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════ 设计决策 ═══ -->
+<h2>3 · 设计决策</h2>
+
+<div class="box box-decision">
+  <p><strong>D1 · 消灭 chunk 标记 — chase 文件只用 prop 标记</strong></p>
+  <p>Loader (<code>store.ts</code>) 写 chase 时不再生成 <code>&lt;!-- chunk:N --&gt;</code>。chase 文件 = frontmatter YAML + 正文 + <code>&lt;!-- prop N --&gt;…&lt;!-- /prop N --&gt;</code>。只有命题提取执行后才有 prop 标记——在此之前 chase 是纯文本。</p>
+</div>
+
+<div class="box box-decision">
+  <p><strong>D2 · 审计上下文改用 prop 邻近窗口</strong></p>
+  <p>新增 <code>selectPropsContext(content, propRefs, window=±3)</code> 替代 <code>selectChaseChunks()</code>。功能：取 prop N 的原文，加上前后各 3 个 prop 的原文，拼接后作为 LLM judge 上下文。±3 窗口 ≈ 280 字——足够 judge 判断「claim 是否被原文支持」。</p>
+</div>
+
+<div class="box box-decision">
+  <p><strong>D3 · compile 截断改为自适应</strong></p>
+  <p><code>propTexts.slice(0, 12000)</code> → <code>propTexts.slice(0, computeSafeInputLimit(maxTokens))</code>。<br>
+  <code>computeSafeInputLimit(tokens) = tokens × 3.5 × (avgNodeChars / (avgPropsPerNode × avgPropChars))</code><br>
+  对 8192 输出 tokens: 安全输入 ≈ 28672 字符。超出则分批 compile（按 prop 区间分批，跨批用 edges 连接）。</p>
+</div>
+
+<div class="box box-decision">
+  <p><strong>D4 · CLI 与 pipeline 统一 LLM 配置</strong></p>
+  <p>所有 LLM 调用使用同一个 <code>config.model</code>（来自 .env）+ <code>thinkingDisabled: true</code>。删除硬编码 model 字符串。</p>
+</div>
+
+<div class="box box-decision">
+  <p><strong>D5 · 删除所有 chunk fallback 逻辑</strong></p>
+  <p>删除：<code>collectPropIndices</code> 的 chunk fallback、<code>wiki-parser.ts</code> 的 <code>parseChunkRefs</code>、<code>selectChaseChunks</code>、<code>readChaseChunks</code>。<br>
+  无 prop → 报错——不做 chunk 凑合。</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════ 目标架构 ═══ -->
+<h2>4 · 目标数据流</h2>
+
+<div class="flow">
+  <span class="flow-item">PDF/TeX/MD</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-item">Loader: 纯文本正文</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-item">chase: 正文 (无 chunk 标记)</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-item">extractPropositions (LLM 全文)</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-item">chase: 正文 + prop 标记</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-item">compile (prop → wiki nodes + edges)</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-item">audit (prop 窗口上下文)</span>
+</div>
+
+<h3>目标 chase 格式</h3>
+<pre class="code">---
+sourceId: raw_pdf_e_的基本画像_3ef24c47e940cf85
+sourceRoot: raw/original/pdf/e 的基本画像.pdf
+---
+
+e（欧拉数）约等于 2.718281828459045，是自然对数的底数。
+
+&lt;!-- prop 1 --&gt;
+1/e约等于0.3678794411，约等于36.8%。
+&lt;!-- /prop 1 --&gt;
+
+极限lim_{n→∞}(1-1/n)^n = 1/e。当n趋于无穷大时…
+
+&lt;!-- prop 2 --&gt;
+极限lim_{n→∞}(1-1/n)^n = 1/e。
+&lt;!-- /prop 2 --&gt;</pre>
+
+<p>与当前格式的区别：</p>
+<ul>
+  <li>❌ 无 <code>&lt;!-- chunk:1 --&gt;</code> / <code>&lt;!-- /chunk:1 --&gt;</code></li>
+  <li>✅ prop 用开闭标记环绕正文</li>
+  <li>✅ 无 prop 标记的 chase 文件 = 纯文本（命题提取前的中间状态）</li>
+  <li>✅ <code>readChaseProps()</code> 无需改：正则 <code>/&lt;!--\s*prop\s+(\d+)\s*--&gt;/gi</code> 仍然匹配</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════ 施工计划 ═══ -->
+<h2>5 · 施工计划（5 步）</h2>
+
+<div class="box box-plan">
+  <p><strong>Step 1 · 纯 bugfix（无破坏性）</strong> <span class="tag tag-clean">立即合入</span></p>
+  <table>
+    <tr><th>改什么</th><th>文件</th><th>具体改动</th></tr>
+    <tr><td>extract-props CLI 配置统一</td><td><code>cli/commands/extract-props.ts</code></td><td><code>"deepseek-chat"</code> → <code>config.model</code>；maxTokens 16000→32768；加 <code>thinkingDisabled: true</code></td></tr>
+    <tr><td>compile 截断自适应</td><td><code>ingest/pipeline.ts</code></td><td><code>slice(0, 12000)</code> → <code>slice(0, computeSafeInputLimit(8192))</code></td></tr>
+  </table>
+  <p><strong>验证</strong>：typecheck + test，重跑 e 基本画像 ingest（预期：编译节点数不减少，audit score 不下降）。</p>
+</div>
+
+<div class="box box-plan">
+  <p><strong>Step 2 · 新增 selectPropsContext（无破坏性）</strong> <span class="tag tag-clean">新增函数</span></p>
+  <table>
+    <tr><th>改什么</th><th>文件</th><th>具体改动</th></tr>
+    <tr><td>新增 prop 邻近窗口函数</td><td><code>knowledge/chase.ts</code></td><td>新增 <code>selectPropsContext(content, propRefs, window)</code>——解析 chase 中所有 prop，取目标 ±window 范围的 prop 原文拼接返回</td></tr>
+    <tr><td>单元测试</td><td><code>tests/chase.test.ts</code></td><td>测试 window=0（仅目标 prop）、window=±3、prop 不存在、prop 在边界</td></tr>
+  </table>
+  <p><strong>验证</strong>：新函数的单元测试通过。现有审计测试不受影响（新函数还没被调用）。</p>
+</div>
+
+<div class="box box-plan">
+  <p><strong>Step 3 · 切换审计上下文源（需实验验证）</strong> <span class="tag tag-design">有风险</span></p>
+  <table>
+    <tr><th>改什么</th><th>文件</th><th>具体改动</th></tr>
+    <tr><td>审计改用 prop 窗口</td><td><code>knowledge/semantic-audit.ts</code></td><td><code>selectChaseChunks(config, sourceChase, propRefs)</code> → <code>selectPropsContext(chaseContent, propRefs, 3)</code></td></tr>
+  </table>
+  <p><strong>验证</strong>：重跑 e 基本画像审计——对比 P1 修复前后的 audit score 和 issue 列表。要求：score 不下降、issue 数量不增加。<strong>如有回归，回退 Step 3 并调整窗口大小。</strong></p>
+</div>
+
+<div class="box box-plan">
+  <p><strong>Step 4 · 删除 chunk fallback（typecheck 会爆，逐步修）</strong> <span class="tag tag-design">破坏性</span></p>
+  <table>
+    <tr><th>改什么</th><th>文件</th><th>具体改动</th></tr>
+    <tr><td>删除 chunk fallback</td><td><code>knowledge/chase.ts</code></td><td><code>collectPropIndices</code>: 删除 chunk fallback 分支 → 无 prop 返回空 Set</td></tr>
+    <tr><td>删除 chunkRefs 解析</td><td><code>knowledge/wiki-parser.ts</code></td><td>删除 <code>parseChunkRefs()</code> 调用和 chunkRefs→propRefs 转换</td></tr>
+    <tr><td>删除 chunk 相关函数</td><td><code>knowledge/chase.ts</code></td><td>删除 <code>readChaseChunks()</code>、<code>selectChaseChunks()</code>、<code>collectChunkIndices()</code></td></tr>
+    <tr><td>修复 typecheck</td><td>多个文件</td><td>所有引用已删除函数的调用点改为新函数或删除</td></tr>
+    <tr><td>更新测试</td><td><code>tests/</code></td><td>删除基于 chunk 的测试；更新审计测试使用 prop 窗口</td></tr>
+  </table>
+  <p><strong>验证</strong>：typecheck + full test suite 通过。</p>
+</div>
+
+<div class="box box-plan">
+  <p><strong>Step 5 · 改变 chase 文件格式</strong> <span class="tag tag-clean">格式迁移</span></p>
+  <table>
+    <tr><th>改什么</th><th>文件</th><th>具体改动</th></tr>
+    <tr><td>saveRaw 不写 chunk 标记</td><td><code>knowledge/store.ts</code></td><td>删除 chunk marker 写入逻辑。chase 文件 = frontmatter + body 文本（无 chunk 标记）。</td></tr>
+  </table>
+  <p><strong>向后兼容</strong>：已存在的 chase 文件保持不变——chunk 标记作为普通文本保留。新 chase 文件不再生成 chunk 标记。系统通过 <code>readChaseProps()</code> 读取（与 chunk 标记无关）。</p>
+  <p><strong>验证</strong>：新 ingest 一篇材料 → 检查 chase 文件不含 <code>&lt;!-- chunk</code> 标记；typecheck + test 通过。</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════ 风险控制 ═══ -->
+<h2>6 · 风险与回退策略</h2>
+
+<table>
+  <tr><th>风险</th><th>缓解措施</th><th>回退方案</th></tr>
+  <tr>
+    <td>Step 3 审计上下文切换导致 judge 精度下降</td>
+    <td>Step 3 前先做 A/B 对比：同一个 wiki 节点分别用 chunk 上下文和 prop 窗口上下文审计，对比 verdict。只有 score 不下降才合入。</td>
+    <td>保留 <code>selectChaseChunks()</code> 直到 Step 4——Step 3 可以单独回退。</td>
+  </tr>
+  <tr>
+    <td>Step 4 typecheck 爆炸</td>
+    <td>分文件逐步修：先修 chase.ts → 修 semantic-audit.ts → 修 wiki-parser.ts → 修测试。每步 typecheck。</td>
+    <td>每个子改动是独立的 git commit——出问题可以 revert 单个 commit 而非整个 Step 4。</td>
+  </tr>
+  <tr>
+    <td>Step 5 旧 chase 文件与新代码不兼容</td>
+    <td><code>readChaseProps()</code> 正则不依赖 chunk 标记——新旧 chase 文件都能正确解析 prop。</td>
+    <td>无需回退——Step 5 向后兼容。</td>
+  </tr>
+</table>
+
+<footer>
+  <p>生成日期：2026-07-09 · 基于 architecture-decisions.html Q1–Q4 讨论对齐<br>
+  对应 architecture-design §04 / 决策表 #6, #8。施工完成后更新 architecture-baseline.html。</p>
+</footer>
+
+</div>
+</body>
+</html>

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>LiteWikiagent 架构基线 v2.0 — 施工完成</title>
+  <title>LiteWikiagent 架构基线 v2.1 — 代码对齐版</title>
   <script type="module">
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
     mermaid.initialize({
@@ -38,6 +38,7 @@
     .kicker { color: var(--blue); font-size: 0.82rem; font-weight: 820; letter-spacing: 0.09em; text-transform: uppercase; }
     h2 { margin: 0; font-size: clamp(1.6rem, 2.8vw, 2.5rem); line-height: 1.16; }
     h3 { margin: 26px 0 10px; font-size: 1.22rem; line-height: 1.32; }
+    h4 { margin: 20px 0 8px; font-size: 1.05rem; line-height: 1.32; color: #2a3a52; }
     p { margin: 0 0 16px; } .lead { color: #33445b; font-size: 1.06rem; line-height: 1.82; }
     .diagram-wrap { margin: 24px 0; padding: 22px; background: var(--white); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; box-shadow: 0 10px 30px rgba(32,50,72,0.07); }
     .mermaid { min-width: 600px; text-align: center; }
@@ -50,10 +51,17 @@
     .callout { padding: 20px 24px; background: rgba(255,255,255,0.82); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 30px rgba(32,50,72,0.06); margin: 20px 0; }
     .callout.warn { border-color: #ead5a4; background: #fffaf0; }
     .callout.good { border-color: #b8d9cd; background: #f3fbf8; }
+    .callout.info { border-color: #c4daf0; background: #f3f8fd; }
+    .callout.danger { border-color: #e8c4ca; background: #fdf5f6; }
     .callout strong { color: #0f243d; }
     .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.76rem; font-weight: 700; }
     .badge-ok { background: #d4edda; color: #155724; } .badge-new { background: #cce5ff; color: #004085; }
+    .badge-stub { background: #fdf2d0; color: #7a5e1b; }
+    .badge-discrepancy { background: #f8d7da; color: #721c24; }
+    .badge-dead { background: #e8e8e8; color: #666; }
     .two-col { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 22px; align-items: start; }
+    .annot { font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
+    ul.tight { margin: 8px 0 16px; padding-left: 22px; } ul.tight li { margin-bottom: 4px; }
     footer { padding: 30px 0 10px; color: var(--muted); font-size: 0.9rem; }
     @media (max-width: 860px) { .section-head, .two-col { grid-template-columns: 1fr; } .mermaid { min-width: 520px; } }
   </style>
@@ -62,655 +70,3100 @@
 <div class="page">
 
 <header>
-  <div class="eyebrow">Loop Engineering Baseline · v2.0 <span class="version-badge">2026-07-09 · 施工完成</span></div>
-  <h1>LiteWikiagent 架构基线 v2.0</h1>
+  <div class="eyebrow">Loop Engineering Baseline · v2.3 <span class="version-badge">2026-07-10 · v2.3 更新</span></div>
+  <h1>LiteWikiagent 架构基线 v2.3</h1>
   <p class="subtitle">
-    基于 lite-llmwiki 代码库截至 2026-07-09 的<strong>真实架构快照</strong>。
-    架构设计 v1.0 的 11 个施工步骤已全部完成——所有模块、数据流、依赖关系均从源码逐行确认。
+    基于 <code>lite-llmwiki/</code> 源码逐文件确认（含 64 源文件 + 29 测试文件）。<br>
+    所有数字、路径、接口签名、数据流向均从 TypeScript 源码直接提取，不推测。<br>
+    本文档忠实记录当前实现的真实状态——包括已实现、部分实现和尚未实现的功能。
   </p>
   <div class="meta-bar">
     <div class="meta-item"><b>代码库</b> <code>lite-llmwiki/</code></div>
-    <div class="meta-item"><b>源文件</b> 60 个 TypeScript 文件</div>
-    <div class="meta-item"><b>测试</b> 25 个文件 · 275 passed / 4 skipped</div>
+    <div class="meta-item"><b>源文件</b> 64 个 TypeScript 文件 · 13,631 行</div>
+    <div class="meta-item"><b>测试</b> 29 个文件 · 309 passed / 4 skipped</div>
     <div class="meta-item"><b>TypeCheck</b> ✅ 0 errors</div>
-    <div class="meta-item"><b>CLI 命令</b> 15 个</div>
+    <div class="meta-item"><b>CLI 命令</b> 15 个（含 OKF 2 子命令）</div>
   </div>
   <nav class="quick-nav">
     <a href="#overview">总览</a>
-    <a href="#layers">六层架构</a>
-    <a href="#flow">数据流</a>
-    <a href="#ingest">Ingest 管线</a>
-    <a href="#audit">审计体系</a>
-    <a href="#board">Board 查询</a>
-    <a href="#graph">图谱系统</a>
-    <a href="#evolution">自进化</a>
-    <a href="#daemon">Daemon</a>
-    <a href="#storage">存储结构</a>
-    <a href="#modules">模块清单</a>
-    <a href="#health">健康度</a>
-    <a href="#v1diff">v1.0 vs v2.0</a>
+    <a href="#layers">架构分层</a>
+    <a href="#flow-ingest">Ingest 数据流</a>
+    <a href="#flow-query">Query 数据流</a>
+    <a href="#ingest">Ingest 层</a>
+    <a href="#knowledge">Knowledge 层</a>
+    <a href="#query">Query 层</a>
+    <a href="#evolution">Evolution 层</a>
+    <a href="#daemon">Daemon 层</a>
+    <a href="#core">Core 层</a>
+    <a href="#cli">CLI 层</a>
+    <a href="#okf">OKF 互操作</a>
+    <a href="#types">类型系统</a>
+    <a href="#design-gaps">设计差距</a>
+    <a href="#dead-code">死代码</a>
+    <a href="#modules">全模块清单</a>
+    <a href="#changelog-v22">v2.2 变更日志</a>
   </nav>
 </header>
 
 <main>
 
-<!-- ══════════════════════════════════ 总览 ══════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- §01 总览 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
 <section id="overview">
-  <div class="section-head">
-    <div class="kicker">01 / Overview</div>
-    <div><h2>系统总览：完整发动机</h2></div>
+<div class="section-head">
+  <div><span class="kicker">§01 — Overview</span></div>
+  <div>
+    <h2>总览：一段代码，三个角色</h2>
+    <p class="lead">LiteWikiagent 是一个 agent 无关、可演进的知识层。它的核心是"知识质量"——不是 chatbot 的答案质量，而是知识本身是否忠实于原始材料、是否可追溯、是否随时间变好。</p>
   </div>
+</div>
 
-  <div class="diagram-wrap">
-    <pre class="mermaid">
-flowchart TB
-  subgraph INPUT["📥 输入"]
-    PDF["PDF"]
-    MD["Markdown"]
-    TEX["TeX"]
+<p>系统有三个角色，对应三个运行模式：</p>
+
+<div class="diagram-wrap">
+<pre class="mermaid">
+graph LR
+  subgraph Roles["三个角色"]
+    Human["👤 人类<br/>主编"]
+    Agent["🤖 Agent<br/>决策者"]
+    Daemon["⚙️ Daemon<br/>CI 流水线"]
   end
 
-  subgraph LOADER["Loader 层"]
-    L1["pdf-loader / loader / tex-loader"]
-    CHASE["raw/chase/*.md<br/>chunk marker"]
+  subgraph Actions["各自职责"]
+    A1["人类：确认/否决<br/>矛盾·强化·回流候选"]
+    A2["Agent：查询·启发<br/>ask/trace/expand/..."]
+    A3["Daemon：提取·编译·审计<br/>lint·回流筛选"]
   end
 
-  subgraph PROPS["命题提取"]
-    P1["extractPropositions()<br/>LLM 拆分原子命题"]
-    P2["prop marker<br/>&lt;!-- prop N --&gt;"]
-  end
+  Human --- A1
+  Agent --- A2
+  Daemon --- A3
 
-  subgraph ENGINE["发动机本体"]
-    COMPILE["compile<br/>命题 → wiki 节点 + edges"]
-    AUDIT["audit<br/>结构(硬) + 语义(软)"]
-    BOARD["board 装配<br/>搜索 + graph 强制注入"]
-    QUERY["query engine<br/>LLM 在残局上推理"]
-  end
+  style Human fill:#e8f5e9,stroke:#4caf50
+  style Agent fill:#e3f2fd,stroke:#2196f3
+  style Daemon fill:#fff3e0,stroke:#ff9800
+</pre>
+</div>
 
-  subgraph EVOLVE["自进化层"]
-    CONTRADICT["矛盾检测<br/>LLM judge"]
-    REINFORCE["强化检测<br/>LLM judge 双维度"]
-    INSPIRE["inspire<br/>人类探索工具"]
-    CONFIRM["confirm<br/>人类确认闸门"]
-  end
+<table>
+  <thead><tr><th>角色</th><th>做什么</th><th>何时运行</th><th>信息卫生原则</th></tr></thead>
+  <tbody>
+    <tr><td><b>Daemon</b></td><td>命题提取 → 编译 → 审计 → lint → 回流筛选</td><td>常驻进程（<code>llmwiki daemon</code>）</td><td>机械操作自动化（提取/编译/审计）；LLM 生成内容写入前需确认</td></tr>
+    <tr><td><b>Agent</b></td><td>查询知识（6 种 board 模式）·启发灵感</td><td>按需调用</td><td>查询结果只读，不写 wiki</td></tr>
+    <tr><td><b>人类</b></td><td>确认/否决 progress.md 中的待确认项</td><td>周期性批量处理</td><td>所有写入 wiki 的 LLM 内容需人类确认</td></tr>
+  </tbody>
+</table>
 
-  subgraph OUTPUT["📤 输出"]
-    WIKI["wiki/*.md<br/>节点 + edges"]
-    GRAPH["graph.json<br/>图谱聚合索引"]
-    GATE["audit-gate.json<br/>关卡状态"]
-    PROGRESS["progress.md<br/>待确认工单"]
-  end
+<div class="callout info">
+  <strong>核心理念：</strong>知识层不是知识库。它不追求"存得多"，而追求"存得准"。每一条 wiki 节点必须可追溯到原始材料中的命题（<code>&lt;!-- prop N --&gt;</code> 标记）。审计门禁确保未通过审计的节点不会误导 agent。
+</div>
 
-  PDF & MD & TEX --> LOADER
-  LOADER --> CHASE
-  CHASE --> PROPS
-  PROPS --> COMPILE
-  COMPILE --> AUDIT
-  COMPILE --> EVOLVE
-  AUDIT --> WIKI
-  AUDIT --> GATE
-  WIKI --> BOARD
-  GRAPH --> BOARD
-  BOARD --> QUERY
-  EVOLVE --> PROGRESS
-  EVOLVE --> GRAPH
-  EVOLVE --> WIKI
-    </pre>
-  </div>
-</section>
-
-<!-- ══════════════════════════════════ 六层架构 ══════════════════════════════════ -->
-<section id="layers">
-  <div class="section-head">
-    <div class="kicker">02 / Layers</div>
-    <div><h2>六层架构</h2></div>
-  </div>
-
-  <div class="diagram-wrap">
-    <pre class="mermaid">
-flowchart TB
-  subgraph L0["Layer 0 · Loader"]
-    L0_1["loader.ts · pdf-loader.ts · tex-loader.ts"]
-    L0_2["PDF/MD/TeX → Source 对象 → chunkText() → chase"]
-  end
-
-  subgraph L1["Layer 1 · Proposition Extraction"]
-    L1_1["ingest/proposition.ts"]
-    L1_2["LLM 拆分原子命题 → &lt;!-- prop N --&gt; marker"]
-  end
-
-  subgraph L2["Layer 2 · Engine Core"]
-    direction TB
-    L2_C["ingest/pipeline.ts — 共享管线"]
-    L2_A["knowledge/audit.ts + semantic-audit.ts"]
-    L2_B["query/board.ts + engine.ts"]
-    L2_G["knowledge/graph.ts"]
-  end
-
-  subgraph L3["Layer 3 · Maintenance (daemon CI)"]
-    L3_1["daemon/watcher.ts — chokidar 监听"]
-    L3_2["daemon/timer.ts — 定时 lint"]
-    L3_3["daemon/lint.ts — 健康检查"]
-    L3_4["daemon/state.ts — 原子状态写入"]
-  end
-
-  subgraph L4["Layer 4 · Evolution"]
-    L4_1["contradiction.ts · reinforce.ts"]
-    L4_2["supersede.ts · reflow.ts · confirm.ts"]
-  end
-
-  subgraph L5["Layer 5 · Interface"]
-    L5_1["15 CLI commands"]
-    L5_2["daemon CLI · agent contract"]
-    L5_3["OKF export/import"]
-    L5_4["qmd search · LLMProvider"]
-  end
-
-  L0 --> L1 --> L2 --> L3
-  L2 --> L4
-  L3 --> L4
-  L4 --> L5
-    </pre>
-  </div>
-
-  <table>
-    <tr><th>层</th><th>目录</th><th>职责</th><th>新建/改造</th></tr>
-    <tr><td><strong>L0 Loader</strong></td><td><code>src/ingest/loader.ts · pdf-loader.ts · tex-loader.ts</code></td><td>PDF/MD/TeX → 纯文本 chunks → chase 文件</td><td><span class="badge badge-ok">保留</span></td></tr>
-    <tr><td><strong>L1 Proposition</strong></td><td><code>src/ingest/proposition.ts</code></td><td>LLM 拆分原子命题 → prop marker</td><td><span class="badge badge-new">新建</span></td></tr>
-    <tr><td><strong>L2 Engine</strong></td><td><code>src/ingest/pipeline.ts · knowledge/* · query/*</code></td><td>编译 + 审计 + board + graph</td><td><span class="badge badge-new">新建 pipeline + graph</span></td></tr>
-    <tr><td><strong>L3 Maintenance</strong></td><td><code>src/daemon/*</code></td><td>文件监听 + 定时 lint + 状态管理</td><td><span class="badge badge-new">新建 7 模块</span></td></tr>
-    <tr><td><strong>L4 Evolution</strong></td><td><code>src/evolution/*</code></td><td>矛盾 + 强化 + 回流 + 确认管线</td><td><span class="badge badge-new">新建 5 模块</span></td></tr>
-    <tr><td><strong>L5 Interface</strong></td><td><code>src/cli/* · src/agent/* · src/okf/*</code></td><td>CLI · OKF · agent contract · qmd · LLMProvider</td><td><span class="badge badge-new">新建 6 模块</span></td></tr>
-  </table>
-</section>
-
-<!-- ══════════════════════════════════ 数据流 ══════════════════════════════════ -->
-<section id="flow">
-  <div class="section-head">
-    <div class="kicker">03 / Data Flow</div>
-    <div><h2>一篇新材料进入系统后的完整路径</h2></div>
-  </div>
-
-  <div class="diagram-wrap">
-    <pre class="mermaid">
-flowchart TB
-  START["📄 用户放入 raw/original/pdf/paper.pdf"]
-  
-  START --> L["loader: MinerU API → Markdown 正文"]
-  L --> CHUNK["chunkText(): ~2000 tokens/chunk, with overlap"]
-  CHUNK --> CHASE_W["写 chase: &lt;!-- chunk:1 --&gt;...&lt;!-- /chunk:1 --&gt;"]
-
-  CHASE_W --> CHECK{"chase 有 prop marker?"}
-  CHECK -->|"无"| PROPS["proposition.ts: LLM 拆分原子命题"]
-  PROPS --> PMARK["插入 &lt;!-- prop N --&gt; marker"]
-  CHECK -->|"有"| PMARK
-
-  PMARK --> CLEAN["cleanup: 删除同 sourceId 的旧 wiki 节点"]
-
-  CLEAN --> COMPILE["pipeline.ts: LLM compile<br/>命题 → wiki 节点 + edges"]
-  
-  COMPILE --> NODES["写入 wiki/{kind}/*.md<br/>propRefs + edges (JSON)"]
-  COMPILE --> EDGES["derived_from / related edges<br/>confidence: LLM 自评"]
-
-  NODES --> STRUCT["结构审计: nodeId/kind/propRefs 检查"]
-  STRUCT --> SEM{"语义审计: LLM judge<br/>5 维度 verdict"}
-  SEM -->|"passed"| GATE_OK["auditStatus: passed"]
-  SEM -->|"warning/failed"| GATE_WARN["auditStatus: warning/failed<br/>auditScore 写入 frontmatter"]
-
-  GATE_OK & GATE_WARN --> GATE_FILE["audit-gate.json<br/>{structureOk, semanticOk, score}"]
-
-  COMPILE --> POST["post-compile 检测"]
-  POST --> CONTRADICT["矛盾检测: LLM judge<br/>新节点 vs 已有同 kind 节点"]
-  POST --> REINFORCE["强化检测: LLM judge 双维度<br/>语义一致度 + 证据增量度"]
-  
-  CONTRADICT --> PROGRESS["contradicts 候选 → progress.md"]
-  REINFORCE --> PROGRESS
-
-  NODES --> GRAPH["graph.json 重建<br/>buildGraph() from frontmatter.edges"]
-  EDGES --> GRAPH
-
-  PROGRESS --> HUMAN["👤 人类 confirm --all"]
-  HUMAN --> FRONTMATTER["确认的 edges 写入 frontmatter"]
-  FRONTMATTER --> GRAPH
-    </pre>
-  </div>
-
-  <div class="callout good">
-    <strong>关键设计改进（v2.0 vs v1.0）：</strong>
-    <ul>
-      <li><strong>命题提取</strong>是 compile 的前置步骤——LLM 将 chase 文本拆分为原子命题，标注 <code>&lt;!-- prop N --&gt;</code> marker。一次 LLM 调用，结果持久化。</li>
-      <li><strong>覆盖式 ingest</strong>——同一篇材料重编译时，先删掉所有 <code>sourceIds</code> 包含该 source 的旧节点，再写新的。</li>
-      <li><strong>Edge 是编译的自动产出</strong>——compile LLM 在输出节点时同时标注 derived_from 和 related 边（confidence 来自 LLM 自评）。</li>
-      <li><strong>矛盾 + 强化检测</strong>在 compile 后自动运行，候选写入 progress.md 等待人类确认。</li>
-    </ul>
-  </div>
-</section>
-
-<!-- ══════════════════════════════════ Ingest ══════════════════════════════════ -->
-<section id="ingest">
-  <div class="section-head">
-    <div class="kicker">04 / Ingest</div>
-    <div><h2>Ingest 管线：两条路径</h2></div>
-  </div>
-
-  <h3>路径 A：CLI 手动（llmwiki ingest2）</h3>
-  <div class="diagram-wrap">
-    <pre class="mermaid">
-flowchart LR
-  CLI["llmwiki ingest2 &lt;file&gt;"]
-  CLI --> PIPE["runIngestPipeline(config, chaseFile, client)"]
-  PIPE --> STEP1["① extract-props"]
-  STEP1 --> STEP2["② compile"]
-  STEP2 --> STEP3["③ audit (结构 + 语义)"]
-  STEP3 --> STEP4["④ contradict + reinforce"]
-    </pre>
-  </div>
-
-  <h3>路径 B：daemon 自动（文件监听）</h3>
-  <div class="diagram-wrap">
-    <pre class="mermaid">
-flowchart LR
-  WATCH["watcher.ts: onNewChase"]
-  WATCH --> PIPE2["runIngestPipeline(config, chaseFile, llm)"]
-  PIPE2 --> STEP1B["① extract-props"]
-  STEP1B --> STEP2B["② compile"]
-  STEP2B --> WAIT["③ audit 等待下次 wiki change"]
-    </pre>
-  </div>
-
-  <div class="callout good">
-    <strong>共享管线</strong>——CLI 和 daemon 调的是<strong>同一套函数</strong>（<code>src/ingest/pipeline.ts → runIngestPipeline()</code>）。daemon 是加速器，CLI 是完整后备——设计文档 §14 的要求。
-  </div>
-
-  <h3>命题提取详情</h3>
-  <table>
-    <tr><th>步骤</th><th>内容</th></tr>
-    <tr><td>输入</td><td>chase 文件（含 chunk marker）</td></tr>
-    <tr><td>LLM</td><td>deepseek-v4-flash（thinking disabled, maxTokens 32768）</td></tr>
-    <tr><td>输出格式</td><td><code>{"propositions": [{"index":1, "text":"...", "chunkIndex":1}]}</code></td></tr>
-    <tr><td>marker 格式</td><td><code>&lt;!-- prop N --&gt;</code> 插入在 chunk 关闭标记后</td></tr>
-    <tr><td>读取</td><td><code>readChaseProps()</code> → <code>ChaseProp[]</code></td></tr>
-  </table>
-
-  <h3>编译详情</h3>
-  <table>
-    <tr><th>步骤</th><th>内容</th></tr>
-    <tr><td>输入</td><td>chase 文件（含 prop marker）</td></tr>
-    <tr><td>LLM</td><td>deepseek-v4-flash（thinking disabled, maxTokens 8192）</td></tr>
-    <tr><td>输出</td><td><code>{"nodeDrafts": [{nodeId,kind,title,claim,evidence,edges:[{to,type,confidence}]}]}</code></td></tr>
-    <tr><td>edges</td><td>LLM 自评 confidence（0-1），类型 derived_from / related</td></tr>
-    <tr><td>去重</td><td>写入前删除同 sourceId 的所有旧节点</td></tr>
-  </table>
-</section>
-
-<!-- ══════════════════════════════════ Audit ══════════════════════════════════ -->
-<section id="audit">
-  <div class="section-head">
-    <div class="kicker">05 / Audit</div>
-    <div><h2>双重审计体系</h2></div>
-  </div>
-
-  <div class="diagram-wrap">
-    <pre class="mermaid">
-flowchart TB
-  subgraph STRUCT["结构审计 (audit.ts) — 无 LLM，快速"]
-    S1["检查: nodeId · kind · sourceChase · propRefs"]
-    S2["检查: Claim 非空 · Evidence 非空"]
-    S3["检查: propRefs 在 chase 中存在 (collectPropIndices)"]
-  end
-
-  subgraph SEM["语义审计 (semantic-audit.ts) — LLM judge"]
-    SE1["读 chase excerpts (selectChaseChunks)"]
-    SE2["构造 audit prompt (buildSemanticAuditInput)"]
-    SE3["LLM judge: 5 维度 verdict"]
-    SE4["support · addition · inference · limits · citation"]
-    SE5["anchor: 'prop N: 原文引用' — Layer 1 防御"]
-  end
-
-  subgraph GATE["audit-gate.ts"]
-    GA["结构失败 → 阻止 query (hard gate)"]
-    GB["语义失败 → 警告放行 (soft gate)"]
-    GC["审计未执行 → 警告放行"]
-  end
-
-  STRUCT --> GATE
-  SEM --> GATE
-    </pre>
-  </div>
-
-  <table>
-    <tr><th>关卡</th><th>行为</th><th>v2.0 修正</th></tr>
-    <tr><td>结构审计失败</td><td>阻止 query</td><td>硬关卡（不变）</td></tr>
-    <tr><td>语义审计失败</td><td><strong>警告放行</strong></td><td>v2.0 修正：LLM judge 是主观的→不应用主观判断做硬关卡</td></tr>
-    <tr><td>审计未执行</td><td>警告放行</td><td>软关卡（不变）</td></tr>
-  </table>
-</section>
-
-<!-- ══════════════════════════════════ Board ══════════════════════════════════ -->
-<section id="board">
-  <div class="section-head">
-    <div class="kicker">06 / Board</div>
-    <div><h2>Board 查询：6 种模式</h2></div>
-  </div>
-
-  <div class="diagram-wrap">
-    <pre class="mermaid">
-flowchart TB
-  Q["用户问题 + mode"] --> SEARCH["SearchProvider.search()"]
-  SEARCH --> SEEDS["seed nodes"]
-
-  SEEDS --> GRAPH_INJ["graph 强制注入<br/>seed nodes 的 edges → 补 related/counter"]
-
-  GRAPH_INJ --> ASM{"assembleBoard<br/>按 mode 分支"}
-  ASM -->|"ask"| A["seeds + evidence + related + limits"]
-  ASM -->|"trace"| T["seeds + full evidence + chase excerpts"]
-  ASM -->|"expand"| E["seeds + methods/cases/equations + questions"]
-  ASM -->|"compare"| C["seeds + bridge nodes + cross-source"]
-  ASM -->|"challenge"| CH["seeds + ALL counters + ALL limits"]
-  ASM -->|"inspire"| I["seeds + insights/questions/tension nodes"]
-
-  A & T & E & C & CH & I --> BOARD_OUT["QueryBoard"]
-  BOARD_OUT --> LLM["DeepSeek LLM"]
-  LLM --> ANSWER["answer + fromWiki + missingEvidence"]
-    </pre>
-  </div>
-
-  <div class="callout good">
-    <strong>v2.0 改进：</strong>Board 装配通过 <code>SearchProvider</code> 接口调用搜索（支持 KeywordSearchProvider 和 QmdSearchProvider 切换）。图谱强制注入——seed nodes 的 edges 被自动补入 board，challenge 模式不遗漏 counter 节点。
-  </div>
-</section>
-
-<!-- ══════════════════════════════════ Graph ══════════════════════════════════ -->
-<section id="graph">
-  <div class="section-head">
-    <div class="kicker">07 / Graph</div>
-    <div><h2>图谱系统</h2></div>
-  </div>
-
-  <div class="diagram-wrap">
-    <pre class="mermaid">
-flowchart LR
-  FM["wiki/*.md frontmatter.edges"]
-  FM --> BUILD["buildGraph()"]
-  BUILD --> GRAPH["graph.json 聚合索引"]
-  
-  subgraph TYPES["5 种边类型"]
-    T1["derived_from — compile LLM 标注"]
-    T2["related — compile LLM + inspire 确认"]
-    T3["contradicts — daemon 矛盾检测"]
-    T4["supports — reinforce 确认"]
-    T5["superseded_by — 取代确认"]
-  end
-
-  GRAPH --> STATS["getGraphStats()<br/>nodes · edges · orphans · contradicts"]
-  
-  GRAPH --> BOARD_INJ["board 强制注入"]
-  GRAPH --> LINT["lint 孤立检测"]
-    </pre>
-  </div>
-
-  <table>
-    <tr><th>边类型</th><th>谁产生</th><th>confidence 来源</th><th>谁确认</th></tr>
-    <tr><td><code>derived_from</code></td><td>compile LLM</td><td>LLM 自评 (0-1)</td><td>自动</td></tr>
-    <tr><td><code>related</code></td><td>compile LLM + inspire</td><td>LLM 自评 / inspire 硬编码 0.5</td><td>compile 自动 / inspire 需人类</td></tr>
-    <tr><td><code>contradicts</code></td><td>daemon 矛盾检测 LLM</td><td>LLM 自评</td><td>人类确认</td></tr>
-    <tr><td><code>supports</code></td><td>reinforce LLM judge</td><td>双维度综合</td><td>人类确认</td></tr>
-    <tr><td><code>superseded_by</code></td><td>人类确认后</td><td>—</td><td>人类确认</td></tr>
-  </table>
-</section>
-
-<!-- ══════════════════════════════════ Evolution ══════════════════════════════════ -->
-<section id="evolution">
-  <div class="section-head">
-    <div class="kicker">08 / Evolution</div>
-    <div><h2>自进化系统：五个方向</h2></div>
-  </div>
-
-  <div class="diagram-wrap">
-    <pre class="mermaid">
-flowchart TB
-  subgraph AUTO["自动检测"]
-    C1["矛盾检测<br/>LLM judge 对比新节点 vs 已有节点"]
-    C2["强化检测<br/>LLM judge 双维度: 语义一致度 + 证据增量度"]
-  end
-
-  subgraph CANDIDATE["候选 → progress.md"]
-    P1["contradicts 候选"]
-    P2["reinforce 候选"]
-    P3["inspire edge 候选"]
-  end
-
-  subgraph HUMAN["人类确认 (confirm CLI)"]
-    H1["confirm --list"]
-    H2["confirm --all"]
-    H3["confirm --accept 1,3"]
-  end
-
-  subgraph APPLY["确认后写入"]
-    A1["edges → frontmatter"]
-    A2["supersede → 标记旧节点"]
-    A3["reinforce → auditScore 提升"]
-  end
-
-  AUTO --> CANDIDATE
-  CANDIDATE --> HUMAN
-  HUMAN --> APPLY
-    </pre>
-  </div>
-
-  <table>
-    <tr><th>模块</th><th>功能</th><th>LLM</th></tr>
-    <tr><td><code>evolution/contradiction.ts</code></td><td>新节点 vs 已有同 kind 节点 → LLM judge 判断矛盾</td><td>是</td></tr>
-    <tr><td><code>evolution/reinforce.ts</code></td><td>双维度 LLM judge: 语义一致度(>0.7) + 证据增量度(>0.5)</td><td>是</td></tr>
-    <tr><td><code>evolution/confirm.ts</code></td><td>确认管线: parse → backlog check → auto-degrade</td><td>否</td></tr>
-    <tr><td><code>evolution/supersede.ts</code></td><td>取代确认: 标记旧节点 status: legacy</td><td>否</td></tr>
-    <tr><td><code>evolution/reflow.ts</code></td><td>回流候选: 筛选 + reflowOrigin 标记</td><td>否</td></tr>
-  </table>
-</section>
-
-<!-- ══════════════════════════════════ Daemon ══════════════════════════════════ -->
-<section id="daemon">
-  <div class="section-head">
-    <div class="kicker">09 / Daemon</div>
-    <div><h2>Daemon：七项职责</h2></div>
-  </div>
-
-  <div class="diagram-wrap">
-    <pre class="mermaid">
-flowchart TB
-  subgraph RESP["七项职责"]
-    D1["① 命题提取: onNewChase → runIngestPipeline"]
-    D2["② compile: pipeline 内部自动"]
-    D3["③ audit: onWikiChange → 入队"]
-    D4["④ lint: 定时器 30min → lintWiki() → lint-report.json"]
-    D5["⑤ inspire: 人类命令触发"]
-    D6["⑥ reflow: 定时器 60min → screenAndWriteReflow"]
-    D7["⑦ reinforce: pipeline 内部 post-compile"]
-  end
-
-  subgraph WATCHER["文件监听 (chokidar)"]
-    W1["chase/ 新文件 → onNewChase"]
-    W2["wiki/ 变化 → onWikiChange"]
-  end
-
-  subgraph TIMER["定时器 (setInterval)"]
-    TM1["30s: heartbeat → daemon-state.json"]
-    TM2["30min: lint → lint-report.json"]
-    TM3["60min: reflow → progress.md"]
-  end
-
-  subgraph STATE["状态管理"]
-    S1["daemon-state.json (原子写入)"]
-    S2["daemon.log (追加日志)"]
-  end
-
-  WATCHER --> RESP
-  TIMER --> RESP
-  RESP --> STATE
-    </pre>
-  </div>
-
-  <table>
-    <tr><th>模块</th><th>功能</th></tr>
-    <tr><td><code>daemon/index.ts</code></td><td>主入口: watcher + timer + 优雅退出</td></tr>
-    <tr><td><code>daemon/watcher.ts</code></td><td>chokidar 监听 chase/ + wiki/</td></tr>
-    <tr><td><code>daemon/timer.ts</code></td><td>heartbeat(30s) + lint(30min) + reflow(60min)</td></tr>
-    <tr><td><code>daemon/state.ts</code></td><td>daemon-state.json 原子写入 (write-temp + rename)</td></tr>
-    <tr><td><code>daemon/lint.ts</code></td><td>孤立/断链/propRefs 缺失检测 → lint-report.json</td></tr>
-    <tr><td><code>daemon/health.ts</code></td><td>SystemHealth: code + wiki + graph + daemon + backlog</td></tr>
-    <tr><td><code>daemon/reflow.ts</code></td><td>回流候选标记 (依赖 query cache，当前为 stub)</td></tr>
-  </table>
-</section>
-
-<!-- ══════════════════════════════════ Storage ══════════════════════════════════ -->
-<section id="storage">
-  <div class="section-head">
-    <div class="kicker">10 / Storage</div>
-    <div><h2>存储结构</h2></div>
-  </div>
-
-  <pre class="code">LiteWikiagent/
-├── raw/
-│   ├── original/            # 用户放入的原始材料
-│   │   ├── md/
-│   │   ├── pdf/
-│   │   └── tex/
-│   └── chase/               # 清洗后 Markdown (审查基准层)
-│       └── *.md              # &lt;!-- chunk:N --&gt; + &lt;!-- prop N --&gt;
-│
-├── wiki/                    # 编译的知识层
-│   ├── concepts/ claims/ methods/ cases/ equations/
-│   ├── questions/ insights/ anchors/ counters/
-│   ├── audit-gate.json      # 审计关卡状态
-│   ├── index.json / index.md / log.md
-│   └── *.md                  # frontmatter: propRefs + edges + auditStatus
-│
-├── lite-llmwiki/            # TypeScript CLI 包
-│   ├── src/ (60 .ts files)
-│   └── tests/ (25 test files)
-│
-├── loopadvance/             # Loop Engineering 区域
-│   ├── daemon-state.json    # daemon 运行状态
-│   ├── daemon.log           # daemon 运行日志
-│   ├── lint-report.json     # lint 健康报告
-│   ├── progress.md          # 待确认工单 + 健康度记录
-│   ├── STATUS.md            # Loop A 自动更新的系统状态
-│   ├── PLAN.md              # 施工计划
-│   ├── architecture-baseline.html
-│   ├── architecture-design.html
+<h3>项目目录结构</h3>
+<div class="code"><pre>LiteWikiagent/
+├── lite-llmwiki/          # 主代码库（TypeScript ESM）
+│   ├── src/
+│   │   ├── core/           # LLM 抽象层（client.ts, llm-provider.ts, prefix.ts）
+│   │   ├── ingest/         # 输入层（loader, tex-loader, pdf-loader, pipeline, listening, proposition）
+│   │   ├── knowledge/      # 知识层（store, chase, wiki-parser, render, audit, audit-gate, semantic-audit, graph, manifest）
+│   │   ├── query/          # 查询层（engine, board, search, search-provider, qmd-search, rrf, graph-search）
+│   │   ├── evolution/      # 自进化（confirm, contradiction, reinforce, reflow, supersede）
+│   │   ├── daemon/         # CI 流水线（index, watcher, timer, lint, health, state, reflow）
+│   │   ├── cli/            # 命令行（index, 15 个 commands/, ui/App.tsx）
+│   │   ├── okf/           # OKF 互操作（mapping, import, export）
+│   │   ├── agent/         # Agent 契约（contract.ts）
+│   │   ├── types.ts       # 全局类型定义（627 行）
+│   │   └── config.ts      # 配置加载
+│   ├── tests/             # 28 个测试文件（5,737 行）
+│   └── package.json       # 8 runtime deps + 7 dev deps
+├── loopadvance/           # 文档 + 运行时产物
+│   ├── architecture-baseline.html   # ← 本文档
+│   ├── architecture-design-v2.html  # 设计文档（12 项决策）
 │   ├── product-definition.html
-│   └── loop_engineering_tutorial.html
-│
-├── scripts/
-│   └── loop-health.sh       # Loop A: 自动健康度检测
-│
-├── .env                     # DEEPSEEK_API_KEY + MINERU_API_KEY
-└── README.md</pre>
+│   ├── user-guide.html
+│   ├── progress.md        # 人类待确认队列
+│   ├── daemon-state.json  # daemon 状态
+│   ├── daemon.log         # daemon 日志
+│   └── lint-report.json   # lint 报告
+├── spec/                  # 规范文档
+└── raw/ + wiki/           # 知识存储（运行时生成）
+    ├── raw/
+    │   ├── chase/         # 清洗后的 Markdown（含 prop 标记）
+    │   └── original/      # 原始文件副本
+    └── wiki/
+        ├── concepts/      # 9 种节点目录
+        ├── claims/
+        ├── methods/
+        ├── cases/
+        ├── equations/
+        ├── questions/
+        ├── insights/
+        ├── anchors/
+        ├── counters/
+        ├── audit-gate.json # 审计门禁状态
+        ├── index.md       # 人类可读索引
+        └── index.json     # 机器可读清单</pre>
+</div>
+
+<h3>关键统计</h3>
+<table>
+  <thead><tr><th>指标</th><th>数值</th><th>来源</th></tr></thead>
+  <tbody>
+    <tr><td>源文件（<code>.ts</code>）</td><td>64 个</td><td><code>find src -name '*.ts'</code></td></tr>
+    <tr><td>源代码行数</td><td>13,631 行</td><td><code>wc -l</code></td></tr>
+    <tr><td>测试文件</td><td>29 个</td><td><code>find tests -name '*.ts'</code></td></tr>
+    <tr><td>测试代码行数</td><td>5,780 行</td><td><code>wc -l</code></td></tr>
+    <tr><td>测试通过</td><td>309 passed / 4 skipped / 0 failed</td><td><code>vitest run</code></td></tr>
+    <tr><td>类型检查</td><td>0 errors</td><td><code>tsc --noEmit</code></td></tr>
+    <tr><td>CLI 命令</td><td>15 个（注册于 <code>cli/index.ts</code>）</td><td>—</td></tr>
+    <tr><td>Runtime 依赖</td><td>8 个（openai, commander, ink, react, sql.js, pdf-parse, @tobilu/qmd, ink-text-input）</td><td><code>package.json</code></td></tr>
+    <tr><td>测试/源码比</td><td>~42%</td><td>5,780 / 13,631</td></tr>
+  </tbody>
+</table>
 </section>
 
-<!-- ══════════════════════════════════ Modules ══════════════════════════════════ -->
-<section id="modules">
-  <div class="section-head">
-    <div class="kicker">11 / Module Index</div>
-    <div><h2>完整模块清单</h2></div>
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- §02 架构分层 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="layers">
+<div class="section-head">
+  <div><span class="kicker">§02 — Architecture Layers</span></div>
+  <div>
+    <h2>架构分层：八层结构</h2>
+    <p class="lead">从下到上依次是：Core → Ingest → Knowledge → Query → Evolution → Daemon → CLI → OKF。每一层只依赖下层，不允许反向依赖。</p>
   </div>
+</div>
 
-  <table>
-    <tr><th>目录</th><th>文件</th><th>v1.0 状态</th><th>v2.0 状态</th></tr>
-    <tr><td colspan="4"><strong>核心层</strong></td></tr>
-    <tr><td>core/</td><td>client.ts · prefix.ts</td><td><span class="badge badge-ok">保留</span></td><td>改造</td></tr>
-    <tr><td>core/</td><td>llm-provider.ts</td><td>—</td><td><span class="badge badge-new">新建</span></td></tr>
-    <tr><td colspan="4"><strong>Loader 层</strong></td></tr>
-    <tr><td>ingest/</td><td>loader.ts · pdf-loader.ts · tex-loader.ts</td><td><span class="badge badge-ok">保留</span></td><td>不变</td></tr>
-    <tr><td>ingest/</td><td>listening.ts · policy.ts</td><td><span class="badge badge-ok">保留</span></td><td>改造 (parsePropRefs)</td></tr>
-    <tr><td>ingest/</td><td>proposition.ts · pipeline.ts</td><td>—</td><td><span class="badge badge-new">新建</span></td></tr>
-    <tr><td colspan="4"><strong>知识层</strong></td></tr>
-    <tr><td>knowledge/</td><td>store.ts · wiki-parser.ts · render.ts · manifest.ts</td><td><span class="badge badge-ok">保留</span></td><td>改造</td></tr>
-    <tr><td>knowledge/</td><td>chase.ts</td><td><span class="badge badge-ok">保留</span></td><td>改造 (readChaseProps)</td></tr>
-    <tr><td>knowledge/</td><td>audit.ts · audit-gate.ts · semantic-audit.ts · semantic-audit-prompt.ts</td><td><span class="badge badge-ok">保留</span></td><td>改造 (propRefs + anchor)</td></tr>
-    <tr><td>knowledge/</td><td>graph.ts</td><td>—</td><td><span class="badge badge-new">新建</span></td></tr>
-    <tr><td colspan="4"><strong>查询层</strong></td></tr>
-    <tr><td>query/</td><td>board.ts · engine.ts · search.ts</td><td><span class="badge badge-ok">保留</span></td><td>改造</td></tr>
-    <tr><td>query/</td><td>search-provider.ts · qmd-search.ts</td><td>—</td><td><span class="badge badge-new">新建</span></td></tr>
-    <tr><td colspan="4"><strong>自进化层</strong></td></tr>
-    <tr><td>evolution/</td><td>contradiction.ts · supersede.ts · reflow.ts · reinforce.ts · confirm.ts</td><td>—</td><td><span class="badge badge-new">新建 5 模块</span></td></tr>
-    <tr><td colspan="4"><strong>Daemon 层</strong></td></tr>
-    <tr><td>daemon/</td><td>index.ts · watcher.ts · timer.ts · state.ts · lint.ts · reflow.ts · health.ts</td><td>—</td><td><span class="badge badge-new">新建 7 模块</span></td></tr>
-    <tr><td colspan="4"><strong>接口层</strong></td></tr>
-    <tr><td>cli/</td><td>index.ts · cli-llm-init.ts</td><td><span class="badge badge-ok">保留</span></td><td>改造</td></tr>
-    <tr><td>cli/commands/</td><td>ingest.ts · audit.ts · query.ts · inspire.ts 等 8 个</td><td><span class="badge badge-ok">保留</span></td><td>改造</td></tr>
-    <tr><td>cli/commands/</td><td>extract-props.ts · compile-from-props.ts · ingest-pipeline.ts · confirm.ts · daemon.ts · okf.ts</td><td>—</td><td><span class="badge badge-new">新建 7 个命令</span></td></tr>
-    <tr><td>okf/</td><td>export.ts · import.ts · mapping.ts</td><td>—</td><td><span class="badge badge-new">新建</span></td></tr>
-    <tr><td>agent/</td><td>contract.ts</td><td><span class="badge badge-ok">保留</span></td><td>改造 (AgentStage)</td></tr>
-  </table>
+<div class="diagram-wrap">
+<pre class="mermaid">
+graph TB
+  subgraph L8["OKF 互操作层"]
+    OKF["okf/mapping.ts<br/>okf/import.ts<br/>okf/export.ts"]
+  end
+
+  subgraph L7["CLI 层"]
+    CLI["cli/index.ts (15 命令)<br/>cli/cli-llm-init.ts<br/>cli/commands/* (15 files)<br/>cli/ui/App.tsx"]
+  end
+
+  subgraph L6["Daemon 层"]
+    DAEMON["daemon/index.ts<br/>watcher / timer<br/>lint / health / state / reflow"]
+  end
+
+  subgraph L5["Evolution 层"]
+    EVO["evolution/confirm.ts<br/>evolution/contradiction.ts<br/>evolution/reinforce.ts<br/>evolution/reflow.ts<br/>evolution/supersede.ts"]
+  end
+
+  subgraph L4["Query 层"]
+    QUERY["query/engine.ts<br/>query/board.ts<br/>query/search.ts<br/>query/search-provider.ts<br/>query/qmd-search.ts<br/>query/rrf.ts<br/>query/graph-search.ts"]
+  end
+
+  subgraph L3["Knowledge 层"]
+    KNOW["knowledge/store.ts<br/>knowledge/chase.ts<br/>knowledge/wiki-parser.ts<br/>knowledge/render.ts<br/>knowledge/audit.ts<br/>knowledge/audit-gate.ts<br/>knowledge/semantic-audit.ts<br/>knowledge/semantic-audit-prompt.ts<br/>knowledge/graph.ts<br/>knowledge/manifest.ts"]
+  end
+
+  subgraph L2["Ingest 层"]
+    INGEST["ingest/loader.ts<br/>ingest/tex-loader.ts<br/>ingest/pdf-loader.ts<br/>ingest/pipeline.ts<br/>ingest/listening.ts<br/>ingest/proposition.ts<br/>ingest/policy.ts"]
+  end
+
+  subgraph L1["Core 层"]
+    CORE["core/client.ts (DeepSeekClient)<br/>core/llm-provider.ts (LLMProvider)<br/>core/prefix.ts (prompt 组装)"]
+  end
+
+  L1 --> L2 --> L3 --> L4 --> L5 --> L6 --> L7 --> L8
+
+  style L1 fill:#e8f5e9
+  style L2 fill:#e3f2fd
+  style L3 fill:#fff8e8
+  style L4 fill:#f3f8fd
+  style L5 fill:#f5f0ff
+  style L6 fill:#fff3e0
+  style L7 fill:#fce4ec
+  style L8 fill:#f1f8e9
+</pre>
+</div>
+
+<table>
+  <thead><tr><th>层</th><th>目录</th><th>文件数</th><th>核心职责</th><th>关键模块</th></tr></thead>
+  <tbody>
+    <tr><td><b>Core</b></td><td><code>src/core/</code></td><td>3</td><td>LLM 调用抽象 + prompt 前缀组装</td><td><code>DeepSeekClient</code>, <code>LLMProvider</code>, <code>buildIngestPrefix</code></td></tr>
+    <tr><td><b>Ingest</b></td><td><code>src/ingest/</code></td><td>7</td><td>多格式加载 + 命题提取 + 编译 + 审计门</td><td><code>runIngestPipeline</code>, <code>proIngest</code>, <code>extractPropositions</code></td></tr>
+    <tr><td><b>Knowledge</b></td><td><code>src/knowledge/</code></td><td>10</td><td>存储 + chase 解析 + wiki 解析 + 渲染 + 审计 + 图谱</td><td><code>KnowledgeStore</code>, <code>buildGraph</code>, <code>auditWiki</code>, <code>runSemanticAudit</code></td></tr>
+    <tr><td><b>Query</b></td><td><code>src/query/</code></td><td>7</td><td>三路 RRF 搜索（同量纲公式）+ 6 种 board 模式 + BM25/Vector 并行 + LLM 合成</td><td><code>queryKnowledge</code>, <code>buildQueryBoard</code>, <code>rrfFusion</code>, <code>scoresToRanks</code></td></tr>
+    <tr><td><b>Evolution</b></td><td><code>src/evolution/</code></td><td>5</td><td>矛盾检测 + 强化检测 + 回流 + 取代 + 确认管线</td><td><code>writeConfirmSection</code>, <code>detectContradictions</code>, <code>detectReinforcementCandidates</code></td></tr>
+    <tr><td><b>Daemon</b></td><td><code>src/daemon/</code></td><td>7</td><td>文件监听 + 定时器 + lint + 健康度</td><td><code>runDaemon</code>, <code>lintWiki</code>, <code>collectHealth</code></td></tr>
+    <tr><td><b>CLI</b></td><td><code>src/cli/</code></td><td>17</td><td>15 个命令 + 共享 LLM 初始化 + TUI</td><td><code>registerQueryCommand</code>, <code>runAuditCli</code>, <code>runInspireCli</code></td></tr>
+    <tr><td><b>OKF</b></td><td><code>src/okf/</code></td><td>3</td><td>Open Knowledge Format 互操作</td><td><code>importFromOkf</code>, <code>exportToOkf</code></td></tr>
+  </tbody>
+</table>
+
+<div class="callout info">
+  <strong>依赖规则：</strong>每层只依赖下层。<code>Core</code> 不依赖任何上层；<code>Knowledge</code> 依赖 <code>Core</code> 但不依赖 <code>Query</code>；<code>Query</code> 依赖 <code>Knowledge</code> 和 <code>Core</code>；<code>Evolution</code> 依赖 <code>Knowledge</code> 和 <code>Core</code>；<code>Daemon</code> 依赖 <code>Ingest</code> + <code>Knowledge</code> + <code>Evolution</code>。<code>CLI</code> 是顶层，可以依赖一切。
+</div>
 </section>
 
-<!-- ══════════════════════════════════ Health ══════════════════════════════════ -->
-<section id="health">
-  <div class="section-head">
-    <div class="kicker">12 / Health</div>
-    <div><h2>代码健康度</h2></div>
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- §03 Ingest 数据流 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="flow-ingest">
+<div class="section-head">
+  <div><span class="kicker">§03 — Ingest Data Flow</span></div>
+  <div>
+    <h2>Ingest 数据流：从原始材料到 wiki 节点</h2>
+    <p class="lead">Ingest 是四步流水线：加载 → 命题提取 → 编译 → 审计 + 矛盾/强化检测。流水线的核心是 <code>runIngestPipeline()</code>，被 CLI 和 daemon 共同调用。</p>
   </div>
+</div>
 
-  <table>
-    <tr><th>指标</th><th>v1.0 基线</th><th>v2.0</th></tr>
-    <tr><td>TypeCheck</td><td>❌ 1 error</td><td>✅ 0 errors</td></tr>
-    <tr><td>Tests</td><td>⚠ 26 fail / 212 pass</td><td>✅ 275 pass / 4 skip (279)</td></tr>
-    <tr><td>Test files</td><td>20</td><td>25</td></tr>
-    <tr><td>Source files</td><td>~35</td><td>60</td></tr>
-    <tr><td>CLI commands</td><td>9</td><td>15</td></tr>
-    <tr><td>Total LOC</td><td>~15,000</td><td>~22,000</td></tr>
-  </table>
+<div class="diagram-wrap">
+<pre class="mermaid">
+flowchart TD
+  subgraph Input["输入文件"]
+    MD["📄 Markdown"]
+    TEX["📄 LaTeX"]
+    PDF["📄 PDF"]
+  end
 
-  <h3>Loop A 健康度系统</h3>
-  <div class="diagram-wrap">
-    <pre class="mermaid">
+  subgraph Step1["Step 1 — 加载"]
+    L1["loader.ts<br/>loadFromFile()"]
+    L2["tex-loader.ts<br/>loadFromTex()"]
+    L3["pdf-loader.ts<br/>loadFromPdf()"]
+  end
+
+  Store1["store.ts<br/>saveRaw() → raw/chase/*.md<br/>写入 chunk 标记"]
+
+  subgraph Step2["Step 2 — 命题提取"]
+    EX["proposition.ts<br/>extractPropositions()"]
+    EX -->|"插入 <!-- prop N --> 标记"| Chase["chase 文件<br/>含 prop 标记"]
+  end
+
+  subgraph Step3["Step 3 — 编译"]
+    COMP["pipeline.ts<br/>compile prompt → LLM"]
+    COMP -->|"生成 nodeDrafts"| Nodes["wiki/*.md 节点<br/>含 frontmatter + edges"]
+  end
+
+  subgraph Step4["Step 4 — 审计 + 检测"]
+    AUDIT["audit.ts + semantic-audit.ts<br/>结构审计 + 语义审计"]
+    CONTRA["contradiction.ts<br/>detectContradictions()"]
+    REIN["reinforce.ts<br/>detectReinforcementCandidates()"]
+    GATE["audit-gate.ts<br/>writeAuditGate()"]
+  end
+
+  Progress["loopadvance/progress.md<br/>writeConfirmSection()"]
+
+  MD --> L1
+  TEX --> L2
+  PDF --> L3
+  L1 --> Store1
+  L2 --> Store1
+  L3 --> Store1
+  Store1 --> EX
+  Chase --> COMP
+  Nodes --> AUDIT
+  Nodes --> CONTRA
+  Nodes --> REIN
+  AUDIT --> GATE
+  CONTRA --> Progress
+  REIN --> Progress
+
+  style Step1 fill:#e3f2fd
+  style Step2 fill:#e8f5e9
+  style Step3 fill:#fff8e8
+  style Step4 fill:#fff3e0
+  style Progress fill:#f5f0ff
+</pre>
+</div>
+
+<h3>两条 Ingest 路径</h3>
+<p>当前代码中存在两条独立的 ingest 路径：</p>
+
+<table>
+  <thead><tr><th>路径</th><th>入口</th><th>流程</th><th>谁调用</th><th>特点</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><b>共享流水线</b></td>
+      <td><code>pipeline.ts → runIngestPipeline()</code></td>
+      <td>命题提取 → 编译 → 覆盖式写入 → 审计 → 矛盾/强化检测</td>
+      <td>CLI <code>ingest-pipeline</code> 命令 + Daemon <code>onNewChase</code></td>
+      <td>4 步全自动化；compile prompt 内嵌生成 edges；写入 progress.md</td>
+    </tr>
+    <tr>
+      <td><b>Pro Ingest</b></td>
+      <td><code>listening.ts → proIngest()</code></td>
+      <td>两步 LLM 调用：Pro 思考 → Flash 格式化</td>
+      <td>CLI <code>ingest</code> 命令 + <code>plan</code> 命令</td>
+      <td>三模式（extract/compile/reread）；不生成 edges（只生成 links/related）</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout warn">
+  <strong>重要差异：</strong>共享流水线（<code>pipeline.ts</code>）的 compile prompt 会生成结构化 <code>edges</code>（<code>to</code>/<code>type</code>/<code>confidence</code>），并重映射到最终 nodeId。而 Pro Ingest（<code>listening.ts</code>）的 compile 模式只生成 <code>links</code>（字符串数组）和 <code>related</code>（frontmatter），<b>不生成结构化 edges</b>。两条路径在 edge 生成上有本质差异。
+</div>
+
+<h3>覆盖式 Ingest（Overwriting Ingest）</h3>
+<p>当对同一 source 重新编译时，旧节点会被删除（覆盖），防止 wiki 臃胀：</p>
+
+<div class="diagram-wrap">
+<pre class="mermaid">
 flowchart LR
-  A["loop-health.sh"]
-  A --> B["typecheck: tsc --noEmit"]
-  A --> C["test: npm test"]
-  A --> D["wiki: health.ts → nodes + audit"]
-  A --> E["graph: edges + orphans"]
-  A --> F["backlog + daemon"]
-  B & C & D & E & F --> V["verdict: green / yellow / red"]
-  V --> S["STATUS.md + progress.md"]
-    </pre>
-  </div>
+  A["新编译开始<br/>sourceId = 'paper-x'"]
+  B["scanWikiFiles()<br/>扫描 wiki/ 下所有 .md"]
+  C{"frontmatter.sourceIds<br/>包含 sourceId?"}
+  D["unlinkSync() 删除旧节点"]
+  E["跳过"]
+  F["写入新节点"]
+
+  A --> B --> C
+  C -->|"是"| D --> F
+  C -->|"否"| E --> F
+
+  style D fill:#f8d7da,stroke:#b2485a
+  style F fill:#d4edda,stroke:#3a8068
+</pre>
+</div>
+
+<div class="callout warn">
+  <strong>v2.3 已修复 — fingerprint 三层 fallback：</strong>设计文档 v2.0（决策 5）要求使用 <code>fingerprint</code> 做主键匹配。v2.3 实现了三层 fallback 清理：<code>fingerprint → sourceId → sourceChase</code>。chase 文件的 <code>fingerprint</code> 在 pipeline 中被读取并写入 wiki node frontmatter。<code>pipeline.ts</code> 和 <code>compile-from-props.ts</code> 的 cleanup 逻辑优先匹配 <code>frontmatter.fingerprint</code>，其次 <code>sourceIds</code>，最后 <code>sourceChase</code>。<code>WikiFrontmatter</code> 类型已新增 <code>fingerprint?: string</code> 字段（<code>types.ts</code>）。
+</div>
 </section>
 
-<!-- ══════════════════════════════════ v1 vs v2 ══════════════════════════════════ -->
-<section id="v1diff">
-  <div class="section-head">
-    <div class="kicker">13 / Diff</div>
-    <div><h2>v1.0 → v2.0 核心变化</h2></div>
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- §04 Query 数据流 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="flow-query">
+<div class="section-head">
+  <div><span class="kicker">§04 — Query Data Flow</span></div>
+  <div>
+    <h2>Query 数据流：三路 RRF + Board + LLM 合成</h2>
+    <p class="lead">查询是确定性的：先搜索（三路 RRF 融合），再组装 board（6 种模式），最后 LLM 基于 board 合成答案。Board 的组装完全确定性——不调用 LLM。</p>
   </div>
+</div>
 
-  <table>
-    <tr><th>维度</th><th>v1.0 基线</th><th>v2.0</th></tr>
-    <tr><td><strong>命题提取</strong></td><td>❌ 不存在</td><td>✅ proposition.ts — LLM 拆分原子命题 → prop marker</td></tr>
-    <tr><td><strong>编译管线</strong></td><td>Pro→Flash 两步（extract→confirm→compile）</td><td>✅ 一步 compile-from-props + 共享管线 pipeline.ts</td></tr>
-    <tr><td><strong>Edge 产生</strong></td><td>❌ 不存在</td><td>✅ compile LLM 自动产出 derived_from/related + LLM 自评 confidence</td></tr>
-    <tr><td><strong>图谱系统</strong></td><td>❌ 仅 manifest helper</td><td>✅ buildGraph() + getGraphStats() + 5 种边类型</td></tr>
-    <tr><td><strong>矛盾检测</strong></td><td>❌ 不存在</td><td>✅ LLM judge → contradicts 候选 → progress.md</td></tr>
-    <tr><td><strong>强化检测</strong></td><td>❌ 不存在</td><td>✅ LLM judge 双维度（语义一致度 + 证据增量度）</td></tr>
-    <tr><td><strong>Daemon</strong></td><td>❌ 不存在</td><td>✅ watcher + timer + state + lint + health</td></tr>
-    <tr><td><strong>搜索</strong></td><td>仅关键词 (Intl.Segmenter)</td><td>✅ SearchProvider 接口 + Keyword + Qmd 双后端</td></tr>
-    <tr><td><strong>LLM 抽象</strong></td><td>DeepSeekClient 直接调用</td><td>✅ LLMProvider 接口 + DeepSeekProvider</td></tr>
-    <tr><td><strong>OKF 集成</strong></td><td>❌ 不存在</td><td>✅ export / import + kind↔type 映射</td></tr>
-    <tr><td><strong>数据模型</strong></td><td>chunkRefs: number[]</td><td>✅ propRefs: string[] + GraphEdge + ChaseProp + auditVerdict + reflowOrigin</td></tr>
-    <tr><td><strong>Board 装配</strong></td><td>直接调 searchWiki</td><td>✅ SearchProvider 接口 + graph 强制注入</td></tr>
-    <tr><td><strong>审计闸门</strong></td><td>语义失败=阻止 query</td><td>✅ 语义失败=警告放行（LLM judge 是主观的）</td></tr>
-    <tr><td><strong>Ingest 去重</strong></td><td>每次编译追加新节点</td><td>✅ 覆盖式——同 sourceId 旧节点先删再写</td></tr>
-    <tr><td><strong>Agent contract</strong></td><td>6 种 stage</td><td>✅ 7 种 stage（加 audit-structure）</td></tr>
-    <tr><td><strong>Loop A 健康度</strong></td><td>仅代码 (typecheck+test)</td><td>✅ 代码 + wiki + graph + backlog + daemon 五维度</td></tr>
-  </table>
+<div class="diagram-wrap">
+<pre class="mermaid">
+flowchart TD
+  Q["用户问题<br/>'什么是 X？'"]
+  Norm["normalizeBoardMode()<br/>ask/trace/expand/compare/challenge/inspire"]
+
+  subgraph Search["三路搜索 + RRF 融合（BM25/Vector 并行）"]
+    Parallel["Promise.all 并行发起"]
+    S1["BM25 路<br/>searchProvider.search()<br/>KeywordSearchProvider / QmdSearchProvider"]
+    S2["Vector 路<br/>searchProvider.searchVector()<br/>QmdSearchProvider（可选，best-effort）"]
+    S3["Graph 路<br/>walkGraph()<br/>1-hop 遍历 edges → score → scoresToRanks()"]
+    RRF["rrfFusion()<br/>三路统一 weight/(K+rank) 形式<br/>BM25=0.4, Vector=0.6, Graph=0.3<br/>K=60"]
+    Parallel --> S1
+    Parallel --> S2
+    S1 --> RRF
+    S2 --> RRF
+    S3 --> RRF
+  end
+
+  Board["buildQueryBoard()<br/>根据 mode 组装节点集<br/>（确定性，不调 LLM）"]
+  LLM["llmCaller(board, question)<br/>makeDeepSeekCaller()<br/>DeepSeekClient.chat()"]
+  Result["QueryResultV6<br/>answer + fromWiki +<br/>missingEvidence +<br/>suggestedNextActions"]
+
+  Q --> Norm --> Search --> Board --> LLM --> Result
+
+  style Search fill:#e3f2fd
+  style Board fill:#fff8e8
+  style LLM fill:#f5f0ff
+</pre>
+</div>
+
+<h3>三路 RRF 融合公式（v2.2 同量纲修复）</h3>
+<p>RRF（Reciprocal Rank Fusion）将三路搜索结果融合为一个排序。v2.2 的关键修复是<b>三路统一用 <code>weight/(K+rank)</code> 形式</b>——之前 Graph 路用 <code>0.3 × score</code> 会导致 graph 邻居分数压过语义 seed。</p>
+
+<div class="code"><pre>
+combinedScore = 0.4 / (K + bm25Rank)  +  0.6 / (K + vectorRank)  +  0.3 / (K + graphRank)
+
+其中：
+  K = 60（标准 RRF 常数）
+  bm25Rank = BM25 搜索结果中的排名（1-based，越小越好）
+  vectorRank = Vector 搜索结果中的排名（1-based）
+  graphRank = walkGraph() 返回的 score 经 scoresToRanks() 转换后的排名
+  缺失路径的 rank = Infinity → 该项贡献为 0（优雅降级）
+
+同量纲的意义（Finding 1 修复）：
+  旧实现 graph 路用 0.3 × score（score 0-1），graph 邻居最高 0.3，
+  而语义 seed 是 0.4/(K+1)+0.6/(K+1)≈0.016——graph 邻居会压过 seed。
+  改成 0.3/(K+graphRank) 后，graph 第1名 = 0.3/61 ≈ 0.0049，
+  低于 BM25 第1名（0.0066）和 Vector 第1名（0.0098）。
+  graph 邻居天然排不进前几名，但能进中后段——既不泛滥也不消失。
+</pre>
+</div>
+
+<div class="callout good">
+  <strong>BM25 / Vector 并行（Finding 8）：</strong>v2.2 的 <code>buildQueryBoard</code> 使用 <code>Promise.all</code> 并行发起 BM25 和 Vector 搜索。默认 keyword 后端没有 <code>searchVector</code> → 退化为顺序但无额外开销；qmd 后端启用时两路真并行，搜索延迟降为 <code>max(BM25, Vector)</code>。
+</div>
+
+<div class="callout good">
+  <strong>优雅降级：</strong>当 <code>KeywordSearchProvider</code> 被使用时（默认），<code>searchVector</code> 不存在（接口可选），Vector 路为空 Map，贡献为 0。BM25 和 Graph 仍正常工作。权重比例保持正确——<b>不会</b>把 Vector 的 0.6 权重转移给 BM25。
+</div>
+
+<div class="callout good">
+  <strong>Graph-only 邻居进入候选池（Finding 1 修复）：</strong>v2.2 让被多 seed 引用的高置信 graph 邻居能进 seedNodes——从 <code>allParsed</code> 中查找并转为 BoardNode（score=0），按融合分数重排。之前这些节点会被丢弃。
+</div>
+
+<h3>6 种 Board 模式</h3>
+<p>每种模式决定 board 中放什么节点。Board 组装是完全确定性的——不调用 LLM：</p>
+
+<table>
+  <thead><tr><th>模式</th><th>种子</th><th>证据</th><th>相关</th><th>counter</th><th>limits</th><th>强制注入</th><th>LLM 自由度</th></tr></thead>
+  <tbody>
+    <tr><td><b>ask</b></td><td>✅</td><td>≤5</td><td>≤3</td><td>❌</td><td>种子中的</td><td>❌</td><td>anchored（锚定）</td></tr>
+    <tr><td><b>trace</b></td><td>✅</td><td>≤10</td><td>≤5</td><td>❌</td><td>种子中的</td><td>❌</td><td>strict（严格 + 必须引用 propRef）</td></tr>
+    <tr><td><b>expand</b></td><td>✅</td><td>≤5</td><td>≤6</td><td>❌</td><td>≤2</td><td>❌</td><td>free（自由）</td></tr>
+    <tr><td><b>compare</b></td><td>✅</td><td>≤5</td><td>≤5（桥节点）</td><td>❌</td><td>种子中的</td><td>❌</td><td>anchored</td></tr>
+    <tr><td><b>challenge</b></td><td>✅</td><td>≤5（弱证据）</td><td>❌</td><td>≤5（全部 counter）</td><td>≤10（全部 limits）</td><td>✅ 注入所有 counter + limits</td><td>strict</td></tr>
+    <tr><td><b>inspire</b></td><td>✅</td><td>≤5</td><td>≤6（跨类型）</td><td>≤5</td><td>≤3</td><td>✅ 注入跨类型低阈值</td><td>free</td></tr>
+  </tbody>
+</table>
+
+<div class="callout info">
+  <strong>v2 简化 Board（设计决策 10）：</strong>只有 <code>challenge</code> 和 <code>inspire</code> 两种模式会强制注入节点（通过 <code>frontmatter.edges</code> 找到相邻节点）。<code>ask</code>/<code>trace</code>/<code>expand</code>/<code>compare</code> 四种模式使用纯搜索结果，不通过 edges 注入。注释见 <code>board.ts:326</code> 和 <code>board.ts:342</code>。
+</div>
+
+<h3>强制注入逻辑（仅 challenge / inspire，v2.2 Q10 收紧）</h3>
+<p>对于 challenge 和 inspire 模式，通过 <code>frontmatter.edges</code> 找到种子的邻居，强制注入 board。v2.2 收紧了注入规则——只有"保证存在"类边（<code>contradicts</code>/<code>superseded_by</code>）才强制注入，"提升排名"类边靠三路搜索的 Graph 路自然处理：</p>
+
+<div class="diagram-wrap">
+<pre class="mermaid">
+flowchart LR
+  Seed["种子节点 A"]
+  Edge1["edge: A→B, type=contradicts"]
+  Edge2["edge: A→C, type=superseded_by"]
+  Edge3["edge: A→D, type=derived_from/related/supports"]
+
+  Inject1["注入 counterNodes<br/>(B) — 保证存在"]
+  Inject2["注入 relatedNodes<br/>(C) — 保证存在"]
+  Skip["不注入——靠三路搜索 Graph 路<br/>(walkGraph) 自然提升排名"]
+
+  Seed --> Edge1 --> Inject1
+  Seed --> Edge2 --> Inject2
+  Seed --> Edge3 --> Skip
+
+  style Inject1 fill:#f8d7da
+  style Inject2 fill:#cce5ff
+  style Skip fill:#e8e8e8
+</pre>
+</div>
+
+<p>注入规则（<code>board.ts:506-522</code>）：</p>
+<ul class="tight">
+  <li><code>contradicts</code> → 注入到 <code>counterNodes</code>（去重）— "保证存在"类</li>
+  <li><code>superseded_by</code> → 注入到 <code>relatedNodes</code>（去重）— "保证存在"类（被取代的旧节点必须出现，让 LLM 知道有更新）</li>
+  <li><code>derived_from</code> / <code>related</code> / <code>supports</code> → <b>不注入</b>，靠三路搜索的 Graph 路（<code>walkGraph</code>）自然提升排名，避免掩盖结构信号</li>
+</ul>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- §05 Ingest 层详解 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="ingest">
+<div class="section-head">
+  <div><span class="kicker">§05 — Ingest Layer</span></div>
+  <div>
+    <h2>Ingest 层：7 个模块</h2>
+    <p class="lead">负责从外部材料（Markdown / LaTeX / PDF）到 wiki 节点的全链路转换。</p>
+  </div>
+</div>
+
+<h3>5.1 加载器（三种格式）</h3>
+
+<h4>loader.ts — Markdown 加载（175 行）</h4>
+<div class="code"><pre>
+loadFromFile(filePath, options?) → Source
+  ├── parseFrontmatter(text) → { frontmatter, body }
+  │     └── 只支持单行 key: value（MVP，无 YAML 库）
+  ├── estimateTokens(text) → number
+  │     └── CJK=2 tokens/char, 空白=1, 其他=0.25（≈4 chars/token）
+  ├── chunkText(text, targetTokens=2000, overlapTokens=200) → string[]
+  │     └── 按 \n\n 分段，贪心累积到 targetTokens
+  │     └── overlap: 下一个 chunk 的开头追加到当前 chunk 末尾
+  └── 返回 Source { id, type:"md", chunks: Chunk[], fingerprint, ... }
+        └── id = "raw/md/<filename>-<sha256(body).slice(0,16)>"
+        └── 每个 Chunk 有 { id, index, text, tokenEstimate, charStart, charEnd }
+</pre>
+</div>
+
+<h4>tex-loader.ts — LaTeX 加载（202 行）</h4>
+<div class="code"><pre>
+loadFromTex(filePath, config?, options?) → Promise&lt;Source&gt;
+  ├── resolveBbl(content, baseDir)
+  │     └── 替换 \bibliography{xxx} 为 .bbl 文件内容
+  ├── resolveTexIncludes(content, baseDir, visited, depth=0)
+  │     └── 递归替换 \input{xxx} / \include{xxx}
+  │     └── 防循环：visited Set + MAX_RECURSION_DEPTH=10
+  ├── 提取 \title{...}
+  ├── estimateTokens() → 警告如果 > 50000
+  ├── 必须有 config.apiKey
+  ├── DeepSeekClient.chat(TEX_CLEAN_PROMPT)
+  │     └── \section→##, \subsection→###, 保留 $...$, \cite{xxx}→[xxx]
+  │     └── theorem/lemma/proof → blockquotes
+  │     └── itemize/enumerate → lists
+  │     └── 丢弃 figure/table/algorithm，保留 \caption
+  │     └── maxTokens=32768, responseFormat="text"
+  ├── 失败时回退到原始 TeX
+  └── 返回 Source { type:"tex", sourceRoot, meta:{format:"tex"} }
+</pre>
+</div>
+
+<h4>pdf-loader.ts — PDF 加载（210 行）</h4>
+<div class="code"><pre>
+loadFromPdf(filePath, options?) → Promise&lt;Source&gt;
+  ├── 通过 MinerU Agent API（免费，无 token，IP 限频）
+  ├── 限制：≤10MB, ≤20 pages
+  ├── 四步流程：
+  │   1. Apply: POST /api/v1/agent/parse/file
+  │      → { task_id, file_url }
+  │   2. Upload: PUT file_url（用 node:https.request，非 fetch）
+  │      └── 因为 OSS 签名 URL 用空 Content-Type 签名
+  │      └── fetch 会自动加 Content-Type 导致 403
+  │   3. Poll: GET /api/v1/agent/parse/{task_id}
+  │      └── 每 3 秒轮询，最长 5 分钟
+  │      └── state="done" → 取 markdown_url
+  │   4. Download: GET markdown_url → Markdown 文本
+  └── 返回 Source { type:"pdf", meta:{engine:"mineru-agent"} }
+</pre>
+</div>
+
+<h3>5.2 命题提取 — proposition.ts（274 行）</h3>
+<p>原子命题提取：将文档拆分为自包含、可独立验证的事实陈述。</p>
+
+<div class="code"><pre>
+extractPropositions(chaseContent, llmCaller) → { props, updatedContent }
+  ├── PROPOSITION_SYSTEM prompt:
+  │     "你是一个精准知识提取器"
+  │     - 原子命题 = 自包含、可独立验证的事实陈述
+  │     - 1-3 句，必须来自原文逐字
+  │     - 拆分复合句（因为/但是/然而/和）
+  │     - 拆分枚举
+  │     - 每个 proposition 标注 chunkIndex
+  │     - 输出: {"propositions":[{"index":1,"text":"...","chunkIndex":1}]}
+  ├── llmCaller 是依赖注入的（LLM 无关）
+  ├── parsePropositionResponse()
+  │     └── 支持 {} 和 [] 两种格式
+  ├── insertPropMarkers()
+  │     └── 解析 chunk 边界（<!-- chunk N --> 标记）
+  │     └── 每个 chunk 的 prop 标记插入到该 chunk 之后
+  │     └── 如果没有 chunk 标记，全部插入到文件顶部
+  └── 返回 ChaseProp[]（每个有 index, text, marker）
+</pre>
+</div>
+
+<div class="callout warn">
+  <strong>设计差距 — chunk 标记仍存在：</strong><code>proposition.ts</code> 的 <code>insertPropMarkers</code> 依赖 <code>&lt;!-- chunk N --&gt;</code> 标记来定位插入位置。设计 v2.0（决策 1）要求完全消除 chunk 标记，只保留 <code>&lt;!-- prop N --&gt;</code> 标记。当前代码中 chunk 标记贯穿 <code>chase.ts</code>、<code>store.ts</code>、<code>wiki-parser.ts</code>、<code>proposition.ts</code>。
+</div>
+
+<h3>5.3 共享流水线 — pipeline.ts（394 行）</h3>
+<p>这是 daemon 和 CLI 共用的 4 步流水线：</p>
+
+<div class="code"><pre>
+runIngestPipeline(config, chaseFile, client) → PipelineResult
+  ├── Step 1: 命题提取 (lines 74-95)
+  │   ├── sourceId = chaseFile 去掉 raw/chase/ 前缀和 .md 后缀
+  │   ├── readChaseProps() → 检查已有 prop 标记
+  │   ├── 如果没有：extractPropositions() → 写回 chase 文件
+  │   └── 如果有：跳过提取
+  │
+  ├── Step 2: 编译 wiki 节点 (lines 97-258)
+  │   ├── readChaseProps() → 拼接 "[prop N] text"
+  │   ├── compileInputBudget(8192) → <b>256000 字符预算</b>（固定值）
+  │   │   └── v2.2 变更：不再用 maxTokens × 2.5
+  │   │   └── 基于 deepseek-v4-flash 的 256K context window
+  │   │   └── 正常材料不到阈值不截断；超大材料截到 256000 保底
+  │   ├── propTexts.slice(0, 256000) → 截断
+  │   ├── compile prompt（v2.2 加强规则）:
+  │   │   "你是一个知识编译器"
+  │   │   - 输出 {"nodeDrafts":[{nodeId,kind,title,claim,evidence,edges}]}
+  │   │   - <b>propRefs 必须是数字索引（如 [1, 2, 7]），不要输出命题文本</b>
+  │   │   - edges: {to, type:"derived_from"|"related", confidence}
+  │   │   - <b>最重要规则：claim 必须逐句可追溯到 prop 原文</b>
+  │   │   - <b>不添加原文没有的概率保证、策略建议、价值判断</b>
+  │   │   - <b>不要"保证至少 N%"除非 prop 原文里有这个数字</b>
+  │   │   - <b>不要"可作为稳健策略"除非 prop 原文里明确建议</b>
+  │   │   - 支持 kind=counter（矛盾命题）
+  │   ├── client.chat(maxTokens=8192)
+  │   ├── 解析 nodeDrafts
+  │   ├── 验证 kind ∈ 9 种合法值
+  │   ├── <b>propRefs 验证（v2.2 加强）：纯数字保留，非数字过滤掉</b>
+  │   │   └── 之前非数字 propRefs 回退 "1"，现在直接过滤为空数组
+  │   ├── 覆盖式写入：删除 sourceIds 包含当前 sourceId 的旧节点
+  │   ├── 写入新节点：renderWikiNode() + edges JSON 内联修复
+  │   └── edge 重映射：LLM nodeId → 最终 nodeId
+  │
+  ├── Step 3: 审计 (lines 262-298)
+  │   ├── auditWiki() → 结构审计 → writeAuditResults()
+  │   ├── runSemanticAudit() → 语义审计 → writeSemanticAuditResults()
+  │   │   └── <b>使用 selectPropsContext() 作为主要上下文路径</b>
+  │   │   └── fallback: selectChaseChunks()（旧 chase 无 prop 标记时）
+  │   └── writeAuditGate(structureOk, semanticOk, nodes, score)
+  │   └── try/catch 静默失败
+  │
+  └── Step 4: 矛盾 + 强化检测 (lines 300-391)
+      ├── 收集已有节点（排除新建的）
+      ├── <b>收集所有候选到同一数组（Finding 3 修复）</b>
+      │   └── writeConfirmSection 是替换语义——多次调用会覆盖
+      │   └── 现在统一收集后一次性写入
+      ├── detectContradictions(firstDraft, sameKindNodes, llmCaller)
+      │   └── 只取第一个 draft
+      │   └── 只与同 kind 的已有节点比较
+      │   └── 候选 → pendingItems[]
+      ├── detectReinforcementCandidates(每个 draft, existingNodes, reinforceLlm)
+      │   └── 关键词预筛 → LLM 双维度判断
+      │   └── 候选 → pendingItems[]
+      └── <b>一次写入：writeConfirmSection(projectRoot, pendingItems)</b>
+      └── try/catch 静默失败
+</pre>
+</div>
+
+<h4>compileInputBudget — v2.2 变更详情</h4>
+<div class="code"><pre>
+// v2.1（旧）：
+export function compileInputBudget(maxTokens: number, ratio = 2.5): number {
+  return Math.floor(maxTokens * ratio);  // 8192 × 2.5 = 20480
+}
+
+// v2.2（新）：
+export function compileInputBudget(_maxTokens?: number): number {
+  return 256000;  // 固定值，基于 256K context window
+}
+// 参数保留但当前不参与计算（向后兼容签名）
+// 256K token ≈ 100K-170K 字符（中文约 1.5-2.5 token/字）
+// 256000 字符阈值在 context window 内安全
+</pre>
+</div>
+
+<div class="callout info">
+  <strong>v2.2 compile prompt 规则加强：</strong>compile prompt 新增了多条可追溯性规则，防止 LLM 编造原文没有的断言（如"保证至少 N%"、"可作为稳健策略"）。同时明确 propRefs 必须是数字索引而非命题文本。
+</div>
+
+<h3>5.4 Pro Ingest — listening.ts（657 行）</h3>
+<p>两步 LLM 调用模式：Pro 思考模型 → Flash 格式化模型。</p>
+
+<div class="code"><pre>
+proIngest(opts: IngestOpts) → ProResult
+  ├── THINK_MODEL = "deepseek-v4-pro"（推理模型）
+  ├── FORMAT_MODEL = "deepseek-v4-flash"（格式化模型）
+  │
+  ├── mode="extract":
+  │   Step 1: buildThinkStepPrefix("think-extract")
+  │     → THINK_MODEL, responseFormat="text", maxTokens=8192
+  │     → 自由文本深度推理
+  │   Step 2: buildFormatStepPrefix("format-extract", thinkResult)
+  │     → FORMAT_MODEL, responseFormat="json_object", maxTokens=16384
+  │     → 结构化 JSON 输出
+  │
+  ├── mode="compile":
+  │   Step 1: buildThinkStepPrefix("think-compile")
+  │     → THINK_MODEL, responseFormat="text", maxTokens=8192
+  │   Step 2: buildFormatStepPrefix("format-compile", thinkResult)
+  │     → FORMAT_MODEL, responseFormat="json_object", maxTokens=32768
+  │
+  └── mode="reread":
+      单步: buildIngestPrefix() → FORMAT_MODEL, maxTokens=4096
+      └── 重新解读特定 chunk，保持 claim 不变
+</pre>
+</div>
+
+<h4>parseProResult — 输出解析（lines 185-375）</h4>
+<table>
+  <thead><tr><th>模式</th><th>LLM 输出字段</th><th>解析结果</th></tr></thead>
+  <tbody>
+    <tr><td>extract</td><td><code>mainThreads</code>, <code>propositions</code></td><td>MainThread[] + Proposition[]（含 kind, evidence, confidence, counterIntuitive）</td></tr>
+    <tr><td>compile</td><td><code>nodeDrafts</code>, <code>updatedPages</code></td><td>WikiNodeDraft[] + WikiPage[]（<b>不生成结构化 edges</b>，只有 links/related）</td></tr>
+    <tr><td>reread</td><td><code>proposition</code></td><td>单个 Proposition</td></tr>
+  </tbody>
+</table>
+
+<h4>关键安全机制</h4>
+<ul class="tight">
+  <li><code>clampChunkRefs()</code>：0-based → 1-based，过滤越界，空则 fallback [1]</li>
+  <li><code>uniquifyNodeDraftPaths()</code>：重复路径追加 -2, -3...</li>
+  <li><code>SAFETY_TOKEN_CAP = 80,000</code>：chunk 总 token 安全上限</li>
+  <li><code>EST_CHARS_PER_TOKEN = 4</code>：→ 320,000 字符上限</li>
+</ul>
+
+<h3>5.5 policy.ts — Ingest 策略（164 行）</h3>
+<p>Ingest 策略配置，定义何时触发哪种 ingest 操作。</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- §06 Knowledge 层详解 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="knowledge">
+<div class="section-head">
+  <div><span class="kicker">§06 — Knowledge Layer</span></div>
+  <div>
+    <h2>Knowledge 层：10 个模块</h2>
+    <p class="lead">知识存储、解析、渲染、审计和图谱——这是系统的核心层。</p>
+  </div>
+</div>
+
+<h3>6.1 store.ts — KnowledgeStore（476 行）</h3>
+<p>纯文件存储，管理三层：raw originals、chase（清洗后 Markdown）、wiki（编译产物）。</p>
+
+<div class="code"><pre>
+class KnowledgeStore {
+  constructor(config: AppConfig)
+
+  // ─── Raw 层 ───
+  saveRaw(source: Source): string
+    └── 写入 raw/chase/<cleanId>.md
+    └── frontmatter: sourceId, title, sourcePath, sourceRoot, sourceType, fingerprint, chunkCount
+    └── <b>写入 chunk 标记</b>: <!-- chunk:N id=... charStart=... charEnd=... -->
+    └── 复制原始文件到 raw/original/<format>/
+    └── loaderVersion = "v5.0"
+
+  readRaw(rawId): string | null
+  readChunks(rawId): Chunk[] | null
+    └── 两轮解析：先 v5 闭合标记，再 fallback 到 chase.ts
+
+  // ─── Wiki 层 ───
+  saveWikiPage(page: WikiPage): string
+    └── 支持 append（追加 body）和 replace（覆盖）
+  saveWikiNode(draft: WikiNodeDraft): string
+    └── 调用 renderWikiNode()
+  readWikiPage(filePath): string | null
+  listWikiPages(): string[]
+
+  // ─── 搜索辅助 ───
+  findRelatedPages(propositions): Array<{filePath, title, summary}>
+    └── 关键词提取：ASCII 原样，CJK → 2-grams
+    └── 扫描所有 wiki 目录（排除 _devils- 和 anchor- 前缀）
+    └── 要求 ≥2 关键词命中，最多 8 条
+
+  // ─── 索引 ───
+  getStats(): { totalSources, totalNodes }
+  rebuildIndex(): string
+    └── 写入 index.md（人类可读）+ index.json（机器可读）
+    └── IndexEntry 含 v6 字段：auditStatus, auditScore, claimType, inferenceLevel, claimHash, boardRoles
+
+  // ─── 日志 ───
+  appendLog(entry): string
+    └── 追加到 log.md
+}
+</pre>
+</div>
+
+<h3>6.2 chase.ts — Chase 解析器（268 行）</h3>
+<p>读取/解析 chase 层（<code>raw/chase/</code>）。标记解析器 v5+v6 双兼容。</p>
+
+<div class="callout danger">
+  <strong>设计差距 — chunk 标记与 prop 标记共存：</strong>当前代码同时维护两套标记系统：
+  <ul class="tight">
+    <li><span class="badge badge-discrepancy">CHASE_MARKER</span> <code>/&lt;!--\s*chunk[\s:](\d+)...--&gt;/gi</code> — 匹配 <code>&lt;!-- chunk:N --&gt;</code> 和 <code>&lt;!-- chunk N --&gt;</code></li>
+    <li><span class="badge badge-ok">PROP_MARKER</span> <code>/&lt;!--\s*prop\s+(\d+)\s*--&gt;/gi</code> — 匹配 <code>&lt;!-- prop N --&gt;</code></li>
+  </ul>
+  设计 v2.0（决策 1）要求消除 chunk 标记。当前代码中两者共存，<code>collectPropIndices</code> 在没有 prop 标记时 fallback 到 chunk 索引。
+</div>
+
+<h4>关键函数签名</h4>
+<table>
+  <thead><tr><th>函数</th><th>签名</th><th>作用</th><th>行号</th></tr></thead>
+  <tbody>
+    <tr><td><code>resolveChasePath</code></td><td><code>(config, sourceChase: string[]) → string | null</code></td><td>解析 chase 文件路径</td><td>35</td></tr>
+    <tr><td><code>readChaseChunks</code></td><td><code>(config, sourceChase) → ChaseChunk[]</code></td><td>读取 chunk（抛异常）</td><td>59</td></tr>
+    <tr><td><code>readChaseProps</code></td><td><code>(config, sourceChase) → ChaseProp[]</code></td><td>读取 prop（返回空数组，不抛）</td><td>83</td></tr>
+    <tr><td><code>selectChaseChunks</code></td><td><code>(config, sourceChase, chunkRefs) → {found, missing}</code></td><td>按 chunk 索引选择</td><td>100</td></tr>
+    <tr><td><code>getExcerpt</code></td><td><code>(config, sourceChase, chunkRefs) → {index, text}[]</code></td><td>提取摘要</td><td>117</td></tr>
+    <tr><td><code>selectPropsContext</code></td><td><code>(config, sourceChase, propRefs, window=3) → string</code></td><td><b>v2 新增</b>：prop 相邻窗口（±3）</td><td>140</td></tr>
+    <tr><td><code>selectPropsContextFromContent</code></td><td><code>(content, propRefs, window=3) → string</code></td><td>纯函数版本</td><td>153</td></tr>
+    <tr><td><code>collectChunkIndices</code></td><td><code>(content) → Set&lt;number&gt;</code></td><td>收集 chunk 索引</td><td>190</td></tr>
+    <tr><td><code>collectPropIndices</code></td><td><code>(content) → Set&lt;number&gt;</code></td><td>收集 prop 索引（<b>fallback 到 chunk</b>）</td><td>200</td></tr>
+  </tbody>
+</table>
+
+<h4>selectPropsContext — prop 相邻窗口算法</h4>
+<div class="code"><pre>
+selectPropsContextFromContent(content, propRefs, window=3):
+  1. parseChaseProps(content) → ChaseProp[]
+  2. 如果没有 prop 标记 → 返回 content.trim()（旧 chase 兼容）
+  3. 构建 indexToPos map（prop 索引 → 在数组中的位置）
+  4. 对每个 ref:
+     - pos = indexToPos.get(ref)
+     - 收集 [pos-window, pos+window] 范围的 prop（clamp 边界）
+  5. 去重（用 Set）
+  6. 按位置升序拼接 prop 文本
+  7. 返回拼接字符串
+</pre>
+</div>
+
+<div class="callout info">
+  <strong>设计差距 — 窗口大小：</strong>设计 v2.0 文档的决策表（#2）描述窗口为"N-1, N, N+1"（±1），但设计正文（§02 改造点③ 和 §04）和代码都使用 <code>window=3</code>（±3）。代码与设计正文一致，与决策表描述不符。
+</div>
+
+<h3>6.3 wiki-parser.ts — Wiki 解析器（493 行）</h3>
+<p>统一的 wiki 页面解析器。消除了 audit/search/inspire 中重复的解析逻辑。</p>
+
+<h4>关键函数</h4>
+<table>
+  <thead><tr><th>函数</th><th>签名</th><th>作用</th></tr></thead>
+  <tbody>
+    <tr><td><code>parseWikiContent</code></td><td><code>(content, filePath) → ParsedWikiNode</code></td><td>解析 wiki 页面（frontmatter + body sections）</td></tr>
+    <tr><td><code>parseWikiFile</code></td><td><code>(filePath) → ParsedWikiNode | null</code></td><td>文件读取 + parseWikiContent</td></tr>
+    <tr><td><code>scanWikiFiles</code></td><td><code>(wikiDir) → string[]</code></td><td>扫描所有 wiki 子目录的 .md 文件</td></tr>
+    <tr><td><code>inferKindFromPath</code></td><td><code>(filePath) → WikiKind</code></td><td>从路径推断 kind</td></tr>
+    <tr><td><code>normalizeFrontmatter</code></td><td><code>(raw, kind, title, nodeId, claim) → WikiFrontmatter</code></td><td>标准化 frontmatter</td></tr>
+    <tr><td><code>updateFrontmatter</code></td><td><code>(filePath, updates) → void</code></td><td>就地更新 frontmatter</td></tr>
+  </tbody>
+</table>
+
+<h4>chunkRefs → propRefs 转换</h4>
+<div class="code"><pre>
+// wiki-parser.ts normalizeFrontmatter (lines 206-208)
+const chunkRefs = parseChunkRefs(raw["chunkRefs"]);
+if (chunkRefs.length > 0)
+  out.propRefs = [...(out.propRefs ?? []), ...chunkRefs.map(String)];
+
+// 然后 (line 247-248) 显式的 propRefs frontmatter 也会被解析并合并
+</pre>
+</div>
+
+<p>这是 v5→v6 迁移的兼容层：旧节点的 <code>chunkRefs</code> 被转换为字符串 <code>propRefs</code>。新节点直接使用 <code>propRefs</code>。</p>
+
+<h4>8 个 wiki 节点目录</h4>
+<div class="code"><pre>
+WIKI_NODE_DIRS = [
+  "concepts", "methods", "cases", "equations",
+  "questions", "insights", "anchors", "counters"
+]
+// 注意：没有 "claims" 目录——claim 是 frontmatter-only kind
+// 但 graph.ts 的 buildGraph() 在扫描时包含了 "claims" 目录（graph.ts:63）
+</pre>
+</div>
+
+<h4>parseWikiContent 输出的 sections</h4>
+<p><code>ParsedWikiNode.sections</code> 包含固定顺序的段落：</p>
+<ul class="tight">
+  <li><code>claim</code>（string）</li>
+  <li><code>evidence</code>（string[]，按 <code>- </code> 或 <code>&gt; </code> 前缀拆分）</li>
+  <li><code>interpretation</code>（string）</li>
+  <li><code>useFor</code>（string）</li>
+  <li><code>limits</code>（string[]）</li>
+  <li><code>links</code>（string[]）</li>
+  <li><code>auditNotes</code>（string，v6 新增）</li>
+  <li><code>boardUse</code>（string，v6 新增）</li>
+</ul>
+
+<h3>6.4 render.ts — Wiki 渲染器（235 行）</h3>
+<p>将 <code>WikiNodeDraft</code> 渲染为固定格式 Markdown。</p>
+
+<div class="code"><pre>
+renderWikiNode(draft: WikiNodeDraft): string
+  ├── normalizeFrontmatter(draft) → ValidatedWikiFrontmatter
+  │   ├── 去重 sourceIds（合并 frontmatter + evidence 的 sourceIds）
+  │   ├── 去重 propRefs（合并 frontmatter + evidence 的 propRefs）
+  │   ├── 默认值: confidence = evidence.length > 0 ? 0.7 : 0.3
+  │   ├── 默认值: status = "needs_review"（B1: 不自动提升到 verified）
+  │   └── 默认值: auditStatus = "pending"（v6）
+  ├── serializeFrontmatter(normalized) → string[]
+  │   └── 跳过 evidence key、nullish、空数组、非数组对象
+  │   └── 数组序列化为 key:\n  - item
+  ├── 构建固定顺序 body:
+  │   ## Claim
+  │   ## Evidence（空则 *(no direct evidence)*）
+  │   ## Interpretation
+  │   ## Use For
+  │   ## Limits
+  │   ## Links
+  │   ## Audit Notes (v6)
+  │   ## Board Use (v6)
+  └── 返回 "---\n{fm}\n---\n\n{body}\n"
+</pre>
+</div>
+
+<h3>6.5 audit.ts — 结构审计（282 行）</h3>
+<p>验证 wiki 节点可追溯到 raw/chase。</p>
+
+<div class="code"><pre>
+auditWiki(config, options?) → AuditResult
+  ├── 收集所有 wiki .md 文件
+  ├── 空 wiki → ok:true, coverage:1
+  ├── 对每个文件:
+  │   ├── parseWikiContent()
+  │   ├── Legacy（无 nodeId）→ warning "needs migration"
+  │   ├── 检查 sourceChase → chase 文件是否存在
+  │   ├── 检查 propRefs → 不为空（否则 invalidChunkRefs）
+  │   │   └── 如果有 chase 内容，验证每个 propRef 在 collectPropIndices 中
+  │   ├── 检查 evidence → 不为空
+  │   └── 检查 claim → 不为空
+  ├── coverage = verifiedNodes / nodes
+  └── ok = 无 error 级别 issue
+
+writeAuditResults(config, result)
+  └── 对每个 wiki 文件: updateFrontmatter(auditStatus: "failed"|"passed")
+</pre>
+</div>
+
+<h3>6.6 audit-gate.ts — 审计门禁（166 行）</h3>
+<p>跨进程审计门禁（spec 11.2）。防止将审计失败的 wiki 视为可靠。</p>
+
+<div class="diagram-wrap">
+<pre class="mermaid">
+flowchart TD
+  Start["checkAuditGate()"]
+  Check1{"gate 文件存在?"}
+  NoGate["gate 文件缺失"]
+  Check2{"wiki 为空?"}
+  Empty["passed: false<br/>failure: no-wiki"]
+  HasIndex["passed: true<br/>warning: not audited"]
+  Check3{"structureOk?"}
+  StructFail["passed: false<br/>failure: spec 11.3 JSON"]
+  Check4{"semanticOk === false?"}
+  SemFail["passed: true<br/>warning: 语义审计失败（软门禁）"]
+  Check5{"semanticOk === null?"}
+  SemNull["passed: true<br/>warning: 语义审计未执行"]
+  AllPass["passed: true"]
+
+  Start --> Check1
+  Check1 -->|"否"| NoGate
+  NoGate --> Check2
+  Check2 -->|"是"| Empty
+  Check2 -->|"否（有 index.json）"| HasIndex
+  Check1 -->|"是"| Check3
+  Check3 -->|"否"| StructFail
+  Check3 -->|"是"| Check4
+  Check4 -->|"是"| SemFail
+  Check4 -->|"否"| Check5
+  Check5 -->|"是"| SemNull
+  Check5 -->|"否"| AllPass
+
+  style StructFail fill:#f8d7da,stroke:#b2485a
+  style SemFail fill:#fff3cd,stroke:#9b6a1a
+  style AllPass fill:#d4edda,stroke:#3a8068
+</pre>
+</div>
+
+<div class="callout good">
+  <strong>软门禁已实现（设计决策 7）：</strong>结构审计失败 → <code>passed: false</code>（硬门禁，阻止 query）。语义审计失败 → <code>passed: true</code> + warning（软门禁，放行但警告）。因为 LLM judge 是主观的，不作为硬门禁。实现于 <code>audit-gate.ts:110-117</code>。
+</div>
+
+<h3>6.7 semantic-audit.ts — 语义审计（420 行）</h3>
+<p>LLM judge 5 维度语义忠实度审计。</p>
+
+<div class="code"><pre>
+runSemanticAudit(config, options?) → SemanticAuditResult
+  ├── 必须提供 options.llmJudge（否则抛异常）
+  ├── collectNodes() → 扫描 wiki 目录，过滤 legacy
+  ├── 对每个节点:
+  │   auditOneNode():
+  │   ├── 早期退出（不调 LLM）:
+  │   │   ├── chase 路径不可解析 → failed, dimension="citation"
+  │   │   └── propRefs 为空 → failed, dimension="citation"
+  │   ├── 读取摘要:
+  │   │   └── selectPropsContext(config, sourceChase, propRefs, 3)
+  │   │       └── v2 prop 相邻窗口（±3）
+  │   │   └── fallback: selectChaseChunks()（旧 chase 无 prop 标记时）
+  │   ├── buildSemanticAuditPrompt()
+  │   ├── llmJudge(prompt)
+  │   ├── parseSemanticAuditResponse()
+  │   └── emitVerdictIssues() → 按 5 维度产生 issue
+  ├── averageScore = totalScore / scoredCount
+  ├── ok = (failed === 0)  // warning 不阻止
+  └── 返回 { ok, summary, issues, nodeScores }
+</pre>
+</div>
+
+<h4>5 个审计维度</h4>
+<table>
+  <thead><tr><th>维度</th><th>检查内容</th><th>评级</th></tr></thead>
+  <tbody>
+    <tr><td><b>support</b></td><td>wiki claim 是否被 chase 摘要支持</td><td>aligned / stretched / unsupported</td></tr>
+    <tr><td><b>addition</b></td><td>wiki 是否添加了 chase 中没有的内容</td><td>none / minor / major</td></tr>
+    <tr><td><b>inference</b></td><td>推理是否合理</td><td>ok / warning / failed</td></tr>
+    <tr><td><b>limits</b></td><td>是否标注了适用限制</td><td>ok / warning / failed</td></tr>
+    <tr><td><b>citation</b></td><td>propRef 引用是否正确</td><td>ok / warning / failed</td></tr>
+  </tbody>
+</table>
+
+<h3>6.8 semantic-audit-prompt.ts — 审计 Prompt（295 行）</h3>
+<div class="code"><pre>
+buildSemanticAuditPrompt(input: SemanticAuditInput): string
+  └── 渲染 prompt:
+      - 任务：不评估 source 是否为真，只评估对 chase 摘要的忠实度
+      - 节点信息：nodeId, title, kind, filePath, auditStatus
+      - Wiki 内容：Claim, Evidence, Interpretation, Limits
+      - Source（chase 摘要）：[Chunk N] 块
+      - 5 个审计维度 + 3 级评级
+      - 输出格式：纯 JSON（无 prose/fence）
+      - verdict: passed | warning | failed
+      - score: 0.0-1.0
+      - issues[]: 字符串数组
+      - anchor: 可选
+
+parseSemanticAuditResponse(text, expectedNodeId): SemanticJudgeVerdict
+  ├── extractJsonBlock() → 去除 ```json 围栏
+  ├── JSON.parse()
+  ├── 严格验证每个字段
+  └── 强制 nodeId = expectedNodeId（防止 LLM 错标）
+</pre>
+</div>
+
+<h3>6.9 graph.ts — 知识图谱（220 行）</h3>
+<p><code>frontmatter.edges</code> 是真理来源；<code>buildGraph()</code> 聚合到内存中的 <code>GraphData</code>。在 v2.0 中不写入 <code>graph.json</code> 文件。</p>
+
+<div class="code"><pre>
+buildGraphFromParsed(parsedNodes: ParsedWikiNode[]) → GraphData  // v2.2 新增
+  ├── 从已 parse 的 wiki 节点构造 GraphData（不读文件）
+  ├── Finding 7：抽出此函数让 board 复用一次 collectAllNodes 的读取结果
+  ├── 避免 buildGraph 和 collectAllNodes 各读一遍全量 wiki 文件
+  ├── 提取 frontmatter.edges
+  │   └── 支持 JSON 字符串或数组
+  │   └── <b>归一化旧边类型 relates_to → related（Finding 5）</b>
+  │   └── 按 "from→to→type" 去重，保留最大 confidence
+  └── 返回 { nodes: GraphNode[], edges: GraphEdge[] }
+
+buildGraph(config) → GraphData
+  ├── 扫描 wiki 子目录（含 claims/，共 9 个目录）
+  ├── parseWikiContent() 解析每个文件
+  └── <b>委托给 buildGraphFromParsed(parsedNodes)</b>
+  └── 返回 { nodes: GraphNode[], edges: GraphEdge[] }
+
+GraphEdge 类型（types.ts:137-142）:
+  derived_from | contradicts | supports | related | superseded_by
+  // v2.2: "relates_to" → "related"（全代码库统一）
+
+GraphStats:
+  totalNodes, totalEdges, orphanCount, orphanRate, contradictionCount
+  edgeTypeBreakdown: Record<string, number>
+</pre>
+</div>
+
+<div class="callout good">
+  <strong>v2.2 变更 — buildGraphFromParsed（Finding 7）：</strong>提取了 <code>buildGraphFromParsed(parsedNodes)</code> 函数，让 <code>board.ts</code> 可以复用一次 <code>collectAllNodes</code> 的读取结果来构建图谱，避免 <code>buildGraph</code> 再读一遍全量 wiki 文件。同时引入了 <code>relates_to → related</code> 的边类型归一化（Finding 5），防御旧数据/外部数据携带旧的 <code>relates_to</code> 类型。
+</div>
+
+<h4>Edge 类型实际生产者</h4>
+<div class="callout warn">
+  <strong>5 种 edge 类型中只有 2 种被实际生产：</strong>
+  <ul class="tight">
+    <li><span class="badge badge-ok">derived_from</span> — compile prompt 生成（<code>pipeline.ts</code>）</li>
+    <li><span class="badge badge-ok">related</span> — compile prompt 生成（<code>pipeline.ts</code>）；<code>confirm.ts</code> 的 <code>applyEdgeConfirmation</code> 也写 <code>related</code>（v2.2 从 <code>relates_to</code> 改为 <code>related</code>）</li>
+    <li><span class="badge badge-stub">contradicts</span> — <code>contradictionsToEdges()</code> 可生成，但该函数无调用者（死代码）</li>
+    <li><span class="badge badge-new">supports</span> — <b>v2.3 新增</b>：compile prompt 已添加 supports 类型说明，LLM 可选生成</li>
+    <li><span class="badge badge-new">superseded_by</span> — <b>v2.3 新增</b>：compile prompt 已添加 superseded_by 类型说明。注意：<code>supersedeNode()</code> 写 <code>supersededBy</code> frontmatter 而非 edge</li>
+  </ul>
+  <strong>v2.2 变更：</strong><code>GraphEdgeType</code> 中的 <code>"relates_to"</code> 已统一改为 <code>"related"</code>。代码中不再有 <code>relates_to</code>。旧数据的 <code>relates_to</code> 边会被 <code>buildGraphFromParsed()</code> 归一化为 <code>related</code>。
+</div>
+
+<h4>graph.ts 中的函数</h4>
+<table>
+  <thead><tr><th>函数</th><th>签名</th><th>调用者</th></tr></thead>
+  <tbody>
+    <tr><td><code>buildGraphFromParsed</code></td><td><code>(parsedNodes: ParsedWikiNode[]) → GraphData</code></td><td>buildGraph, board.ts <span class="badge badge-new">v2.2 新增</span></td></tr>
+    <tr><td><code>buildGraph</code></td><td><code>(config) → GraphData</code></td><td>lint.ts, health.ts（board.ts 改用 buildGraphFromParsed）</td></tr>
+    <tr><td><code>getOutgoingEdges</code></td><td><code>(graph, nodeId) → GraphEdge[]</code></td><td><span class="badge badge-dead">无调用者</span></td></tr>
+    <tr><td><code>getIncomingEdges</code></td><td><code>(graph, nodeId) → GraphEdge[]</code></td><td><span class="badge badge-dead">无调用者</span></td></tr>
+    <tr><td><code>getRelatedEdges</code></td><td><code>(graph, nodeId) → GraphEdge[]</code></td><td><span class="badge badge-dead">无调用者</span></td></tr>
+    <tr><td><code>getEdgesByType</code></td><td><code>(graph, type) → GraphEdge[]</code></td><td><span class="badge badge-dead">无调用者</span></td></tr>
+    <tr><td><code>findOrphanNodes</code></td><td><code>(graph) → GraphNode[]</code></td><td><span class="badge badge-dead">无调用者</span></td></tr>
+    <tr><td><code>findContradictions</code></td><td><code>(graph) → GraphEdge[]</code></td><td>getGraphStats（内部）</td></tr>
+    <tr><td><code>getGraphStats</code></td><td><code>(graph) → GraphStats</code></td><td>lint.ts, health.ts</td></tr>
+  </tbody>
+</table>
+
+<h3>6.10 manifest.ts — 图谱准备（72 行）</h3>
+<div class="code"><pre>
+computeClaimHash(claim: string): string
+  └── sha256(claim.trim().replace(/\s+/g, " ")).slice(0, 16)
+
+generateRelatedFor(seed: RelatedSeed, pool: RelatedSeed[]): RelatedNode[]
+  └── 理由优先级: explicit > tag-shared > source-shared
+  └── explicit: candidate.nodeId ∈ seed.related
+  └── tag-shared: candidate.tags ∩ seed.tags ≠ ∅
+  └── source-shared: candidate.sourceIds ∩ seed.sourceIds ≠ ∅
+</pre>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- §07 Query 层详解 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="query">
+<div class="section-head">
+  <div><span class="kicker">§07 — Query Layer</span></div>
+  <div>
+    <h2>Query 层：7 个模块</h2>
+    <p class="lead">三路 RRF 搜索 + 6 种 board 模式 + LLM 合成。查询是确定性的——board 组装不调 LLM。</p>
+  </div>
+</div>
+
+<h3>7.1 engine.ts — 查询引擎（522 行）</h3>
+<div class="code"><pre>
+queryKnowledge(opts: QueryKnowledgeOptions) → Promise&lt;QueryResultV6&gt;
+  ├── opts.llmCaller 是必填（产品不运行无 API key 模式）
+  ├── normalizeBoardMode(opts.mode)
+  ├── buildQueryBoard(config, question, {...}) → board
+  │   └── 确定性，不调 LLM
+  ├── opts.llmCaller(board, question) → { answer, modelSynthesis, usage }
+  ├── buildFromWiki(board) → WikiClaimRef[]
+  │   └── 从 seedNodes 提取 claim/nodeId/filePath/propRefs/boardRole
+  ├── buildMissingEvidence(board, question) → MissingEvidence[]
+  │   └── 每个 gap 一条；无 seed 无 gap → "no wiki node covers this question"
+  ├── buildSuggestedNextActions(board, missing, mode) → SuggestedNextAction[]
+  │   └── 无 seed → "ingest more material"
+  │   └── 有 missing → "expand the wiki"
+  │   └── ask/trace → "run semantic audit"
+  │   └── 有 gaps → "investigate gaps"
+  ├── summarizeBoard(board) → QueryBoardSummary
+  └── 返回 QueryResultV6 { ok, mode, question, board, boardSummary,
+        answer, fromWiki, modelSynthesis, missingEvidence,
+        suggestedNextActions, usage }
+</pre>
+</div>
+
+<h4>3 个系统 Prompt</h4>
+<table>
+  <thead><tr><th>Prompt</th><th>用途</th><th>规则</th></tr></thead>
+  <tbody>
+    <tr><td><code>QUERY_SYSTEM_PROMPT</code></td><td>查询答案合成</td><td>每个引用的事实必须标注 [nodeId]；允许自由合成但必须基于 board 节点；board 不足时说明缺什么；中文回答</td></tr>
+    <tr><td><code>INSPIRE_SYSTEM_PROMPT</code></td><td>启发灵感</td><td>JSON 数组输出 5 种 item（connection/hypothesis/question/action/missingEvidence）；至少 2 connections + 1 question</td></tr>
+    <tr><td><code>AUDIT_SYSTEM_PROMPT</code></td><td>语义审计</td><td>5 维度 3 级评级；严格 JSON 输出；verdict + score 0-1</td></tr>
+  </tbody>
+</table>
+
+<h4>makeDeepSeekCaller — 生产 LLM 调用器</h4>
+<div class="code"><pre>
+makeDeepSeekCaller(config, signal?, options?) → llmCaller
+  ├── 默认 systemPrompt = QUERY_SYSTEM_PROMPT
+  ├── 懒加载 DeepSeekClient
+  ├── serializeBoardToPrompt(board) → 结构化文本
+  │   └── 情境摘要（mode + 计数）
+  │   └── seed 节点（claim/evidence/interpretation/limits/tags）
+  │   └── evidence/related/counter/limit 节点
+  │   └── source excerpts（trace 模式，截断 500 字符）
+  ├── prepends board 序列化文本到 user message
+  ├── client.chat()
+  └── 提取 modelSynthesis（一个 entry，basedOn = 全部 seed nodeIds）
+</pre>
+</div>
+
+<h3>7.2 board.ts — Board 组装器（741 行）</h3>
+<p>这是系统最大的非 CLI 模块。负责 6 种模式的 board 组装。v2.2 大幅重写了搜索/RRF 逻辑。</p>
+
+<div class="code"><pre>
+buildQueryBoard(config, question, options, searchProvider?) → QueryBoard
+  ├── 默认 searchProvider = new KeywordSearchProvider()
+
+  // ─── Step 1: 收集所有节点 + 构建图谱（v2.2 Finding 7 优化）──
+  ├── collectAllNodes(config, includeLegacy, includeFailed)
+  │   └── 读取 WIKI_NODE_DIRS 下所有 .md → ParsedWikiNode[]
+  ├── buildGraphFromParsed(allParsed) → GraphData
+  │   └── 复用上面已读的节点，不再读一遍文件
+
+  // ─── Step 1.5: 三路搜索（BM25 + Vector 并行）──
+  ├── Finding 8：BM25 和 Vector 并行发起
+  ├── bm25SeedPromise = findSeedNodes(config, question, options, ...)
+  ├── vectorPromise = searchProvider.searchVector
+  │     ? searchProvider.searchVector(config, question, { maxResults })
+  │         .catch(() → { matches: [] })  // best-effort
+  │     : Promise.resolve({ matches: [] })
+  ├── const [seedNodes, vectorResult] = await Promise.all([bm25SeedPromise, vectorPromise])
+  │
+  ├── BM25 rank map: seedNodes 顺序 → { nodeId → rank(1-based) }
+  ├── Vector rank map: vectorResult.matches → { nodeId → rank(1-based) }
+  │
+  // ─── Graph 路（Finding 1 修复）──
+  ├── allSeedIds = BM25 ∪ Vector seed ids
+  ├── graphScores = walkGraph([...allSeedIds], graph)
+  ├── graphRanks = scoresToRanks(graphScores)  // v2.2 新函数
+  │
+  // ─── RRF 融合 + 重排 ───
+  ├── if (任一路有结果):
+  │   ├── fused = rrfFusion(bm25Ranks, vectorRanks, graphRanks)
+  │   │   └── 三路统一 weight/(K+rank) 形式（v2.2 同量纲修复）
+  │   ├── ranked = rankByScore(fused)
+  │   ├── 候选池 = BM25 seeds + Vector 独有 + Graph-only 邻居
+  │   │   └── Graph-only 邻居从 allParsed 查转成 BoardNode（score=0）
+  │   │   └── Finding 1：让被多 seed 引用的高置信 graph 邻居能进 seedNodes
+  │   └── 按融合分数重排 seedNodes
+  │
+  // ─── Step 2.5: 强制注入（仅 challenge/inspire）──
+  ├── if (mode === "challenge" || mode === "inspire"):
+  │   └── 对每个 seed，找 edges 中 seed 是 from 或 to 的
+  │   └── 另一端点成为 forcedNode（score=0.5）
+  │   └── contradict → counterNodes; superseded_by → relatedNodes
+  │   └── derived_from/related/supports 不注入（Q10 收紧——靠三路搜索排名）
+  │
+  // ─── Step 3: 模式组装 ───
+  ├── assembleBoard() → 按 mode 组装 7 类节点
+  │
+  // ─── Step 4: Source 摘要 ───
+  ├── if (mode === "trace" || withSource):
+  │   └── loadSourceExcerpts(config, nodes) → 通过 getExcerpt()
+  │
+  // ─── Step 5: Gap + 指令 ───
+  ├── buildGaps(question, seedNodes, allParsed)
+  └── buildInstruction(mode, board, allParsed)
+      └── synthesisLevel: anchored | strict | free
+      └── outputBoundaries: 按模式设定
+</pre>
+</div>
+
+<h4>6 种模式的组装详情</h4>
+
+<h4>ask 模式（board.ts:324-339）</h4>
+<div class="code"><pre>
+seeds = RRF 排序后的种子
+evidence = pickEvidence(seeds, pool, seedIds, max=5)  // 共享 sourceId 或 tag
+related = pickRelated(seeds, pool, seedIds, max=3)     // 共享 tag
+limits = seeds 中有 limits 的
+counterNodes = []  // v2 简化：不注入
+questionNodes = []  // v2 简化：不注入
+tensionNodes = []
+synthesisLevel = "anchored"
+</pre>
+</div>
+
+<h4>trace 模式（board.ts:341-356）</h4>
+<div class="code"><pre>
+同 ask，但 evidence max=10, related max=5
++ loadSourceExcerpts() 加载 chase 摘要
+synthesisLevel = "strict" + requirePropRef
+</pre>
+</div>
+
+<h4>expand 模式（board.ts:358-393）</h4>
+<div class="code"><pre>
+evidence max=5
+related = method/case/equation kind 且共享 tag/sourceIds（max=6）
+questionNodes = question/anchor kind（max=4）
+limitNodes = seeds 中有 limits 的（max=2）
+counterNodes = []  // expand 保持开放
+synthesisLevel = "free"
+</pre>
+</div>
+
+<h4>compare 模式（board.ts:395-417）</h4>
+<div class="code"><pre>
+evidence max=5
+related = pickBridgeNodes(seeds, pool, seedIds)  // 共享 tag 但不同 source
+counterNodes = []
+questionNodes = []
+synthesisLevel = "anchored"
+</pre>
+</div>
+
+<h4>challenge 模式（board.ts:419-442）</h4>
+<div class="code"><pre>
+evidence = pickWeakEvidence(seeds, pool, seedIds)  // 共享 source 且 evidence.length<=1, max=5
+related = []
+limitNodes = 所有有 limits 的节点（max=10）  // ← 强制注入所有 limits
+counterNodes = 所有 counter kind（max=5）    // ← 强制注入所有 counters
+questionNodes = 所有 question kind（max=3）
+synthesisLevel = "strict"
+</pre>
+</div>
+
+<h4>inspire 模式（board.ts:444-491）</h4>
+<div class="code"><pre>
+evidence max=5
+related = insight/question/counter/anchor kind 且共享 tag/sourceIds（max=6）  // ← 跨类型
+limitNodes = seeds 中有 limits 的（max=3）
+counterNodes = max=5
+questionNodes = max=4
+tensionNodes = auditStatus==="failed" && claim.length>0（max=5）
+  // ← 区分语义失败（有 claim → tension）vs 结构失败（无 chase/evidence → 排除）
+synthesisLevel = "free" + requireLayeredOutput=false
+</pre>
+</div>
+
+<h3>7.3 search.ts — 关键词搜索（276 行）</h3>
+<p>默认搜索引擎，不依赖外部依赖。</p>
+
+<div class="code"><pre>
+searchWiki(config, query, opts?) → SearchMatchV6[]
+  ├── maxResults=20, minScore=0.01, includeFailed=false
+  ├── loadAllPages(config, includeFailed) → ParsedWikiPage[]
+  ├── extractKeywords(query):
+  │   ├── Step 1: MATH_TOKEN_RE 提取数学表达式（如 1/e, 36.8%, (1-1/n)^n）
+  │   ├── Step 2: Intl.Segmenter("zh-CN", {granularity:"word"}) 分词
+  │   └── Step 3: 合并数学 token 回来
+  │   └── Fallback: 按标点分词
+  ├── computeScore(page, keywords):
+  │   └── FIELD_WEIGHTS: title=4, tags=3, claim=3, evidence=2,
+  │       interpretation=1, useFor=1, fullText=0.5
+  │   └── totalScore = Σ (hits/keywords.length × weight)
+  └── 过滤 minScore → 排序 → slice maxResults
+
+KeywordSearchProvider implements SearchProvider:
+  search() → delegates to searchWiki
+  // 不实现 searchLex/searchVector（可选方法）
+</pre>
+</div>
+
+<h3>7.4 search-provider.ts — 搜索接口（v2.2 扩展，74 行）</h3>
+<div class="code"><pre>
+interface SearchProvider {
+  search(config, query, options?) → SearchResult          // 必填，同步，默认后端
+  searchLex?(config, query, options?) → Promise&lt;SearchResult&gt;  // 可选，异步 BM25（v2.2）
+  searchVector?(config, query, options?) → Promise&lt;SearchResult&gt;  // 可选，异步 Vector（v2.2）
+  reindex?(config) → Promise&lt;void&gt;                        // 可选，重建索引
+}
+
+// v2.2 新增：
+interface ProviderSearchOptions extends SearchOptions {
+  collection?: string  // qmd collection 名称
+}
+
+// KeywordSearchProvider: 只实现 search()（同步 keyword 搜索）
+//   不实现 searchLex/searchVector → board 检测到 undefined 时该路置空
+// QmdSearchProvider: 实现 search + searchLex + searchVector
+//   search() 委托给 fallback（BM25 路 = keyword 是设计）
+//   searchLex/searchVector 返回原始排名供三路 RRF 融合
+</pre>
+</div>
+
+<div class="callout info">
+  <strong>v2.2 接口扩展：</strong><code>searchLex</code> 和 <code>searchVector</code> 是可选方法，设计为异步以支持 qmd SDK 的异步调用。<code>KeywordSearchProvider</code> 不实现它们——board 检测到 <code>undefined</code> 时该路置空，权重归 0 并保持其他路相对比例不变（对齐 agentmemory hybrid-search.ts:194-206）。
+</div>
+
+<h3>7.5 qmd-search.ts — QMD 搜索（v2.2 SDK 重写，171 行）</h3>
+<p>v2.2 完全重写：从 CLI <code>execSync</code> 切换到 qmd SDK <code>createStore()</code>。分别暴露 <code>searchLex()</code> 和 <code>searchVector()</code> 供三路 RRF 融合。</p>
+
+<div class="code"><pre>
+QmdSearchProvider implements SearchProvider:
+  constructor(fallback?: SearchProvider)  // 默认 = KeywordSearchProvider
+
+  // ─── 同步搜索（BM25 路 = keyword 是设计）──
+  search(config, query, options?) → SearchResult
+    └── 委托给 this.fallback.search(...)
+    └── qmd 的真 BM25/Vector 排名通过 async searchLex/searchVector 获取
+
+  // ─── 异步 BM25 搜索（供三路 RRF）──
+  async searchLex(config, query, options?) → Promise&lt;SearchResult&gt;
+    └── getQmdStore() → @tobilu/qmd createStore()
+    │   └── dbPath = join(cwd, '.qmd', 'store.sqlite')
+    │   └── collection = options?.collection ?? "litewiki"
+    │   └── 适配 SDK 签名: store.searchLex(q, {limit, collection})
+    └── store.searchLex(query, limit*2, collection)
+    └── resolveResults() → resolveWikiNode()
+    └── <b>qmd 不可用时返回空（不 fallback keyword）</b>
+    │   └── Finding 4：BM25 路 fallback 会用 keyword 冒充 BM25，扭曲 RRF 权重
+
+  // ─── 异步 Vector 搜索（供三路 RRF）──
+  async searchVector(config, query, options?) → Promise&lt;SearchResult&gt;
+    └── 同 searchLex 但调用 store.searchVector()
+    └── <b>qmd 不可用时返回空（不 fallback keyword）</b>
+    │   └── Finding 4：Vector 路 fallback 会用 keyword 冒充 Vector，破坏降级保证
+
+// ─── QMD Store 懒加载 + TTL 重试 ───
+getQmdStore() → Promise&lt;QmdStore | null&gt;
+  ├── 懒加载：首次调用时动态 import("@tobilu/qmd")
+  ├── 失败缓存带 TTL（Finding 6）：
+  │   └── _qmdStoreErrorAt 记录失败时间
+  │   └── QMD_RETRY_MS = 5 分钟
+  │   └── 5 分钟内不重试，之后清空允许重试
+  │   └── 让 daemon 长跑进程能在用户之后配置好 qmd 时自愈
+  └── 成功则清失败标记
+
+// ─── 结果解析 ───
+resolveWikiNode(filePath, score, wikiDir) → SearchMatchV6 | null
+  ├── qmd 返回 filepath（相对或绝对）
+  ├── 构建 absPath → existsSync 检查
+  ├── parseWikiContent() 解析真实节点
+  └── 返回 SearchMatchV6（evidence/interpretation/limits/useFor 为空——只有 frontmatter 字段）
+</pre>
+</div>
+
+<div class="callout good">
+  <strong>v2.2 重写要点：</strong>
+  <ul class="tight">
+    <li><b>SDK 替代 CLI</b>：从 <code>execSync("qmd query --json")</code> 改为 <code>createStore()</code> SDK 调用</li>
+    <li><b>正确降级</b>（Finding 4）：<code>searchLex</code>/<code>searchVector</code> 在 qmd 不可用时返回空数组，<b>不</b> fallback 到 keyword——因为用 keyword 冒充 BM25/Vector 会扭曲 RRF 权重</li>
+    <li><b>TTL 重试</b>（Finding 6）：失败后不永久缓存，5 分钟后允许重试，让 daemon 自愈</li>
+    <li><b>真实节点解析</b>：通过 <code>parseWikiContent</code> 解析真实 wiki 节点（旧版返回硬编码假节点）</li>
+  </ul>
+</div>
+
+<h3>7.6 rrf.ts — RRF 融合（v2.2 同量纲修复，94 行）</h3>
+<div class="code"><pre>
+K = 60  // 标准 RRF 常数
+RankMap = Map&lt;string, number&gt;
+
+// v2.2 关键修复：三路统一用 weight/(K+rank) 形式（同量纲）
+rrfFusion(bm25Ranks, vectorRanks, graphRanks) → RankMap:
+  for each id in union(all three):
+    br = bm25Ranks.get(id) ?? Infinity
+    vr = vectorRanks.get(id) ?? Infinity
+    gr = graphRanks.get(id) ?? Infinity  // ← v2.2: rank, 不是 score
+
+    combinedScore = 0.4/(K+br) + 0.6/(K+vr) + 0.3/(K+gr)
+    // 三路同形式 weight/(K+rank)
+
+  权重: BM25=0.4, Vector=0.6, Graph=0.3
+
+// v2.2 新增：将 walkGraph 的 score map 转成 rank map
+scoresToRanks(scoreMap: RankMap) → RankMap
+  └── 按 score 降序排，第1名 rank=1
+  └── 用于把 walkGraph 返回的 0-1 score 转成 RRF 所需的 rank
+
+rankByScore(scores: RankMap) → string[]
+  └── 按分数降序排列，返回 nodeId 数组
+</pre>
+</div>
+
+<div class="callout good">
+  <strong>v2.2 Finding 1 修复 — 同量纲：</strong>旧实现 Graph 路用 <code>0.3 × score</code>（score 0-1），graph 邻居最高 0.3，而语义 seed 是 <code>0.4/(K+1)+0.6/(K+1)≈0.016</code>——graph 邻居会压过 seed。改成 <code>0.3/(K+graphRank)</code> 后，graph 第1名 = 0.3/61 ≈ 0.0049，低于 BM25 第1名（0.0066）和 Vector 第1名（0.0098）。graph 邻居天然排不进前几名，但能进中后段——既不泛滥也不消失。
+</div>
+
+<h3>7.7 graph-search.ts — 图遍历（49 行）</h3>
+<div class="code"><pre>
+walkGraph(seedIds, graph) → Map&lt;string, number&gt;
+  └── 1-hop 遍历（不需要 Dijkstra/BFS）
+  └── 对每条 edge:
+      ├── 跳过 if from 和 to 都不是 seed
+      ├── neighborId = 非 seed 端点
+      ├── 跳过 if neighbor 是 seed（不给 seed 打分）
+      ├── score = edge.confidence × (1/pathLength)
+      │   └── pathLength = 1（1-hop）
+      │   └── confidence ?? 0.5
+      └── 取 max（不是 sum）——多个 seed 连同一邻居
+
+  设计决策:
+  ├── 1-hop only — edges 无中间权重
+  ├── confidence-based — 不是硬编码 per-type 分数
+  └── max 而非 sum — 对齐 agentmemory 的 expandFromChunks
+
+  v2.2 变更：walkGraph 返回的 score 不再直接乘 0.3 进 RRF，
+  而是先经 scoresToRanks() 转成 rank，再以 0.3/(K+rank) 进 RRF（同量纲）
+</pre>
+</div>
+
+<div class="callout info">
+  <strong>设计差距 — walkGraph 位置：</strong>设计 v2.0 文档多处提到 <code>walkGraph()</code> 似乎它在 <code>graph.ts</code> 中。实际上它在 <code>graph-search.ts:24-49</code>。<code>graph.ts</code> 本身不包含 <code>walkGraph</code>。这是文件组织差异，功能已实现。
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- §08 Evolution 层详解 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="evolution">
+<div class="section-head">
+  <div><span class="kicker">§08 — Evolution Layer</span></div>
+  <div>
+    <h2>Evolution 层：5 个模块</h2>
+    <p class="lead">自进化机制：矛盾检测、强化检测、回流、取代、确认管线。检测是自动的，裁决是人类的。</p>
+  </div>
+</div>
+
+<div class="diagram-wrap">
+<pre class="mermaid">
+flowchart TD
+  subgraph Detection["自动检测（daemon / pipeline 触发）"]
+    CONTRA["contradiction.ts<br/>detectContradictions()<br/>LLM 判断矛盾"]
+    REIN["reinforce.ts<br/>detectReinforcementCandidates()<br/>LLM 双维度判断"]
+    REFLOW["reflow.ts<br/>screenReflowCandidates()<br/>纯启发式筛选"]
+  end
+
+  subgraph Queue["人类确认队列"]
+    Progress["loopadvance/progress.md<br/>## 待确认"]
+    Confirm["confirm.ts<br/>writeConfirmSection()<br/>parseConfirmManifest()"]
+    Backlog["checkBacklog()<br/>≥20 → warning<br/>≥50 → degraded<br/>autoDegrade()"]
+  end
+
+  subgraph Action["人类确认后执行"]
+    Super["supersede.ts<br/>supersedeNode()<br/>标记 status=legacy"]
+    Edge["confirm.ts<br/>applyEdgeConfirmation()<br/>写入 edges 到 frontmatter"]
+  end
+
+  CONTRA --> Progress
+  REIN --> Progress
+  REFLOW --> Progress
+  Progress --> Confirm
+  Confirm --> Backlog
+  Confirm --> Action
+  Super --> Legacy["旧节点 → legacy"]
+  Edge --> NewEdge["写入 related edge"]
+
+  style Detection fill:#fff3e0
+  style Queue fill:#f5f0ff
+  style Action fill:#e8f5e9
+</pre>
+</div>
+
+<h3>8.1 confirm.ts — 确认管线（195 行）</h3>
+<p>人类周期性批量处理 <code>progress.md</code> 中的待确认项。</p>
+
+<div class="code"><pre>
+ConfirmItem {
+  id: string
+  type: "reflow" | "edge" | "supersede" | "reinforce" | "semantic_issue"
+  priority: "high" | "medium" | "low"
+  summary: string
+  createdAt: string
+  status: "pending" | "confirmed" | "rejected" | "skipped"
+}
+
+writeConfirmSection(projectRoot, items: ConfirmItem[]):
+  ├── 读取 loopadvance/progress.md（或空字符串）
+  ├── 构建 "## 待确认" section
+  ├── 格式: "- [ ] [priority] type: summary"
+  ├── 如果 section 已存在 → 替换该 section
+  └── 如果不存在 → 追加到文件末尾
+  └── 空列表 → "（无待确认项）"
+  ⚠️ <b>替换语义</b>：多次调用会覆盖前面的候选
+  └── <b>v2.2 Finding 3 修复</b>：pipeline 现在统一收集矛盾+强化候选后一次性调用
+
+parseConfirmManifest(content) → ConfirmManifest:
+  ├── 进入 "## 待确认" 或 "## Pending" section
+  ├── 退出于下一个 "## " header
+  └── 正则匹配: "- [x| ] [priority] type: summary"
+  └── lastProcessedAt 始终 null（未实现）
+
+checkBacklog(manifest) → BacklogStatus:
+  └── ≥50 → "degraded"
+  └── ≥20 → "warning"
+  └── 否则 → "normal"
+
+autoDegrade(manifest) → ConfirmManifest:
+  ├── 删除 low-priority pending items
+  ├── 合并 medium-priority 同 type items
+  │   └── >1 → 单个 "merged-{type}" item
+  └── 重新计算 backlog
+
+applyEdgeConfirmation(config, item):
+  ├── 解析 [nodeA→nodeB] from item.summary
+  ├── 扫描 wiki 文件找到 source node
+  ├── <b>写入 edge type: "related"</b>（v2.2 从 "relates_to" 改）
+  │   └── confidence: 0.5, source: "inspire"
+  └── 直接重写 YAML frontmatter（updateFrontmatter 不支持对象数组）
+</pre>
+</div>
+
+<h3>8.2 contradiction.ts — 矛盾检测（123 行）</h3>
+<div class="code"><pre>
+detectContradictions(config, newNode, existingClaims, llmCaller):
+  ├── 如果无已有节点 → 返回空
+  ├── 预筛：只保留同 kind 的已有节点
+  ├── buildContradictionPrompt():
+  │   └── "你是知识矛盾检测器"
+  │   └── 判断标准: 同一事实给出互斥结论；X 为真 vs X 为假
+  │   └── 不是观点分歧——必须是事实冲突
+  │   └── 输出 JSON 数组
+  ├── llmCaller(prompt)  // 单参数签名
+  ├── 解析 JSON → 过滤需要 nodeA/nodeB/reason 的项
+  └── confidence 默认 0.5
+
+contradictionsToEdges(candidates) → GraphEdge[]:
+  └── type: "contradicts"
+  └── <span class="badge badge-dead">无调用者（死代码）</span>
+</pre>
+</div>
+
+<div class="callout danger">
+  <strong>死代码：</strong><code>contradiction.ts</code> 包含以下死代码：
+  <ul class="tight">
+    <li><code>import { buildGraph }</code>（line 12）— 导入但从未使用</li>
+    <li><code>import type { GraphData }</code>（line 13）— 导入但从未使用</li>
+    <li><code>contradictionsToEdges()</code>（lines 113-123）— 导出但无调用者</li>
+    <li><code>config</code> 参数（line 76）— 接受但从未使用</li>
+    <li>lines 67-68 的悬挂 JSDoc 注释（对应已删除函数的残留）</li>
+  </ul>
+</div>
+
+<h3>8.3 reinforce.ts — 强化检测（154 行）</h3>
+<p>LLM judge 双维度判断 + 启发式预筛。</p>
+
+<div class="code"><pre>
+detectReinforcementCandidates(newNode, existingNodes, llmCaller):
+  // 注意：llmCaller 签名是 (systemPrompt, userMessage) → string（两参数）
+
+  Step 0: 关键词预筛 prefilterByKeywords()
+    ├── 提取关键词（<3 个则返回空）
+    ├── 排除 self
+    ├── 排除不同 kind
+    └── 要求关键词重叠 > 0.2
+
+  Step 1: 对每个预筛通过的已有节点
+    └── 维度 1 — 语义一致度 CONSISTENCY_PROMPT
+      ├── "Claim A: ... Claim B: ..."
+      ├── 输出: {"consistent": bool, "score": 0-1, "reason": "..."}
+      └── 阈值: SEMANTIC_CONSISTENCY_THRESHOLD = 0.7
+      └── < 0.7 → skip
+      └── LLM 失败 → continue
+
+  Step 2: 维度 1 通过后
+    └── 维度 2 — 证据增量 INCREMENT_PROMPT
+      ├── "已有节点... 新节点..."
+      ├── 输出: {"genuine": bool, "score": 0-1, "reason": "..."}
+      ├── 判断标准: 独立验证（实验复制/不同数据）= high
+      │            纯复述 = low
+      │            数学常量/定义/公理 = 0
+      └── 阈值: EVIDENCE_INCREMENT_THRESHOLD = 0.5
+      └── < 0.5 → skip
+      └── LLM 失败 → continue
+
+  Step 3: 双维度都通过 → 产出候选
+    └── confidence = (consistencyScore + incrementScore) / 2
+    └── suggestedScoreBoost = min(0.15, incrementScore × 0.2)
+    └── reason 合并两个维度的 reason
+</pre>
+</div>
+
+<div class="callout good">
+  <strong>设计对齐：</strong><code>reinforce.ts</code> 正确实现了设计 v2.0 的双维度 LLM judge（语义一致度 + 证据增量度）。启发式只是预筛，减少 LLM 调用量。不是纯启发式。与设计 §08 一致。
+</div>
+
+<div class="callout warn">
+  <strong>LLM Caller 签名不一致：</strong><code>contradiction.ts</code> 使用单参数签名 <code>(prompt: string) → Promise&lt;string&gt;</code>，而 <code>reinforce.ts</code> 使用双参数签名 <code>(systemPrompt, userMessage) → Promise&lt;string&gt;</code>。两者不可互换，pipeline 需要分别为它们构造不同签名的 caller。
+</div>
+
+<h3>8.4 reflow.ts — 回流候选标记（67 行）</h3>
+<div class="code"><pre>
+screenReflowCandidates(candidates, existingNodeIds) → ReflowCandidate[]
+  └── 纯启发式，不调 LLM:
+    ├── draft.claim.length >= 50
+    ├── !existingNodeIds.has(draft.nodeId)
+    └── confidence >= 0.6
+
+reflowToFrontmatter(candidate, existing) → WikiFrontmatter
+  └── reflowOrigin = derivedFrom.join(",")
+  └── status = "draft"（回流节点需人类确认）
+  └── edges: derived_from → 源节点
+</pre>
+</div>
+
+<h3>8.5 supersede.ts — 取代确认（72 行）</h3>
+<div class="code"><pre>
+supersedeNode(wikiDir, targetNodeId, replacedByNodeId) → boolean
+  ├── 遍历 9 个子目录
+  ├── 字符串匹配: content.includes("nodeId: " + targetNodeId)
+  ├── 匹配 → updateFrontmatter(status: "legacy", supersededBy: ...)
+  └── 返回 true/false
+  ⚠️ 字符串匹配可能误判（nodeId: foo 匹配 nodeId: foobar）
+
+supersedeNodes(wikiDir, entries) → { succeeded, failed }
+  └── 批量包装
+</pre>
+</div>
+
+<div class="callout warn">
+  <strong>设计原则：</strong>取代 = 仅标记，永不自动替换。LLM judge 是主观的，自动取代有误杀风险。设计 §08 §11 一致。
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- §09 Daemon 层详解 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="daemon">
+<div class="section-head">
+  <div><span class="kicker">§09 — Daemon Layer</span></div>
+  <div>
+    <h2>Daemon 层：7 个模块</h2>
+    <p class="lead">CI 流水线——常驻进程，执行机械操作。daemon 不替 agent 做决策，只执行和报告。</p>
+  </div>
+</div>
+
+<h3>9.1 index.ts — Daemon 入口（v2.2 审计串行化，210 行）</h3>
+<p>7 项职责的入口点。v2.2 新增了审计串行化机制（Finding 2 修复）。</p>
+
+<div class="diagram-wrap">
+<pre class="mermaid">
+flowchart TD
+  Start["runDaemon()"]
+  Config["loadConfig()<br/>createDaemonState()<br/>createLLMProvider()"]
+  Log["log file: loopadvance/daemon.log"]
+
+  subgraph AuditChain["v2.2 审计串行化（Finding 2 修复）"]
+    Dirty["auditDirty 标志"]
+    Chain["auditChain = Promise.resolve()"]
+    Schedule["scheduleAudit(wikiPath)<br/>设置 dirty = true<br/>串行链：等上一个完成再跑"]
+    Run["runOneAudit(wikiPath)<br/>runSemanticAudit() → writeSemanticAuditResults()<br/>从 pendingAudit 移除"]
+  end
+
+  subgraph Watcher["文件监听（chokidar）"]
+    W1["onNewChase(chasePath)"]
+    W2["onWikiChange(wikiPath)"]
+  end
+
+  subgraph Timer["定时器"]
+    T1["onHeartbeat (30s)"]
+    T2["onLint (30min)"]
+    T3["onReflowScreen (60min)"]
+  end
+
+  Pipeline["runIngestPipeline()<br/>命题提取 → 编译 → 审计<br/>→ 矛盾/强化检测"]
+  SemAudit["runSemanticAudit()<br/>LLM judge 5 维度"]
+  Lint["lintWiki()"]
+  Reflow["screenAndWriteReflow()<br/>📌 DEFERRED (v2.3)"]
+
+  Cleanup["cleanup()<br/>stopTimers + stopWatcher"]
+
+  Start --> Config --> Log
+  Config --> AuditChain
+  Config --> Watcher
+  Config --> Timer
+  W1 -->|"Responsibility 1+2"| Pipeline
+  W2 -->|"Responsibility 3"| Schedule
+  Schedule --> Run
+  Run --> SemAudit
+  T1 --> Config
+  T2 --> Lint
+  T3 --> Reflow
+  Start -.->|"SIGINT/SIGTERM"| Cleanup
+
+  style AuditChain fill:#e8f5e9
+  style Pipeline fill:#e3f2fd
+  style SemAudit fill:#f5f0ff
+  style Lint fill:#fff3e0
+  style Reflow fill:#fdf2d0
+</pre>
+</div>
+
+<div class="callout good">
+  <strong>v2.2 Finding 2 修复 — 审计串行化：</strong><code>onWikiChange</code> 可能被快速连续触发（一次 ingest 写多个 wiki 节点）。v2.2 引入串行链 + dirty 标志：
+  <ul class="tight">
+    <li><code>auditChain: Promise&lt;void&gt;</code> — 串行 Promise 链，确保审计一个接一个执行</li>
+    <li><code>auditDirty: boolean</code> — 多次变更合并成一次审计</li>
+    <li><code>scheduleAudit(wikiPath)</code> — 设置 dirty=true，等上一个审计完成后再跑</li>
+    <li>避免并发 <code>read-modify-write</code> 写坏 frontmatter</li>
+  </ul>
+</div>
+
+<h4>7 项职责对照</h4>
+<table>
+  <thead><tr><th>#</th><th>职责</th><th>触发方式</th><th>实现状态</th><th>代码位置</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>命题提取</td><td>新 chase 文件 → onNewChase</td><td><span class="badge badge-ok">已实现</span></td><td>pipeline.ts Step 1</td></tr>
+    <tr><td>2</td><td>文件监听自动 ingest</td><td>chase 有 prop 标记 → onNewChase → runIngestPipeline</td><td><span class="badge badge-ok">已实现</span></td><td>daemon/index.ts onNewChase</td></tr>
+    <tr><td>3</td><td>wiki 变更自动审计</td><td>wiki 文件变化 → onWikiChange</td><td><span class="badge badge-ok">已实现（v2.2 串行化修复）</span></td><td>daemon/index.ts scheduleAudit</td></tr>
+    <tr><td>4</td><td>定期 lint</td><td>每 30 分钟 → onLint</td><td><span class="badge badge-ok">已实现</span></td><td>daemon/index.ts onLint</td></tr>
+    <tr><td>5</td><td>启发式发现（inspire）</td><td>手动触发，非自动</td><td><span class="badge badge-ok">设计如此</span></td><td>CLI inspire 命令</td></tr>
+    <tr><td>6</td><td>回流筛选</td><td>每 60 分钟 → onReflowScreen</td><td><span class="badge badge-stub">DEFERRED (v2.3)</span></td><td>daemon/reflow.ts</td></tr>
+    <tr><td>7</td><td>强化检测</td><td>compile 后自动</td><td><span class="badge badge-ok">已实现</span></td><td>pipeline.ts Step 4</td></tr>
+  </tbody>
+</table>
+
+<div class="callout good">
+  <strong>v2.2 改进：</strong>Responsibility 3 从"部分实现"升级为"已实现"。之前 <code>pendingAudit</code> 队列推送后只在审计完成后移除，无重试/积压处理。v2.2 引入 <code>scheduleAudit()</code> 串行链 + dirty 标志后，多次 wiki 变更会合并成一次审计，且串行执行避免并发写坏 frontmatter。
+</div>
+
+<h3>9.2 watcher.ts — 文件监听（54 行）</h3>
+<div class="code"><pre>
+startWatcher(config, callbacks) → FSWatcher
+  ├── chokidar.watch([chaseDir, wikiDir])
+  ├── options:
+  │   ├── ignoreInitial: true（不触发已有文件）
+  │   ├── awaitWriteFinish: { stabilityThreshold: 500, pollInterval: 100 }
+  │   └── 忽略 dotfiles
+  ├── watcher.on("add", ...):
+  │   └── chaseDir + .md → callbacks.onNewChase()
+  └── watcher.on("change", ...):
+      └── wikiDir + .md → callbacks.onWikiChange()
+
+stopWatcher(watcher) → Promise&lt;void&gt;
+  └── watcher.close()
+</pre>
+</div>
+
+<h3>9.3 timer.ts — 定时器（44 行）</h3>
+<table>
+  <thead><tr><th>回调</th><th>间隔</th><th>启动时立即执行</th></tr></thead>
+  <tbody>
+    <tr><td><code>onLint</code></td><td>30 分钟</td><td>✅ 是</td></tr>
+    <tr><td><code>onHeartbeat</code></td><td>30 秒</td><td>✅ 是</td></tr>
+    <tr><td><code>onReflowScreen</code></td><td>60 分钟</td><td>❌ 否</td></tr>
+  </tbody>
+</table>
+
+<h3>9.4 lint.ts — Lint 引擎（140 行）</h3>
+<div class="code"><pre>
+lintWiki(config) → LintReport
+  ├── buildGraph(config) → getGraphStats()
+  ├── Orphan 检测:
+  │   └── 只在 orphanRate > 30% 时报告 warning
+  ├── 遍历 wiki 文件:
+  │   ├── Broken link 检测:
+  │   │   └── 解析 [[...]] links → 检查 target 在 validNodeIds 中
+  │   └── Missing propRefs 检测:
+  │       └── propRefs 为空且 auditStatus !== "failed" → warning
+  └── 写入 loopadvance/lint-report.json
+
+LintIssue:
+  category: "orphan" | "broken_link" | "missing_props" | "stale_audit"
+  severity: "warning" | "error"
+</pre>
+</div>
+
+<div class="callout warn">
+  <strong>Lint 未实现的功能：</strong>
+  <ul class="tight">
+    <li><code>stale_audit</code> category 在类型中声明但从未产生</li>
+    <li>文档说"机械问题自动修复"但无自动修复代码</li>
+    <li><code>error</code> severity 声明但当前只产生 <code>warning</code></li>
+  </ul>
+</div>
+
+<h3>9.5 health.ts — 健康度收集器（263 行）</h3>
+<p>5 维度健康度收集，产出 <code>SystemHealth</code> 结构。</p>
+
+<div class="diagram-wrap">
+<pre class="mermaid">
+graph LR
+  subgraph Health["SystemHealth 5 维度"]
+    C["CodeHealth<br/>typecheck / test / gitModified<br/>⚠️ 硬编码占位"]
+    W["WikiHealth<br/>nodes / auditBreakdown<br/>avgScore / missingProps"]
+    G["GraphHealth<br/>nodes / edges / orphans<br/>contradictions"]
+    D["DaemonHealth<br/>running / pid / stats"]
+    B["BacklogHealth<br/>progress.md 待确认数"]
+  end
+
+  Verdict["computeVerdict()"]
+
+  Health --> Verdict
+
+  Verdict -->|"!typecheck || !test || degraded"| Red["🔴 RED"]
+  Verdict -->|"warning>20% || orphanRate>30% || backlog=warning || failed>0"| Yellow["🟡 YELLOW"]
+  Verdict -->|"otherwise"| Green["🟢 GREEN"]
+
+  style Red fill:#f8d7da
+  style Yellow fill:#fff3cd
+  style Green fill:#d4edda
+</pre>
+</div>
+
+<div class="callout warn">
+  <strong>CodeHealth 是占位：</strong><code>collectHealth()</code> 硬编码 <code>{ typecheck: true, test: true, gitModified: 0 }</code>。注释说真实值来自外部 <code>loop-health.sh</code> 脚本。
+</div>
+
+<h3>9.6 state.ts — 状态管理（86 行）</h3>
+<div class="code"><pre>
+DaemonState {
+  pid: number
+  startedAt: string
+  lastHeartbeat: string
+  stats: { propsExtracted, auditsRun, lintsRun, reflowsScreened }
+  queue: { pendingPropExtraction: string[], pendingAudit: string[] }
+}
+
+writeDaemonState(projectRoot, state):
+  └── 原子写：先写临时文件 → renameSync
+  └── 目标: loopadvance/daemon-state.json
+
+isDaemonAlive(state):
+  └── Date.now() - heartbeat < 60_000（60 秒内有心跳）
+</pre>
+</div>
+
+<h3>9.7 reflow.ts — 回流筛选（49 行）</h3>
+<div class="code"><pre>
+screenAndWriteReflow(config) → number
+  └── ⚠️ 存根
+  └── 日志: "query cache not ready, skipping"
+  └── 返回 0
+
+writeReflowCandidatesToProgress(projectRoot, candidates):
+  └── ReflowCandidate[] → ConfirmItem[]
+  └── id = "reflow-{i}", type = "reflow", priority = "medium"
+  └── writeConfirmSection(projectRoot, items)
+</pre>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- §10 Core 层详解 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="core">
+<div class="section-head">
+  <div><span class="kicker">§10 — Core Layer</span></div>
+  <div>
+    <h2>Core 层：3 个模块</h2>
+    <p class="lead">LLM 调用抽象层。将具体模型/API 与业务逻辑解耦。</p>
+  </div>
+</div>
+
+<h3>10.1 client.ts — DeepSeekClient（162 行）</h3>
+<p>封装 <code>openai</code> npm 包。DeepSeek API 完全兼容 OpenAI，只有 <code>baseURL</code> 不同。</p>
+
+<div class="code"><pre>
+class DeepSeekClient {
+  constructor(config: AppConfig)
+    └── new OpenAI({ apiKey, baseURL, maxRetries: 3, timeout: 120_000 })
+
+  async chat(opts: ChatOptions) → ChatResult
+    ├── 构建 openAiMessages（system + user/assistant）
+    ├── client.chat.completions.create({ stream: false, ... })
+    ├── 条件: response_format: { type: "json_object" }
+    ├── 条件: extra_body: { thinking: { type: "disabled" } }  // thinkingDisabled
+    └── 返回 { content, model, usage }
+
+  async chatStream(opts: ChatOptions) → ChatResult
+    ├── 同上但 stream: true
+    ├── 累积 fullContent
+    ├── opts.onStream?.(delta)  // 流式回调
+    └── 返回 { content, model: opts.model, usage }
+}
+
+ChatOptions {
+  model: string
+  systemPrompt: string
+  messages: Array&lt;{ role: "user"|"assistant"; content: string }&gt;
+  responseFormat?: "json_object" | "text"
+  maxTokens?: number
+  onStream?: (delta: string) → void
+  signal?: AbortSignal
+  thinkingDisabled?: boolean  // 禁用 V4 thinking 模式
+}
+
+ChatResult {
+  content: string
+  model: string
+  usage: {
+    promptTokens, completionTokens, totalTokens,
+    promptCacheHitTokens, promptCacheMissTokens
+  } | null
+}
+</pre>
+</div>
+
+<h3>10.2 llm-provider.ts — LLMProvider 接口（60 行）</h3>
+<div class="code"><pre>
+interface LLMProvider {
+  chat(opts: ChatOptions) → Promise&lt;ChatResult&gt;
+  chatWithThinking(opts: ChatOptions) → Promise&lt;ChatResult&gt;
+  // 默认回退到 chat()——具体 Provider 可覆盖
+}
+
+class DeepSeekProvider implements LLMProvider {
+  // chatWithThinking 只是 chat 的别名
+  // DeepSeek reasoning 通过 model 字段选择，prompt 层面无需特殊处理
+}
+
+createLLMProvider(config) → LLMProvider
+  └── 返回 new DeepSeekProvider(config)
+</pre>
+</div>
+
+<div class="callout info">
+  <strong>设计预留：</strong>v1 只有 DeepSeekProvider，但接口预留了 <code>chatWithThinking</code> 用于 reasoning 模型。跨模型审计随时能加第二个实现。设计 §17#4。
+</div>
+
+<h3>10.3 prefix.ts — Prompt 前缀组装（449 行）</h3>
+<p>三个系统 prompt + 三个组装函数。</p>
+
+<div class="code"><pre>
+PRO_THINK_SYSTEM (lines 8-61):
+  └── Step 1 深度思考（Pro/Reasoning 模型）
+  └── 给认知方法（还原论/同构映射/有损近似）
+  └── 无格式约束
+  └── MODE: think-extract | think-compile
+
+PRO_FORMAT_SYSTEM (lines 68-144):
+  └── Step 2 结构化提取（Flash/Chat 模型）
+  └── 只给格式约束
+  └── MODE: format-extract | format-compile
+
+PRO_SYSTEM (lines 148-175):
+  └── 单步模式（reread）
+  └── MODE: reread
+
+buildIngestPrefix(opts) → { systemPrompt, userMessage }
+  └── 单步（reread）prompt 组装
+
+buildThinkStepPrefix(opts, thinkMode) → { systemPrompt, userMessage }
+  └── Step 1: PRO_THINK_SYSTEM + MODE + think context + chunks
+
+buildFormatStepPrefix(opts, formatMode, thinkResult) → { systemPrompt, userMessage }
+  └── Step 2: PRO_FORMAT_SYSTEM + MODE + material info + thinkResult
+
+buildWorkspaceRules(config) → string
+  └── 目录结构 + frontmatter 字段 + raw/wiki 路径
+
+安全上限:
+  SAFETY_TOKEN_CAP = 80,000
+  EST_CHARS_PER_TOKEN = 4
+  → 320,000 字符上限
+</pre>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- §11 CLI 层详解 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="cli">
+<div class="section-head">
+  <div><span class="kicker">§11 — CLI Layer</span></div>
+  <div>
+    <h2>CLI 层：15 个命令 + 共享 LLM 初始化 + TUI</h2>
+    <p class="lead">所有用户交互通过 CLI 命令。每个命令有纯函数核心 + commander 注册器。</p>
+  </div>
+</div>
+
+<h3>11.1 命令注册（cli/index.ts）</h3>
+<p>15 个命令通过 <code>register*Command(program)</code> 注册：</p>
+
+<table>
+  <thead><tr><th>#</th><th>命令</th><th>文件</th><th>行数</th><th>作用</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td><code>ingest</code></td><td>ingest.ts</td><td>930</td><td>完整 Pro Ingest 流程（extract→compile→save）</td></tr>
+    <tr><td>2</td><td><code>status</code></td><td>status.ts</td><td>61</td><td>显示 wiki/raw 统计</td></tr>
+    <tr><td>3</td><td><code>query</code></td><td>query.ts</td><td>167</td><td>自然语言查询（6 种模式）</td></tr>
+    <tr><td>4</td><td><code>node</code></td><td>node.ts</td><td>44</td><td>查看单个节点</td></tr>
+    <tr><td>5</td><td><code>chat</code></td><td>chat.ts</td><td>14</td><td>交互式 TUI 对话</td></tr>
+    <tr><td>6</td><td><code>search</code></td><td>search.ts</td><td>59</td><td>纯搜索（不合成）</td></tr>
+    <tr><td>7</td><td><code>audit</code></td><td>audit.ts</td><td>139</td><td>结构 + 语义审计</td></tr>
+    <tr><td>8</td><td><code>inspire</code></td><td>inspire.ts</td><td>406</td><td>启发灵感（board 驱动）</td></tr>
+    <tr><td>9</td><td><code>plan</code></td><td>plan.ts</td><td>186</td><td>预演提取（dry-run，不写 wiki）</td></tr>
+    <tr><td>10</td><td><code>extract-props</code></td><td>extract-props.ts</td><td>87</td><td>命题提取（仅提取，不编译）</td></tr>
+    <tr><td>11</td><td><code>daemon</code></td><td>daemon.ts</td><td>101</td><td>启动 daemon 常驻进程</td></tr>
+    <tr><td>12</td><td><code>okf</code></td><td>okf.ts</td><td>48</td><td>OKF 导入/导出（2 子命令）</td></tr>
+    <tr><td>13</td><td><code>compile-from-props</code></td><td>compile-from-props.ts</td><td>509</td><td>从已有 props 编译 wiki 节点</td></tr>
+    <tr><td>14</td><td><code>ingest-pipeline</code></td><td>ingest-pipeline.ts</td><td>58</td><td>调用共享流水线</td></tr>
+    <tr><td>15</td><td><code>confirm</code></td><td>confirm.ts</td><td>213</td><td>人类批量确认 progress.md</td></tr>
+  </tbody>
+</table>
+
+<h3>11.2 cli-llm-init.ts — 共享 LLM 初始化（96 行）</h3>
+<div class="code"><pre>
+tryMakeLlmJudge(config) → (prompt) → Promise&lt;string&gt;
+  └── requireApiKey() → DeepSeekClient
+  └── AUDIT_SYSTEM_PROMPT → chat → return content
+
+tryMakeLlmCaller(config) → (board, question) → Promise&lt;LlmCallerResult&gt;
+  └── makeDeepSeekCaller(config)
+
+tryMakeInspireCaller(config) → (board, question) → Promise&lt;LlmCallerResult&gt;
+  └── makeDeepSeekCaller(config, { systemPrompt: INSPIRE_SYSTEM_PROMPT,
+        responseFormat: "json_object" })
+
+// 所有三个工厂都先 requireApiKey()——无 key 则抛异常
+</pre>
+</div>
+
+<h3>11.3 关键命令流程</h3>
+
+<h4>query 命令</h4>
+<div class="code"><pre>
+runQueryCli(config, question, options?) → RunQueryCliResult:
+  1. 必须提供 llmCaller（否则抛异常）
+  2. checkAuditGate() → 如果 passed: false → exit 2
+  3. buildQueryBoard(config, question, { mode, maxNodes, ... })
+  4. queryKnowledge({ question, config, mode, llmCaller })
+  5. 输出 JSON: { ok, mode, question, board, boardSummary,
+        answer, fromWiki, modelSynthesis, missingEvidence,
+        suggestedNextActions }
+  6. exitCode = 0
+</pre>
+</div>
+
+<h4>audit 命令</h4>
+<div class="code"><pre>
+runAuditCli(config, options?) → AuditCliResult:
+  1. 结构审计总是运行: auditWiki() → writeAuditResults()
+  2. 语义审计仅当 --semantic: runSemanticAudit() → writeSemanticAuditResults()
+     └── 失败时捕获异常 → 返回结构化失败（不抛异常）
+  3. writeAuditGate(structure.ok, semantic?.ok, nodes, score)
+  4. <b>v2.2 JSON 输出改进</b>:
+     ├── semantic 为 null（未运行）→ 输出 JSON.stringify(structure)
+     └── semantic 非 null → 输出 { structure, semantic } + failure fields
+  5. ok = structure.ok && (semantic?.ok ?? true)
+  6. exitCode = ok ? 0 : 2
+</pre>
+</div>
+
+<h4>inspire 命令</h4>
+<div class="code"><pre>
+runInspireCli(config, options?) → InspireResult:
+  1. 必须提供 llmCaller（否则抛异常）
+  2. 选择 anchor:
+     ├── --node → buildQueryBoard({ nodeId }) → 取种子
+     └── --seed → buildQueryBoard({ mode: "inspire" }) → 取 seedNodes[0]
+  3. 过滤 anchors（by kind / source）
+  4. llmCaller(board) → string 或 InspireItem[]
+  5. parseInspireItems() → 分桶到 5 个数组
+  6. 如果 --save → writeConfirmSection() 写入 progress.md
+     └── connections → type="edge"
+     └── hypotheses → type="reflow"
+</pre>
+</div>
+
+<h4>confirm 命令</h4>
+<div class="code"><pre>
+registerConfirmCommand(program):
+  选项: --list, --all, --accept &lt;ids&gt;, --reject &lt;ids&gt;
+
+  1. 读取 progress.md → parseConfirmManifest()
+  2. 过滤 status === "pending"
+  3. --list（默认）: 打印待确认项
+  4. --accept/--reject:
+     ├── 解析 IDs 或 1-based 索引
+     ├── type="edge" → applyEdgeConfirmation()
+     │   └── 解析 [nodeA→nodeB] → 写入 edge 到 frontmatter
+     │   └── <b>v2.2: edge type 从 "relates_to" 改为 "related"</b>
+     │   └── <b>v2.2: 修复了 return 后的 unreachable console.error</b>
+     └── 更新 status → writeConfirmSection()
+</pre>
+</div>
+
+<h4>plan 命令</h4>
+<div class="code"><pre>
+runPlan({ file, json }):
+  1. 加载源文件（md/tex/pdf）
+  2. proIngest({ source, config, client, mode: "extract" })
+     └── dry-run——不写 wiki
+  3. 计算覆盖率: chunkRefs / totalChunks
+  4. 输出（JSON 或人类可读）
+  └── "No wiki files written (dry-run)"
+</pre>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- §12 OKF 互操作 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="okf">
+<div class="section-head">
+  <div><span class="kicker">§12 — OKF Interop</span></div>
+  <div>
+    <h2>OKF 互操作：3 个模块</h2>
+    <p class="lead">Open Knowledge Format 导入/导出。导入内容作为 draft（confidence=0.5），不绕过审计。</p>
+  </div>
+</div>
+
+<div class="code"><pre>
+okf/mapping.ts (50 行):
+  kindToOkfType(kind) → string        // concept → "Concept"
+  okfTypeToKind(type) → WikiKind      // "bigquery table" → concept (best-effort)
+
+okf/import.ts (211 行):
+  importFromOkf(config, bundlePath) → { imported, skipped }
+    ├── 遍历 OKF bundle 目录
+    ├── 跳过 index.md 和 log.md
+    ├── 解析 frontmatter → okfTypeToKind()
+    ├── nodeId = sanitizeNodeId(relativePath)
+    ├── WikiNodeDraft { status: "draft", confidence: 0.5 }
+    ├── extractClaim(body) → 第一个非标题段落（截断 500 字符）
+    └── 写入 wiki/&lt;kind&gt;s/&lt;nodeId&gt;.md
+
+okf/export.ts (215 行):
+  exportToOkf(config, outDir) → { count, bundlePath }
+    ├── 遍历 9 个 wiki 子目录
+    ├── parseWikiContent() → 构建 OKF body
+    ├── 转换 [[wikilink]] → [name](/wiki/name.md)
+    ├── 写入每个概念文件 + 每目录 index.md + 根 index.md + log.md
+    └── 输出目录: &lt;outDir&gt;/okf-bundle/
+</pre>
+</div>
+
+<div class="callout info">
+  <strong>设计原则：</strong>导入的 OKF 内容作为 <code>status: "draft"</code>，<code>confidence: 0.5</code>，<code>reflowOrigin: "okf:..."</code>。不绕过审计门禁。与架构 §12 一致。
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- §13 类型系统 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="types">
+<div class="section-head">
+  <div><span class="kicker">§13 — Type System</span></div>
+  <div>
+    <h2>类型系统（types.ts — 627 行）</h2>
+    <p class="lead">全局类型定义，覆盖整个领域模型。</p>
+  </div>
+</div>
+
+<h3>核心类型层级</h3>
+
+<div class="diagram-wrap">
+<pre class="mermaid">
+graph TD
+  subgraph Ingest["输入层类型"]
+    Source["Source<br/>id, type, chunks[], fingerprint"]
+    Chunk["Chunk<br/>id, index, text, tokenEstimate, charStart/End"]
+    MainThread["MainThread<br/>id, title, description, chunkRefs"]
+    Proposition["Proposition<br/>id, threadId, claim, aiReading<br/>chunkRefs, kind, evidence, confidence<br/>counterIntuitive, revision, coverage"]
+  end
+
+  subgraph Wiki["Wiki 层类型"]
+    WikiKind["WikiKind (9 种)<br/>concept | claim | method | case<br/>equation | question | insight<br/>anchor | counter"]
+    WikiNodeDraft["WikiNodeDraft<br/>nodeId, kind, title, claim<br/>evidence[], interpretation, useFor<br/>limits[], links[], frontmatter"]
+    WikiFrontmatter["WikiFrontmatter<br/>nodeId, sourceIds[], sourceChase[]<br/>propRefs[], edges[], confidence<br/>auditStatus, auditScore<br/>claimType, inferenceLevel<br/>claimHash, boardRoles[]"]
+    WikiPage["WikiPage<br/>nodeId, filePath, frontmatter<br/>body, updateType"]
+  end
+
+  subgraph Graph["图谱类型"]
+    GraphEdgeType["GraphEdgeType (5 种)<br/>derived_from | contradicts<br/>supports | related | superseded_by<br/><b>v2.2: relates_to → related</b>"]
+    GraphEdge["GraphEdge<br/>from, to, type, confidence, source"]
+    ChaseProp["ChaseProp<br/>index, text, marker"]
+  end
+
+  subgraph Audit["审计类型"]
+    AuditStatus["AuditStatus<br/>pending | passed | warning | failed"]
+    SemanticVerdict["SemanticVerdict<br/>passed | warning | failed"]
+    AuditDimension["AuditDimension (5 维度)<br/>support | addition | inference<br/>limits | citation"]
+    SemanticJudgeVerdict["SemanticJudgeVerdict<br/>verdict, score, 5 维度评级<br/>issues[], anchor"]
+  end
+
+  subgraph Query["查询类型"]
+    BoardMode["BoardMode (6 种)<br/>ask | trace | expand<br/>compare | challenge | inspire"]
+    BoardRole["BoardRole (9 种)<br/>evidence | concept | method | case<br/>limit | counter | question<br/>anchor | bridge"]
+    ClaimType["ClaimType (6 种)<br/>source_claim | interpretation<br/>application | analogy<br/>question | counter"]
+    InferenceLevel["InferenceLevel (4 级)<br/>none | light | medium | strong"]
+    BoardNode["BoardNode<br/>nodeId, kind, title, claim<br/>score, boardRoles[]"]
+    QueryBoard["QueryBoard<br/>7 类节点 + gaps + instructions"]
+    QueryResultV6["QueryResultV6<br/>ok, mode, question, board<br/>answer, fromWiki[], modelSynthesis[]<br/>missingEvidence[], suggestedNextActions[]"]
+  end
+
+  Source --> Chunk
+  Proposition --> WikiNodeDraft
+  WikiNodeDraft --> WikiFrontmatter
+  WikiNodeDraft --> WikiPage
+  WikiFrontmatter --> GraphEdge
+  GraphEdge --> GraphEdgeType
+
+  style Ingest fill:#e3f2fd
+  style Wiki fill:#fff8e8
+  style Graph fill:#f5f0ff
+  style Audit fill:#fff3e0
+  style Query fill:#e8f5e9
+</pre>
+</div>
+
+<h3>BoardMode 别名映射</h3>
+<div class="code"><pre>
+BOARD_MODE_ALIASES = {
+  "exact": "trace",     // v5 → v6
+  "explore": "expand",  // v5 → v6
+  "counter": "challenge" // v5 → v6
+}
+
+normalizeBoardMode(mode) → BoardMode
+  └── 先查别名表，再验证合法值
+</pre>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- §14 设计差距 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="design-gaps">
+<div class="section-head">
+  <div><span class="kicker">§14 — Design Gaps</span></div>
+  <div>
+    <h2>设计文档 v2.0 vs 代码实现差距（v2.2 重新评估）</h2>
+    <p class="lead">以下是 architecture-design-v2.html 中 12 项设计决策与当前代码的对比结果。v2.2 代码更新后多项差距已修复。</p>
+  </div>
+</div>
+
+<table>
+  <thead><tr><th>#</th><th>设计决策</th><th>代码状态</th><th>证据</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>消除 chunk 标记，只保留 <code>&lt;!-- prop N --&gt;</code></td>
+      <td><span class="badge badge-discrepancy">未实现</span></td>
+      <td><code>chase.ts:20</code> CHASE_MARKER 仍定义；<code>store.ts:86</code> 仍写入 chunk 标记；<code>wiki-parser.ts:172-180</code> 仍解析 chunkRefs；<code>chase.ts:200-211</code> collectPropIndices fallback 到 chunk</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>prop 相邻窗口 <code>selectPropsContext()</code></td>
+      <td><span class="badge badge-ok">已实现</span></td>
+      <td><code>chase.ts:140-187</code> 存在；<code>semantic-audit.ts:167</code> 使用 window=3 作为<b>主要路径</b>（v2.2 确认），<code>selectChaseChunks</code> 仅作为 fallback。窗口 ±3 与设计正文一致</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>compile 自适应截断</td>
+      <td><span class="badge badge-ok">已实现（v2.2 变更）</span></td>
+      <td><code>pipeline.ts</code> <code>compileInputBudget()</code> v2.2 返回固定 256000（基于 256K context window）。不再用 <code>maxTokens × 2.5</code>。语义：正常不截断，超大才保底。<code>compile-from-props.ts</code> 也使用 <code>compileInputBudget(16384)</code> 替代旧硬编码 12000</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>compile prompt 生成 counter/limits</td>
+      <td><span class="badge badge-stub">部分实现</span></td>
+      <td>counter：<code>pipeline.ts</code> prompt 有 counter 提取指令 ✅。limits：prompt 中 limits 仅作为可选输出字段列出，无主动生成指令 ❌。v2.2 加强了可追溯性规则（不编造概率保证/策略建议）</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>覆盖式 ingest + fingerprint 匹配</td>
+      <td><span class="badge badge-ok">已实现（v2.3）</span></td>
+      <td>三层 fallback：fingerprint → sourceId → sourceChase ✅。fingerprint 从 chase 读取并写入 wiki frontmatter ✅。WikiFrontmatter 类型已更新 ✅</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>Board 简化（仅 challenge/inspire 强制注入）</td>
+      <td><span class="badge badge-ok">已实现</span></td>
+      <td><code>board.ts</code> <code>if (mode === "challenge" || mode === "inspire")</code>；ask/trace 有"v2 简化"注释</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td>软审计门禁</td>
+      <td><span class="badge badge-ok">已实现</span></td>
+      <td><code>audit-gate.ts:110-117</code> semanticOk===false → passed:true + warning；structureOk===false → passed:false</td>
+    </tr>
+    <tr>
+      <td>8-9</td>
+      <td>QMD searchLex/searchVector 接口</td>
+      <td><span class="badge badge-ok">已实现（v2.2 SDK 重写）</span></td>
+      <td><code>search-provider.ts</code> 接口定义 + <code>ProviderSearchOptions</code>；<code>qmd-search.ts</code> v2.2 从 CLI 改为 SDK <code>createStore()</code>，正确降级（不 fallback keyword），TTL 重试</td>
+    </tr>
+    <tr>
+      <td>10</td>
+      <td>简化 Board（ask/trace/expand/compare 纯搜索）+ Q10 边类型角色</td>
+      <td><span class="badge badge-ok">已实现（v2.2 Q10 收紧）</span></td>
+      <td>四种模式 counterNodes:[]，不使用 forcedNodes。Q10 收紧：只有 contradicts/superseded_by 注入，derived_from/related/supports 靠三路搜索 Graph 路</td>
+    </tr>
+    <tr>
+      <td>11</td>
+      <td>5 种 edge 类型</td>
+      <td><span class="badge badge-stub">类型已实现 / 生产者部分</span></td>
+      <td><code>types.ts:137-142</code> 5 种类型定义（v2.2: <code>relates_to</code> → <code>related</code>）。<code>buildGraphFromParsed</code> 归一化旧 <code>relates_to</code>。只有 derived_from 和 related 被 compile 生成。contradicts 有 contradictionsToEdges() 但无调用者</td>
+    </tr>
+    <tr>
+      <td>12</td>
+      <td>pipeline 写入 progress.md</td>
+      <td><span class="badge badge-ok">已实现（v2.2 Finding 3 修复）</span></td>
+      <td>矛盾+强化候选统一收集到 <code>pendingItems[]</code>，<b>一次性</b> <code>writeConfirmSection</code>。修复了之前多次调用覆盖的问题</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>v2.2 新增修复（Finding 编号对照）</h3>
+<table>
+  <thead><tr><th>Finding</th><th>问题</th><th>修复</th><th>代码位置</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Graph-only 邻居被丢弃</td><td>从 allParsed 查找并转为 BoardNode，按融合分数重排</td><td><code>board.ts</code> 候选池构建</td></tr>
+    <tr><td>2</td><td>并发 audit 写坏 frontmatter</td><td>串行链 + dirty 标志，多次变更合并一次审计</td><td><code>daemon/index.ts</code> scheduleAudit</td></tr>
+    <tr><td>3</td><td>writeConfirmSection 替换语义导致候选丢失</td><td>统一收集到 pendingItems[]，一次写入</td><td><code>pipeline.ts</code> Step 4</td></tr>
+    <tr><td>4</td><td>qmd 不可用时 searchLex/searchVector fallback 扭曲 RRF</td><td>返回空数组，不 fallback keyword</td><td><code>qmd-search.ts</code> searchLex/searchVector</td></tr>
+    <tr><td>5</td><td>旧边类型 relates_to 未归一化</td><td>buildGraphFromParsed 中 relates_to → related</td><td><code>graph.ts</code> buildGraphFromParsed</td></tr>
+    <tr><td>6</td><td>qmd 失败后永久缓存，daemon 无法自愈</td><td>TTL 重试（5 分钟后允许重试）</td><td><code>qmd-search.ts</code> getQmdStore</td></tr>
+    <tr><td>7</td><td>buildGraph 和 collectAllNodes 各读一遍全量 wiki</td><td>提取 buildGraphFromParsed，board 复用一次读取</td><td><code>graph.ts</code> + <code>board.ts</code></td></tr>
+    <tr><td>8</td><td>BM25 和 Vector 顺序执行</td><td>Promise.all 并行发起</td><td><code>board.ts</code> Promise.all</td></tr>
+    <tr><td>10</td><td>compileInputBudget 基于 maxTokens × 2.5</td><td>改为固定 256000（基于 256K context window）</td><td><code>pipeline.ts</code> compileInputBudget</td></tr>
+  </tbody>
+</table>
+
+<h3>额外发现（v2.2 更新）</h3>
+<table>
+  <thead><tr><th>项目</th><th>设计预期</th><th>代码实际</th><th>状态</th></tr></thead>
+  <tbody>
+    <tr><td><code>walkGraph()</code></td><td>在 graph.ts 中</td><td>在 <code>graph-search.ts:24-49</code> 中</td><td><span class="badge badge-ok">已实现（位置不同）</span></td></tr>
+    <tr><td><code>reinforce.ts</code> LLM judge</td><td>双维度 LLM judge</td><td>有 CONSISTENCY_PROMPT + INCREMENT_PROMPT，双维度阈值</td><td><span class="badge badge-ok">已实现</span></td></tr>
+    <tr><td>daemon 回流筛选</td><td>定时筛选候选</td><td><code>screenAndWriteReflow()</code> 是存根（v2.3 标记 DEFERRED）</td><td><span class="badge badge-stub">DEFERRED</span></td></tr>
+    <tr><td>daemon 审计队列</td><td>pendingAudit 被消费</td><td><b>v2.2 修复</b>：串行链 + dirty 标志，合并多次变更</td><td><span class="badge badge-ok">已实现</span></td></tr>
+    <tr><td>lint 自动修复</td><td>机械问题自动修复</td><td>无自动修复代码</td><td><span class="badge badge-stub">未实现</span></td></tr>
+    <tr><td>lint stale_audit</td><td>检测过时审计</td><td>类型声明但从未产生</td><td><span class="badge badge-stub">未实现</span></td></tr>
+    <tr><td>health CodeHealth</td><td>真实 typecheck/test 状态</td><td>硬编码占位</td><td><span class="badge badge-stub">占位</span></td></tr>
+    <tr><td><b>RRF 同量纲</b></td><td>三路统一公式</td><td><b>v2.2 修复</b>：Graph 路从 <code>0.3 × score</code> 改为 <code>0.3/(K+rank)</code>，新增 <code>scoresToRanks()</code></td><td><span class="badge badge-ok">已修复</span></td></tr>
+    <tr><td><b>edge 类型统一</b></td><td>relates_to 统一为 related</td><td><b>v2.2 修复</b>：types.ts、confirm.ts、graph.ts 全部统一</td><td><span class="badge badge-ok">已修复</span></td></tr>
+    <tr><td><b>compile-from-props 硬编码</b></td><td>使用 compileInputBudget</td><td><b>v2.2 修复</b>：从硬编码 12000 改为 <code>compileInputBudget(16384)</code></td><td><span class="badge badge-ok">已修复</span></td></tr>
+    <tr><td><b>audit CLI JSON 输出</b></td><td>semantic 为 null 时只输出 structure</td><td><b>v2.2 修复</b>：semantic 为 null 时输出 <code>JSON.stringify(structure)</code>，非 null 时输出 <code>{structure, semantic}</code></td><td><span class="badge badge-ok">已修复</span></td></tr>
+  </tbody>
+</table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- §15 死代码 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="dead-code">
+<div class="section-head">
+  <div><span class="kicker">§15 — Dead Code</span></div>
+  <div>
+    <h2>死代码清单（v2.2 更新）</h2>
+    <p class="lead">以下代码存在于代码库中但从未被调用或导入。v2.2 修复了 confirm.ts 中的不可达代码。</p>
+  </div>
+</div>
+
+<table>
+  <thead><tr><th>文件</th><th>位置</th><th>内容</th><th>类型</th><th>v2.2 状态</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>contradiction.ts</code></td>
+      <td>line 12</td>
+      <td><code>import { buildGraph }</code> — 导入但从未使用</td>
+      <td><span class="badge badge-dead">死导入</span></td>
+      <td>未修复</td>
+    </tr>
+    <tr>
+      <td><code>contradiction.ts</code></td>
+      <td>line 13</td>
+      <td><code>import type { GraphData }</code> — 导入但从未使用</td>
+      <td><span class="badge badge-dead">死导入</span></td>
+      <td>未修复</td>
+    </tr>
+    <tr>
+      <td><code>contradiction.ts</code></td>
+      <td>lines 67-68</td>
+      <td>悬挂的 JSDoc 注释（对应已删除函数的残留）</td>
+      <td><span class="badge badge-dead">残留注释</span></td>
+      <td>未修复</td>
+    </tr>
+    <tr>
+      <td><code>contradiction.ts</code></td>
+      <td>line 76</td>
+      <td><code>config</code> 参数 — 接受但从未使用</td>
+      <td><span class="badge badge-dead">死参数</span></td>
+      <td>未修复</td>
+    </tr>
+    <tr>
+      <td><code>contradiction.ts</code></td>
+      <td>lines 113-123</td>
+      <td><code>contradictionsToEdges()</code> — 导出但无调用者</td>
+      <td><span class="badge badge-dead">死导出</span></td>
+      <td>未修复</td>
+    </tr>
+    <tr>
+      <td><code>graph.ts</code></td>
+      <td>154-175</td>
+      <td><code>getOutgoingEdges</code>, <code>getIncomingEdges</code>, <code>getRelatedEdges</code>, <code>getEdgesByType</code>, <code>findOrphanNodes</code> — 无调用者</td>
+      <td><span class="badge badge-dead">死导出</span></td>
+      <td>未修复</td>
+    </tr>
+    <tr>
+      <td><code>daemon/reflow.ts</code></td>
+      <td>line 18-32</td>
+      <td><code>screenAndWriteReflow</code> — 始终返回 0 的存根</td>
+      <td><span class="badge badge-stub">存根</span></td>
+      <td>未修复</td>
+    </tr>
+    <tr>
+      <td><code>daemon/reflow.ts</code></td>
+      <td>import</td>
+      <td><code>screenReflowCandidates</code> 导入但未使用</td>
+      <td><span class="badge badge-dead">死导入</span></td>
+      <td>未修复</td>
+    </tr>
+    <tr>
+      <td><code>lint.ts</code></td>
+      <td>type</td>
+      <td><code>stale_audit</code> category 声明但从未产生</td>
+      <td><span class="badge badge-dead">死类型值</span></td>
+      <td>未修复</td>
+    </tr>
+    <tr>
+      <td><code>confirm.ts</code></td>
+      <td>line 208</td>
+      <td>unreachable <code>console.error</code>（在 <code>return true</code> 之后）</td>
+      <td><span class="badge badge-dead">不可达代码</span></td>
+      <td><span class="badge badge-ok">v2.2 已修复 ✅</span></td>
+    </tr>
+    <tr>
+      <td><code>health.ts</code></td>
+      <td>line 78-79</td>
+      <td>CodeHealth 硬编码占位</td>
+      <td><span class="badge badge-stub">占位</span></td>
+      <td>未修复</td>
+    </tr>
+    <tr>
+      <td><code>chase.ts</code></td>
+      <td>全文件</td>
+      <td>chunk 标记相关函数（readChaseChunks, selectChaseChunks, getExcerpt, collectChunkIndices, parseChaseChunks）</td>
+      <td><span class="badge badge-discrepancy">待消除</span></td>
+      <td>未修复</td>
+    </tr>
+    <tr>
+      <td><code>store.ts</code></td>
+      <td>lines 132-180</td>
+      <td><code>readChunks()</code> 的 v5 闭合标记解析</td>
+      <td><span class="badge badge-discrepancy">待消除</span></td>
+      <td>未修复</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout good">
+  <strong>v2.2 修复：</strong><code>confirm.ts</code> 中 <code>return true</code> 之后的 unreachable <code>console.error</code> 已修复——现在 <code>console.error</code> 在 <code>return true</code> 之前执行。同时 <code>edge type</code> 从 <code>"relates_to"</code> 改为 <code>"related"</code>。
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- §16 全模块清单 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="modules">
+<div class="section-head">
+  <div><span class="kicker">§16 — Module Inventory</span></div>
+  <div>
+    <h2>全模块清单（65 个源文件）</h2>
+    <p class="lead">按行数从大到小排列。每个文件一行，含路径、行数、主要导出。</p>
+  </div>
+</div>
+
+<table>
+  <thead><tr><th>文件</th><th>行数</th><th>主要导出</th></tr></thead>
+  <tbody>
+    <tr><td><code>cli/commands/ingest.ts</code></td><td>930</td><td>registerIngestCommand</td></tr>
+    <tr><td><code>query/board.ts</code></td><td>746</td><td>buildQueryBoard, BuildQueryBoardOptions <span class="badge badge-new">v2.2 重写</span></td></tr>
+    <tr><td><code>ingest/listening.ts</code></td><td>657</td><td>proIngest, IngestOpts</td></tr>
+    <tr><td><code>types.ts</code></td><td>627</td><td>全部核心类型（Source, WikiNodeDraft, QueryResultV6 等）</td></tr>
+    <tr><td><code>query/engine.ts</code></td><td>522</td><td>queryKnowledge, makeDeepSeekCaller, QUERY_SYSTEM_PROMPT</td></tr>
+    <tr><td><code>cli/commands/compile-from-props.ts</code></td><td>509</td><td>registerCompileFromPropsCommand <span class="badge badge-new">v2.2 更新</span></td></tr>
+    <tr><td><code>knowledge/store.ts</code></td><td>476</td><td>KnowledgeStore</td></tr>
+    <tr><td><code>knowledge/wiki-parser.ts</code></td><td>493</td><td>parseWikiContent, scanWikiFiles, normalizeFrontmatter</td></tr>
+    <tr><td><code>core/prefix.ts</code></td><td>449</td><td>buildIngestPrefix, buildThinkStepPrefix, buildFormatStepPrefix</td></tr>
+    <tr><td><code>knowledge/semantic-audit.ts</code></td><td>420</td><td>runSemanticAudit, writeSemanticAuditResults <span class="badge badge-new">v2.2 更新</span></td></tr>
+    <tr><td><code>cli/commands/inspire.ts</code></td><td>406</td><td>runInspireCli, registerInspireCommand</td></tr>
+    <tr><td><code>ingest/pipeline.ts</code></td><td>408</td><td>runIngestPipeline, compileInputBudget <span class="badge badge-new">v2.2 更新</span></td></tr>
+    <tr><td><code>knowledge/semantic-audit-prompt.ts</code></td><td>295</td><td>buildSemanticAuditInput, buildSemanticAuditPrompt, parseSemanticAuditResponse</td></tr>
+    <tr><td><code>knowledge/audit.ts</code></td><td>282</td><td>auditWiki, writeAuditResults, AuditResult</td></tr>
+    <tr><td><code>query/search.ts</code></td><td>276</td><td>searchWiki, KeywordSearchProvider</td></tr>
+    <tr><td><code>ingest/proposition.ts</code></td><td>274</td><td>extractPropositions</td></tr>
+    <tr><td><code>knowledge/chase.ts</code></td><td>268</td><td>readChaseProps, selectPropsContext, collectPropIndices <span class="badge badge-new">v2.2 更新</span></td></tr>
+    <tr><td><code>daemon/health.ts</code></td><td>263</td><td>collectHealth, SystemHealth</td></tr>
+    <tr><td><code>knowledge/render.ts</code></td><td>235</td><td>renderWikiNode</td></tr>
+    <tr><td><code>knowledge/graph.ts</code></td><td>236</td><td>buildGraph, <b>buildGraphFromParsed</b>, GraphData, getGraphStats <span class="badge badge-new">v2.2 更新</span></td></tr>
+    <tr><td><code>okf/export.ts</code></td><td>215</td><td>exportToOkf</td></tr>
+    <tr><td><code>okf/import.ts</code></td><td>211</td><td>importFromOkf</td></tr>
+    <tr><td><code>ingest/pdf-loader.ts</code></td><td>210</td><td>loadFromPdf</td></tr>
+    <tr><td><code>ingest/tex-loader.ts</code></td><td>202</td><td>loadFromTex</td></tr>
+    <tr><td><code>evolution/confirm.ts</code></td><td>195</td><td>writeConfirmSection, parseConfirmManifest, checkBacklog <span class="badge badge-new">v2.2 更新</span></td></tr>
+    <tr><td><code>cli/commands/confirm.ts</code></td><td>212</td><td>registerConfirmCommand <span class="badge badge-new">v2.2 更新</span></td></tr>
+    <tr><td><code>cli/commands/plan.ts</code></td><td>186</td><td>registerPlanCommand</td></tr>
+    <tr><td><code>ingest/loader.ts</code></td><td>175</td><td>loadFromFile, chunkText, parseFrontmatter</td></tr>
+    <tr><td><code>query/qmd-search.ts</code></td><td>191</td><td>QmdSearchProvider <span class="badge badge-new">v2.2 SDK 重写</span></td></tr>
+    <tr><td><code>cli/commands/query.ts</code></td><td>167</td><td>runQueryCli, registerQueryCommand</td></tr>
+    <tr><td><code>knowledge/audit-gate.ts</code></td><td>166</td><td>checkAuditGate, writeAuditGate</td></tr>
+    <tr><td><code>ingest/policy.ts</code></td><td>164</td><td>IngestPolicy</td></tr>
+    <tr><td><code>daemon/index.ts</code></td><td>181</td><td>runDaemon <span class="badge badge-new">v2.2 审计串行化</span></td></tr>
+    <tr><td><code>core/client.ts</code></td><td>162</td><td>DeepSeekClient, ChatOptions, ChatResult</td></tr>
+    <tr><td><code>evolution/reinforce.ts</code></td><td>154</td><td>detectReinforcementCandidates</td></tr>
+    <tr><td><code>daemon/lint.ts</code></td><td>140</td><td>lintWiki, LintReport</td></tr>
+    <tr><td><code>cli/commands/audit.ts</code></td><td>139</td><td>runAuditCli, registerAuditCommand <span class="badge badge-new">v2.2 更新</span></td></tr>
+    <tr><td><code>evolution/contradiction.ts</code></td><td>123</td><td>detectContradictions, contradictionsToEdges（死）</td></tr>
+    <tr><td><code>index.ts</code></td><td>126</td><td>公共 API 导出</td></tr>
+    <tr><td><code>cli/commands/extract-props.ts</code></td><td>87</td><td>registerExtractPropsCommand</td></tr>
+    <tr><td><code>daemon/state.ts</code></td><td>86</td><td>createDaemonState, writeDaemonState, readDaemonState</td></tr>
+    <tr><td><code>config.ts</code></td><td>84</td><td>loadConfig, findProjectRoot, loadApiKey</td></tr>
+    <tr><td><code>query/rrf.ts</code></td><td>93</td><td>rrfFusion, <b>scoresToRanks</b>, rankByScore <span class="badge badge-new">v2.2 同量纲修复</span></td></tr>
+    <tr><td><code>query/search-provider.ts</code></td><td>74</td><td>SearchProvider, SearchResult, <b>ProviderSearchOptions</b> <span class="badge badge-new">v2.2 扩展</span></td></tr>
+    <tr><td><code>evolution/supersede.ts</code></td><td>72</td><td>supersedeNode, supersedeNodes</td></tr>
+    <tr><td><code>knowledge/manifest.ts</code></td><td>72</td><td>computeClaimHash, generateRelatedFor</td></tr>
+    <tr><td><code>evolution/reflow.ts</code></td><td>67</td><td>screenReflowCandidates, reflowToFrontmatter</td></tr>
+    <tr><td><code>cli/commands/status.ts</code></td><td>61</td><td>registerStatusCommand</td></tr>
+    <tr><td><code>core/llm-provider.ts</code></td><td>60</td><td>LLMProvider, DeepSeekProvider, createLLMProvider</td></tr>
+    <tr><td><code>cli/commands/ingest-pipeline.ts</code></td><td>58</td><td>registerIngestPipelineCommand</td></tr>
+    <tr><td><code>cli/index.ts</code></td><td>57</td><td>主入口（注册 15 个命令）</td></tr>
+    <tr><td><code>cli/commands/search.ts</code></td><td>59</td><td>registerSearchCommand</td></tr>
+    <tr><td><code>daemon/watcher.ts</code></td><td>54</td><td>startWatcher, stopWatcher</td></tr>
+    <tr><td><code>query/graph-search.ts</code></td><td>49</td><td>walkGraph</td></tr>
+    <tr><td><code>agent/contract.ts</code></td><td>48</td><td>buildFailureJson, AgentFailure</td></tr>
+    <tr><td><code>cli/commands/okf.ts</code></td><td>48</td><td>registerOkfCommands</td></tr>
+    <tr><td><code>daemon/reflow.ts</code></td><td>49</td><td>screenAndWriteReflow（存根）</td></tr>
+    <tr><td><code>daemon/timer.ts</code></td><td>44</td><td>startTimers, stopTimers</td></tr>
+    <tr><td><code>cli/commands/node.ts</code></td><td>44</td><td>registerNodeCommand</td></tr>
+    <tr><td><code>cli/commands/chat.ts</code></td><td>14</td><td>registerChatCommand</td></tr>
+    <tr><td><code>types/pdf-parse.d.ts</code></td><td>13</td><td>类型声明</td></tr>
+    <tr><td><code>cli/cli-llm-init.ts</code></td><td>96</td><td>tryMakeLlmJudge, tryMakeLlmCaller, tryMakeInspireCaller</td></tr>
+    <tr><td><code>cli/commands/daemon.ts</code></td><td>101</td><td>registerDaemonCommand</td></tr>
+  </tbody>
+</table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- §17 输入信息流详细分析 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="input-flow">
+<div class="section-head">
+  <div><span class="kicker">§17 — Input Information Flow</span></div>
+  <div>
+    <h2>输入信息流详细分析</h2>
+    <p class="lead">从原始文件到 wiki 节点的完整信息流，包括每一步的数据变换、LLM 交互和写入操作。</p>
+  </div>
+</div>
+
+<h3>17.1 完整信息流图</h3>
+
+<div class="diagram-wrap">
+<pre class="mermaid">
+flowchart TD
+  subgraph Phase0["Phase 0 — 原始文件"]
+    F1["📄 文件（md/tex/pdf）"]
+  end
+
+  subgraph Phase1["Phase 1 — 加载 + 分块"]
+    L["loader / tex-loader / pdf-loader"]
+    F1 --> L
+    L -->|"Source { chunks[], fingerprint }"| S1["store.saveRaw()"]
+  end
+
+  subgraph Phase2["Phase 2 — chase 文件"]
+    S1 -->|"写入"| Chase["raw/chase/*.md<br/>frontmatter + chunk 标记 + body"]
+    S1 -->|"复制原文件"| Orig["raw/original/&lt;format&gt;/"]
+  end
+
+  subgraph Phase3["Phase 3 — 命题提取"]
+    Chase -->|"readChaseProps()"| Check{"已有 prop 标记?"}
+    Check -->|"否"| EX["extractPropositions()<br/>LLM 调用"]
+    EX -->|"插入 <!-- prop N -->"| Chase2["chase 文件更新"]
+    Check -->|"是"| Skip["跳过提取"]
+  end
+
+  subgraph Phase4["Phase 4 — 编译"]
+    Chase2 -->|"readChaseProps()"| Props["ChaseProp[]"]
+    Props -->|"拼接 [prop N] text"| Budget["compileInputBudget()<br/>自适应截断"]
+    Budget -->|"compile prompt"| LLM1["LLM 调用<br/>maxTokens=8192"]
+    LLM1 -->|"nodeDrafts[]"| Parse["解析 + 验证<br/>kind, evidence, propRefs"]
+    Parse -->|"edge 重映射"| Cleanup["覆盖式删除旧节点"]
+    Cleanup -->|"renderWikiNode()"| WikiNodes["wiki/&lt;kind&gt;s/*.md"]
+  end
+
+  subgraph Phase5["Phase 5 — 审计"]
+    WikiNodes --> SA["auditWiki()<br/>结构审计"]
+    WikiNodes --> SB["runSemanticAudit()<br/>5 维度 LLM judge"]
+    SA -->|"writeAuditResults()"| WikiNodes
+    SB -->|"writeSemanticAuditResults()"| WikiNodes
+    SA --> Gate["writeAuditGate()"]
+    SB --> Gate
+    Gate --> GateFile["wiki/audit-gate.json"]
+  end
+
+  subgraph Phase6["Phase 6 — 矛盾/强化检测"]
+    WikiNodes --> CD["detectContradictions()<br/>只取第一个 draft<br/>LLM 判断"]
+    WikiNodes --> RD["detectReinforcementCandidates()<br/>每个 draft<br/>LLM 双维度"]
+    CD -->|"writeConfirmSection()"| Progress["loopadvance/progress.md"]
+    RD -->|"writeConfirmSection()"| Progress
+  end
+
+  subgraph Phase7["Phase 7 — 人类确认"]
+    Progress -->|"人类 review"| Confirm["confirm 命令"]
+    Confirm -->|"applyEdgeConfirmation()"| WikiNodes
+    Confirm -->|"supersedeNode()"| Legacy["旧节点 → legacy"]
+  end
+
+  style Phase0 fill:#f5f5f5
+  style Phase1 fill:#e3f2fd
+  style Phase2 fill:#e8f5e9
+  style Phase3 fill:#fff8e8
+  style Phase4 fill:#fff3e0
+  style Phase5 fill:#f5f0ff
+  style Phase6 fill:#fce4ec
+  style Phase7 fill:#e8f5e9
+</pre>
+</div>
+
+<h3>17.2 数据变换追踪</h3>
+<p>以下追踪一个 Markdown 文件从输入到 wiki 节点的完整数据变换：</p>
+
+<div class="code"><pre>
+━━━ Step 1: loadFromFile("paper.md") ━━━
+
+输入: 文件内容 = "# Title\n\nPara 1...\n\nPara 2...\n\n..."
+输出: Source {
+  id: "raw/md/paper-a1b2c3d4e5f6a7b8"
+  type: "md"
+  title: "Title"
+  fingerprint: "a1b2c3d4e5f6a7b8"  // sha256(body).slice(0,16)
+  chunks: [
+    { id: "raw/md/paper-a1b2...-#0", index: 0, text: "Para 1...", charStart: 12, charEnd: 120 },
+    { id: "raw/md/paper-a1b2...-#1", index: 1, text: "Para 2...", charStart: 122, charEnd: 200 }
+  ]
+}
+
+━━━ Step 2: store.saveRaw(source) ━━━
+
+写入: raw/chase/paper-a1b2c3d4e5f6a7b8.md
+内容:
+  ---
+  sourceId: raw/md/paper-a1b2c3d4e5f6a7b8
+  title: Title
+  sourcePath: /path/to/paper.md
+  sourceType: md
+  fingerprint: a1b2c3d4e5f6a7b8
+  chunkCount: 2
+  loaderVersion: v5.0
+  createdAt: 2026-07-10T...
+  ---
+  <!-- chunk:1 id=raw/md/paper-...-#0 charStart=12 charEnd=120 -->
+  Para 1...
+  <!-- /chunk:1 -->
+  <!-- chunk:2 id=raw/md/paper-...-#1 charStart=122 charEnd=200 -->
+  Para 2...
+  <!-- /chunk:2 -->
+
+同时复制: 原始文件 → raw/original/md/paper.md
+
+━━━ Step 3: extractPropositions(content, llmCaller) ━━━
+
+LLM 输入: chase 文件内容（含 chunk 标记）
+LLM 输出: {"propositions": [
+  {"index": 1, "text": "Para 1 的第一个原子事实", "chunkIndex": 1},
+  {"index": 2, "text": "Para 1 的第二个原子事实", "chunkIndex": 1},
+  {"index": 3, "text": "Para 2 的事实陈述", "chunkIndex": 2}
+]}
+
+写入: 更新 chase 文件，插入 prop 标记:
+  ...
+  <!-- chunk:1 ... -->
+  Para 1...
+  <!-- /chunk:1 -->
+  <!-- prop 1 -->
+  <!-- prop 2 -->
+  <!-- chunk:2 ... -->
+  Para 2...
+  <!-- /chunk:2 -->
+  <!-- prop 3 -->
+
+━━━ Step 4: compile (pipeline.ts) ━━━
+
+readChaseProps() → [
+  { index: 1, text: "Para 1 的第一个原子事实", marker: "<!-- prop 1 -->" },
+  { index: 2, text: "Para 1 的第二个原子事实", marker: "<!-- prop 2 -->" },
+  { index: 3, text: "Para 2 的事实陈述", marker: "<!-- prop 3 -->" }
+]
+
+拼接: "[prop 1] Para 1 的第一个...\n[prop 2] Para 1 的第二个...\n[prop 3] Para 2 的..."
+截断: compileInputBudget(8192) → <b>256000 字符</b>（v2.2: 固定值，基于 256K context window）
+  → slice(0, 256000)
+
+LLM 输入: compile prompt + 拼接的 prop 文本
+  prompt 规则（v2.2 加强）:
+  - propRefs 必须是数字索引，不要输出命题文本
+  - claim 必须逐句可追溯到 prop 原文
+  - 不添加原文没有的概率保证/策略建议/价值判断
+  - 不要"保证至少 N%"除非 prop 原文里有
+  - 不要"可作为稳健策略"除非 prop 原文明确建议
+
+LLM 输出: {"nodeDrafts": [
+  {
+    "nodeId": "concept-paper-title",
+    "kind": "concept",
+    "title": "Title",
+    "claim": "这是一个关于...的概念",
+    "evidence": [{"propRefs": ["1"], "excerpt": "Para 1 的第一个..."}],
+    "edges": [{"to": "method-paper-x", "type": "derived_from", "confidence": 0.8}]
+  }
+]}
+
+解析: 验证 kind ∈ 9 种合法值
+标准化: evidence.propRefs 验证为纯数字
+  <b>v2.2 变更</b>：非数字 propRefs 直接过滤掉（之前回退 "1"，现在过滤为空数组）
+构建: WikiNodeDraft { nodeId, kind, title, claim, evidence, edges, ... }
+
+覆盖式清理: scanWikiFiles() → 删除 sourceIds 包含 "paper-a1b2..." 的旧节点
+写入: renderWikiNode(draft) → wiki/concepts/concept-paper-title.md
+
+文件内容:
+  ---
+  nodeId: concept-paper-title
+  kind: concept
+  title: Title
+  sourceIds: [raw/md/paper-a1b2...]
+  sourceChase: [raw/chase/paper-a1b2....md]
+  propRefs: ['1']
+  confidence: 0.75
+  status: draft
+  edges: [{"from":"concept-paper-title","to":"method-paper-x","type":"derived_from","confidence":0.8,"source":"compile"}]
+  createdAt: 2026-07-10T...
+  updatedAt: 2026-07-10T...
+  ---
+  ## Claim
+  这是一个关于...的概念
+  ## Evidence
+  - **Source**: raw/md/paper-a1b2... | PropRefs: [1]
+    > Para 1 的第一个...
+
+━━━ Step 5: 审计 ━━━
+
+auditWiki():
+  对每个 wiki 文件:
+    parseWikiContent() → 检查 sourceChase 存在、propRefs 非空、evidence/claim 非空
+    验证 propRef 在 collectPropIndices(chaseContent) 中
+  writeAuditResults() → updateFrontmatter(auditStatus: "passed"|"failed")
+
+runSemanticAudit():
+  对每个节点:
+    selectPropsContext(config, sourceChase, propRefs, 3) → ±3 prop 窗口文本
+    buildSemanticAuditPrompt() → LLM judge
+    5 维度评级 → SemanticJudgeVerdict
+  writeSemanticAuditResults() → updateFrontmatter(auditStatus, auditScore)
+
+writeAuditGate() → wiki/audit-gate.json:
+  { structureOk: true, semanticOk: true, timestamp: "...", nodes: 1, semanticScore: 0.85 }
+
+━━━ Step 6: 矛盾/强化检测 ━━━
+
+detectContradictions(firstDraft, existingSameKindNodes, llmCaller):
+  LLM 判断: 新节点是否与已有同 kind 节点矛盾
+  候选 → writeConfirmSection(progress.md, [{ type:"edge", priority:"high", ... }])
+
+detectReinforcementCandidates(eachDraft, existingNodes, reinforceLlm):
+  关键词预筛 → LLM 双维度（一致性 + 证据增量）
+  候选 → writeConfirmSection(progress.md, [{ type:"reinforce", priority:"medium", ... }])
+
+━━━ Step 7: 人类确认 ━━━
+
+llmwiki confirm --list:
+  parseConfirmManifest(progress.md) → 待确认项列表
+  显示: 🔗 [high] edge: [A→B] 矛盾描述...
+        📝 [medium] reinforce: 节点描述...
+
+llmwiki confirm --accept 1:
+  applyEdgeConfirmation() → 写入 related edge 到 frontmatter
+  item.status = "confirmed"
+  writeConfirmSection() → 更新 progress.md
+</pre>
+</div>
+
+<h3>17.3 LLM 调用清单</h3>
+<p>整个 ingest 流水线中 LLM 被调用的位置：</p>
+
+<table>
+  <thead><tr><th>步骤</th><th>调用位置</th><th>模型</th><th>maxTokens</th><th>responseFormat</th><th>用途</th></tr></thead>
+  <tbody>
+    <tr><td>命题提取</td><td><code>pipeline.ts</code></td><td>config.model (flash)</td><td>32768</td><td>json_object</td><td>提取原子命题</td></tr>
+    <tr><td>编译</td><td><code>pipeline.ts</code></td><td>config.model (flash)</td><td>8192</td><td>json_object</td><td>生成 wiki 节点（截断 256K 字符）</td></tr>
+    <tr><td>语义审计</td><td><code>pipeline.ts</code></td><td>config.model</td><td>4096</td><td>json_object</td><td>5 维度忠实度判断（<b>使用 selectPropsContext</b>）</td></tr>
+    <tr><td>矛盾检测</td><td><code>pipeline.ts</code></td><td>config.model</td><td>2048</td><td>—</td><td>矛盾判断</td></tr>
+    <tr><td>强化检测（维度 1）</td><td><code>reinforce.ts</code></td><td>config.model</td><td>1024</td><td>—</td><td>语义一致度</td></tr>
+    <tr><td>强化检测（维度 2）</td><td><code>reinforce.ts</code></td><td>config.model</td><td>1024</td><td>—</td><td>证据增量度</td></tr>
+  </tbody>
+</table>
+
+<h3>17.4 文件写入清单</h3>
+<p>ingest 流水线写入的文件：</p>
+
+<table>
+  <thead><tr><th>步骤</th><th>写入路径</th><th>写入方式</th></tr></thead>
+  <tbody>
+    <tr><td>saveRaw</td><td><code>raw/chase/&lt;cleanId&gt;.md</code></td><td>writeFileSync（覆盖）</td></tr>
+    <tr><td>saveRaw</td><td><code>raw/original/&lt;format&gt;/&lt;filename&gt;</code></td><td>copyFileSync（跳过如已在 original root）</td></tr>
+    <tr><td>命题提取</td><td><code>raw/chase/&lt;cleanId&gt;.md</code></td><td>writeFileSync（覆盖，插入 prop 标记）</td></tr>
+    <tr><td>覆盖式删除</td><td><code>wiki/&lt;kind&gt;s/*.md</code></td><td>unlinkSync（旧节点）</td></tr>
+    <tr><td>编译写入</td><td><code>wiki/&lt;kind&gt;s/&lt;nodeId&gt;.md</code></td><td>writeFileSync（新节点）+ edge 内联修复</td></tr>
+    <tr><td>结构审计</td><td><code>wiki/&lt;kind&gt;s/*.md</code></td><td>updateFrontmatter（auditStatus）</td></tr>
+    <tr><td>语义审计</td><td><code>wiki/&lt;kind&gt;s/*.md</code></td><td>updateFrontmatter（auditStatus + auditScore）</td></tr>
+    <tr><td>审计门禁</td><td><code>wiki/audit-gate.json</code></td><td>writeFileSync</td></tr>
+    <tr><td>矛盾/强化</td><td><code>loopadvance/progress.md</code></td><td>writeConfirmSection（<b>v2.2: 统一收集后一次写入</b>）</td></tr>
+    <tr><td>索引重建</td><td><code>wiki/index.md</code> + <code>wiki/index.json</code></td><td>writeFileSync</td></tr>
+  </tbody>
+</table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- §18 v2.3 变更日志 -->
+<section id="changelog-v23">
+<div class="section-head">
+  <div><span class="kicker">§18 — v2.3 Changelog</span></div>
+  <div><h2>v2.3 变更日志：2026-07-10</h2></div>
+</div>
+
+<table>
+  <thead><tr><th>变更</th><th>内容</th><th>文件</th></tr></thead>
+  <tbody>
+    <tr><td><b>fingerprint 清理</b></td><td>三层 fallback 清理：fingerprint → sourceId → sourceChase。chase 的 fingerprint 被读取并写入 wiki frontmatter</td><td><code>pipeline.ts</code>, <code>compile-from-props.ts</code>, <code>types.ts</code></td></tr>
+    <tr><td><b>Edge 类型扩展</b></td><td>compile prompt 的 edge types 从 2 种扩展到 4 种：+supports +superseded_by。validator 同步更新</td><td><code>pipeline.ts</code>, <code>compile-from-props.ts</code></td></tr>
+    <tr><td><b>Limits 自生成</b></td><td>验证：两个 compile prompt 都已有 <code>limits: 必须列出...无则写「暂无」</code> 指令——v2.2 已实现</td><td><code>pipeline.ts</code>, <code>compile-from-props.ts</code></td></tr>
+    <tr><td><b>Prompt 统一</b></td><td>验证：两个 compile prompt 的「最重要规则」内容完全相同（8 行规则 + counter 提取指令）</td><td><code>pipeline.ts</code>, <code>compile-from-props.ts</code></td></tr>
+    <tr><td><b>Reflow 标记延后</b></td><td><code>reflow.ts</code> 顶部添加 DEFERRED 注释：依赖三路搜索 + qmd embed 就绪后启用</td><td><code>daemon/reflow.ts</code></td></tr>
+    <tr><td><b>Lint 自动修复</b></td><td>延后：lint 检测正常，auto-fix 需审计 pipeline 集成设计</td><td><code>daemon/lint.ts</code></td></tr>
+  </tbody>
+</table>
+
+<h3>v2.3 设计偏差修复汇总</h3>
+<table>
+  <thead><tr><th>Gap</th><th>状态</th><th>修复</th></tr></thead>
+  <tbody>
+    <tr><td>Gap 1: Chunk 标记</td><td>✅ 已修复</td><td>写路径已消灭（store.ts 不再写 chunk marker）。读路径保留用于向后兼容</td></tr>
+    <tr><td>Gap 2: Fingerprint 清理</td><td>✅ v2.3 修复</td><td>三层 fallback 清理 + WikiFrontmatter.fingerprint 字段</td></tr>
+    <tr><td>Gap 3: Lint 自动修复</td><td>📌 延后</td><td>lint 检测正常，auto-fix 需更深设计</td></tr>
+    <tr><td>Gap 4: 回流筛选</td><td>📌 延后</td><td>标记为 DEFERRED，依赖三路搜索+qmd embed</td></tr>
+    <tr><td>Gap 5: Edge 类型补全</td><td>✅ v2.3 修复</td><td>compile prompt 扩展为 4 种 edge 类型</td></tr>
+    <tr><td>Gap 6: Limits 自生成</td><td>✅ 已存在</td><td>两个 prompt 都已有 limits 指令</td></tr>
+    <tr><td>Gap 7: Prompt 统一</td><td>✅ 已存在</td><td>两个 prompt 规则内容相同</td></tr>
+    <tr><td>Gap 8: selectChaseChunks</td><td>✅ 已修复</td><td>semantic-audit.ts 不再调用 selectChaseChunks</td></tr>
+  </tbody>
+</table>
+</section>
+
+<!-- §18 v2.2 变更日志 -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<section id="changelog-v22">
+<div class="section-head">
+  <div><span class="kicker">§18 — v2.2 Changelog</span></div>
+  <div>
+    <h2>v2.2 变更日志：代码更新摘要</h2>
+    <p class="lead">本节记录 v2.1 → v2.2 之间的所有代码变更，按 Finding 编号组织。每个 Finding 对应一个具体的问题发现和修复。</p>
+  </div>
+</div>
+
+<h3>查询层重写（最大变更）</h3>
+
+<div class="diagram-wrap">
+<pre class="mermaid">
+flowchart LR
+  subgraph Before["v2.1（旧）"]
+    B1["BM25 顺序执行"]
+    B2["Vector 顺序执行"]
+    B3["Graph: 0.3 × score"]
+    B4["Graph 邻居被丢弃"]
+    B5["buildGraph 再读一遍"]
+  end
+
+  subgraph After["v2.2（新）"]
+    A1["BM25 + Vector 并行"]
+    A2["Graph: 0.3/(K+rank)"]
+    A3["scoresToRanks() 转换"]
+    A4["Graph 邻居进候选池"]
+    A5["buildGraphFromParsed 复用"]
+  end
+
+  B1 --> A1
+  B2 --> A1
+  B3 --> A2
+  B4 --> A4
+  B5 --> A5
+
+  style Before fill:#f8d7da
+  style After fill:#d4edda
+</pre>
+</div>
+
+<table>
+  <thead><tr><th>Finding</th><th>变更</th><th>文件</th><th>详情</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><b>1</b></td>
+      <td>RRF 同量纲 + Graph 邻居进候选池</td>
+      <td><code>rrf.ts</code>, <code>board.ts</code></td>
+      <td>
+        <b>RRF 公式变更</b>：Graph 路从 <code>0.3 × score</code> 改为 <code>0.3/(K+graphRank)</code>。<br>
+        <b>新增 <code>scoresToRanks()</code></b>：将 walkGraph 的 score 转成 rank。<br>
+        <b>Graph-only 邻居</b>：从 allParsed 查找并转为 BoardNode（score=0），按融合分数重排。<br>
+        <b>效果</b>：graph 邻居不再压过语义 seed，也不再被丢弃。
+      </td>
+    </tr>
+    <tr>
+      <td><b>2</b></td>
+      <td>审计串行化</td>
+      <td><code>daemon/index.ts</code></td>
+      <td>
+        <b>问题</b>：onWikiChange 快速连续触发时并发 read-modify-write 写坏 frontmatter。<br>
+        <b>修复</b>：串行链 <code>auditChain</code> + <code>auditDirty</code> 标志，多次变更合并一次审计。<br>
+        <b>效果</b>：Responsibility 3 从"部分实现"升级为"已实现"。
+      </td>
+    </tr>
+    <tr>
+      <td><b>3</b></td>
+      <td>矛盾/强化候选统一写入</td>
+      <td><code>pipeline.ts</code></td>
+      <td>
+        <b>问题</b>：<code>writeConfirmSection</code> 是替换语义——多次调用会覆盖前面的候选。<br>
+        <b>修复</b>：统一收集到 <code>pendingItems[]</code>，一次 <code>writeConfirmSection</code>。<br>
+        <b>效果</b>：矛盾和强化候选不再互相覆盖。
+      </td>
+    </tr>
+    <tr>
+      <td><b>4</b></td>
+      <td>QMD 正确降级</td>
+      <td><code>qmd-search.ts</code></td>
+      <td>
+        <b>问题</b>：qmd 不可用时 <code>searchLex</code>/<code>searchVector</code> fallback 到 keyword，扭曲 RRF 权重。<br>
+        <b>修复</b>：返回空数组，不 fallback。<br>
+        <b>效果</b>：Vector 路该空→贡献 0，不会被 keyword 冒充。
+      </td>
+    </tr>
+    <tr>
+      <td><b>5</b></td>
+      <td>边类型归一化</td>
+      <td><code>graph.ts</code>, <code>types.ts</code>, <code>confirm.ts</code></td>
+      <td>
+        <b>问题</b>：<code>relates_to</code> 和 <code>related</code> 两种写法混用。<br>
+        <b>修复</b>：统一为 <code>related</code>。<code>buildGraphFromParsed</code> 中归一化旧 <code>relates_to</code>。<br>
+        <b>效果</b>：全代码库统一 edge 类型。
+      </td>
+    </tr>
+    <tr>
+      <td><b>6</b></td>
+      <td>QMD TTL 重试</td>
+      <td><code>qmd-search.ts</code></td>
+      <td>
+        <b>问题</b>：qmd 失败后永久缓存，daemon 长跑进程无法自愈。<br>
+        <b>修复</b>：<code>_qmdStoreErrorAt</code> + <code>QMD_RETRY_MS = 5min</code>，5 分钟后允许重试。<br>
+        <b>效果</b>：用户之后配置好 qmd 时 daemon 自愈。
+      </td>
+    </tr>
+    <tr>
+      <td><b>7</b></td>
+      <td>buildGraphFromParsed 复用</td>
+      <td><code>graph.ts</code>, <code>board.ts</code></td>
+      <td>
+        <b>问题</b>：<code>buildGraph</code> 和 <code>collectAllNodes</code> 各读一遍全量 wiki 文件。<br>
+        <b>修复</b>：提取 <code>buildGraphFromParsed(parsedNodes)</code>，board 复用一次读取。<br>
+        <b>效果</b>：IO 减少 50%。
+      </td>
+    </tr>
+    <tr>
+      <td><b>8</b></td>
+      <td>BM25/Vector 并行</td>
+      <td><code>board.ts</code></td>
+      <td>
+        <b>问题</b>：BM25 和 Vector 顺序执行。<br>
+        <b>修复</b>：<code>Promise.all</code> 并行发起。<br>
+        <b>效果</b>：qmd 后端启用时搜索延迟降为 <code>max(BM25, Vector)</code>。
+      </td>
+    </tr>
+    <tr>
+      <td><b>10</b></td>
+      <td>compileInputBudget 改为 256000</td>
+      <td><code>pipeline.ts</code>, <code>compile-from-props.ts</code></td>
+      <td>
+        <b>问题</b>：<code>maxTokens × 2.5 = 20480</code> 过小，正常论文可能被截断。<br>
+        <b>修复</b>：固定返回 256000（基于 256K context window）。<br>
+        <b>效果</b>：正常材料不截断，超大材料截到 256K 保底。<br>
+        <b>compile-from-props.ts</b>：从硬编码 12000 改为 <code>compileInputBudget(16384)</code>。
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>其他变更</h3>
+<table>
+  <thead><tr><th>变更</th><th>文件</th><th>详情</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Q10 边类型角色收紧</td>
+      <td><code>board.ts</code></td>
+      <td>强制注入只处理 <code>contradicts</code>/<code>superseded_by</code>（保证存在类）。<code>derived_from</code>/<code>related</code>/<code>supports</code> 不注入，靠三路搜索 Graph 路自然排名。</td>
+    </tr>
+    <tr>
+      <td>compile prompt 规则加强</td>
+      <td><code>pipeline.ts</code>, <code>compile-from-props.ts</code></td>
+      <td>新增可追溯性规则：不编造概率保证/策略建议；propRefs 必须是数字索引。</td>
+    </tr>
+    <tr>
+      <td>propRefs 验证加强</td>
+      <td><code>pipeline.ts</code></td>
+      <td>非数字 propRefs 从回退 <code>"1"</code> 改为直接过滤为空数组。</td>
+    </tr>
+    <tr>
+      <td>semantic-audit 使用 selectPropsContext</td>
+      <td><code>semantic-audit.ts</code></td>
+      <td><code>selectPropsContext(config, sourceChase, propRefs, 3)</code> 作为主要路径，<code>selectChaseChunks</code> 仅作为 fallback。</td>
+    </tr>
+    <tr>
+      <td>audit CLI JSON 输出修复</td>
+      <td><code>audit.ts</code></td>
+      <td>semantic 为 null 时输出 <code>JSON.stringify(structure)</code>，非 null 时输出 <code>{structure, semantic}</code>。</td>
+    </tr>
+    <tr>
+      <td>confirm.ts 不可达代码修复</td>
+      <td><code>confirm.ts</code></td>
+      <td><code>console.error</code> 移到 <code>return true</code> 之前。</td>
+    </tr>
+    <tr>
+      <td>qmd-search SDK 重写</td>
+      <td><code>qmd-search.ts</code></td>
+      <td>从 CLI <code>execSync</code> 改为 SDK <code>createStore()</code>；<code>resolveWikiNode</code> 解析真实节点。</td>
+    </tr>
+    <tr>
+      <td>新增 3 个测试</td>
+      <td><code>board.test.ts</code>, <code>qmd-search.test.ts</code>, <code>semantic-audit-cli.test.ts</code></td>
+      <td>Q10 边类型角色测试、qmd 降级测试、audit 异常输出测试。</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout info">
+  <strong>v2.2 总结：</strong>本轮更新共涉及 13 个源文件 + 4 个测试文件。主要变更集中在查询层（board.ts 三路 RRF 重写、qmd-search SDK 重写）和 ingest 层（pipeline.ts compileInputBudget 和候选写入修复）。核心修复是 RRF 同量纲公式（Finding 1）——三路统一 <code>weight/(K+rank)</code> 形式，graph 邻居不再压过语义 seed。
+</div>
 </section>
 
 </main>
 
 <footer>
-  <p>生成日期：2026-07-09 · 基于 lite-llmwiki 源码逐行确认 · 60 源文件 / 25 测试文件 / 275 tests passed<br>
-  从 architecture-design v1.0 出发，11 步施工完成。所有 mermaid 图表通过 CDN 渲染。</p>
+  <p><b>LiteWikiagent 架构基线 v2.2</b> — 2026-07-10 · 代码对齐版</p>
+  <p>64 源文件 · 13,631 行 · 29 测试文件 · 309 passed / 4 skipped · 0 type errors</p>
+  <p>本文档所有数据从 <code>lite-llmwiki/</code> 源码逐文件提取，忠实记录当前实现状态。</p>
 </footer>
 
 </div>

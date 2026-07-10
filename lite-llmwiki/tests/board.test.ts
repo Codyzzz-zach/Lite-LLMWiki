@@ -542,3 +542,78 @@ describe("board — inspire mode", () => {
     expect(board.instructions.outputBoundaries.requireLayeredOutput).toBe(false);
   });
 });
+
+// ─── Q10 红线：三路搜索 vs Board 注入的 mode 分离 + 边类型角色 ───
+
+/** 直接写含 edges（JSON 字符串）的 wiki 节点文件——renderWikiNode 不支持 edges 对象数组 */
+function saveNodeWithEdges(
+  kind: string,
+  nodeId: string,
+  title: string,
+  claim: string,
+  edges: Array<{ from: string; to: string; type: string; confidence: number }>,
+) {
+  const dir = join(config.wikiDir, `${kind}s`);
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fs = require("node:fs");
+  fs.mkdirSync(dir, { recursive: true });
+  const fileName = nodeId.replace(/\//g, "-") + ".md";
+  const edgesLine = edges.length > 0 ? `edges: ${JSON.stringify(edges)}\n` : "";
+  const content = `---
+nodeId: ${nodeId}
+kind: ${kind}
+title: ${title}
+sourceIds: ["raw_x-abcd"]
+sourceChase: ["raw/chase/raw_x-abcd.md"]
+propRefs: ["1"]
+confidence: 0.8
+status: verified
+tags: []
+${edgesLine}---
+# Claim
+${claim}
+`;
+  writeFileSync(join(dir, fileName), content, "utf-8");
+}
+
+describe("board — Q10 边类型角色（三路排名 vs 注入保证存在）", () => {
+  beforeEach(() => {
+    setupChase("<!-- prop 1 -->\n命题一关于 1/e\n");
+    // seed 节点 A：claim 含 "1/e"，会被 keyword 搜索命中
+    saveNodeWithEdges("concept", "seed-a", "seed A", "1/e 是自然常数", []);
+    // C：contradicts→A，claim 不含 "1/e"（不进 seed，只能靠注入）
+    saveNodeWithEdges("counter", "node-c", "counter C", "一个反方观点", [
+      { from: "node-c", to: "seed-a", type: "contradicts", confidence: 0.9 },
+    ]);
+    // R：related→A，claim 不含 "1/e"（不进 seed，靠三路排名或注入）
+    saveNodeWithEdges("concept", "node-r", "related R", "一个相关概念", [
+      { from: "node-r", to: "seed-a", type: "related", confidence: 0.8 },
+    ]);
+  });
+
+  it("challenge mode：contradicts 边的邻居被强制注入 counterNodes（保证存在）", async () => {
+    const board = await buildQueryBoard(config, "1/e", { mode: "challenge" });
+    // C 不是 seed（claim 不含 1/e），但 contradicts→seed-a → 必须被注入到 counterNodes
+    expect(board.counterNodes.some((n) => n.nodeId === "node-c")).toBe(true);
+  });
+
+  it("challenge mode：related 边的邻居不被 forcedNodes 注入（Q10 收紧——靠三路排名）", async () => {
+    const board = await buildQueryBoard(config, "1/e", { mode: "challenge" });
+    // R 的 related→seed-a 边：Q10 收紧后不注入 relatedNodes
+    // （R 若要进 board，应靠三路搜索 Graph 路自然排名，而非强制注入）
+    expect(board.relatedNodes.some((n) => n.nodeId === "node-r")).toBe(false);
+  });
+
+  it("ask mode：纯三路搜索，contradicts 邻居不注入（信任排名，不注入）", async () => {
+    const board = await buildQueryBoard(config, "1/e", { mode: "ask" });
+    // ask mode 不做 forcedNodes 注入——C 不该出现（它不是 seed，排名也低）
+    expect(board.counterNodes.some((n) => n.nodeId === "node-c")).toBe(false);
+    expect(board.counterNodes).toHaveLength(0);
+  });
+
+  it("ask mode：seed 节点被搜索命中（确认测试前提成立）", async () => {
+    const board = await buildQueryBoard(config, "1/e", { mode: "ask" });
+    expect(board.seedNodes.some((n) => n.nodeId === "seed-a")).toBe(true);
+  });
+});
+

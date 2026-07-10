@@ -18,7 +18,9 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { getExcerpt } from "../knowledge/chase.js";
-import { type GraphData, buildGraph } from "../knowledge/graph.js";
+import { type GraphData, buildGraphFromParsed } from "../knowledge/graph.js";
+import { walkGraph } from "./graph-search.js";
+import { rrfFusion, rankByScore, scoresToRanks } from "./rrf.js";
 import { WIKI_NODE_DIRS, parseWikiContent } from "../knowledge/wiki-parser.js";
 import type {
 	AppConfig,
@@ -32,7 +34,7 @@ import type {
 	WikiKind,
 } from "../types.js";
 import { normalizeBoardMode } from "../types.js";
-import type { SearchProvider } from "./search-provider.js";
+import type { SearchProvider, SearchResult } from "./search-provider.js";
 import { KeywordSearchProvider } from "./search.js";
 
 export interface BuildQueryBoardOptions {
@@ -57,8 +59,21 @@ export async function buildQueryBoard(
 	const mode = normalizeBoardMode(options.mode);
 	const maxNodes = options.maxNodes ?? 5;
 
-	// ── 1. 搜索 seed nodes ──
-	const seedNodes = await findSeedNodes(
+	// ── 1.5: Three-way RRF (BM25 + Vector + Graph), 照抄 agentmemory hybrid-search.ts ──
+	// 三路统一用 weight/(K+rank) 形式（同量纲），graph 邻居进候选池参与排序。
+	// 先收集所有节点——graph-only 邻居要从这里转成 BoardNode 加入候选池，
+	// 且 buildGraphFromParsed 复用这次读取（Finding 7：避免 buildGraph 再读一遍）。
+	const allParsed: ParsedWikiNode[] = collectAllNodes(
+		config,
+		options.includeLegacy ?? false,
+		options.includeFailed ?? false,
+	);
+	const graph = buildGraphFromParsed(allParsed);
+
+	// Finding 8：BM25 路（findSeedNodes）和 Vector 路（searchVector）并行发起。
+	// 默认 keyword 后端 searchVector 不存在 → 退化为顺序但无额外开销；
+	// qmd 后端启用时两路真并行，搜索延迟降为 max(BM25, Vector)。
+	const bm25SeedPromise = findSeedNodes(
 		config,
 		question,
 		options,
@@ -66,29 +81,82 @@ export async function buildQueryBoard(
 		maxNodes,
 		searchProvider,
 	);
+	const vectorPromise = searchProvider.searchVector
+		? searchProvider
+				.searchVector(config, question, { maxResults: maxNodes })
+				.catch(() => ({ matches: [] } as SearchResult)) // best-effort
+		: Promise.resolve({ matches: [] } as SearchResult);
 
-	// ── 2. 收集所有 wiki 节点（按 mode 过滤 kind）──
-	// 即使指定了 --node，仍需收集所有节点用于 board 装配（evidence/related/counter/question/tension）
-	const allParsed: ParsedWikiNode[] = collectAllNodes(
-		config,
-		options.includeLegacy ?? false,
-		options.includeFailed ?? false,
-	);
+	const [seedNodes, vectorResult] = await Promise.all([
+		bm25SeedPromise,
+		vectorPromise,
+	]);
 
-	// ── 2.5: Graph forced injection ──
-	const graph = buildGraph(config);
+	// BM25 路 rank（来自 findSeedNodes 的 seedNodes 顺序）
+	const bm25Ranks = new Map<string, number>();
+	seedNodes.forEach((s, i) => bm25Ranks.set(s.nodeId, i + 1));
+
+	// Vector 路 rank（异步，可选后端；KeywordSearchProvider 不实现 → 空 Map 降级）
+	const vectorRanks = new Map<string, number>();
+	vectorResult.matches.forEach((m, i) => {
+		vectorRanks.set(m.nodeId, i + 1);
+	});
+
+	// Graph 路：1-hop walk from BM25+Vector seeds，score 转成 rank（同量纲）
+	const allSeedIds = new Set<string>([
+		...seedNodes.map((s) => s.nodeId),
+		...vectorRanks.keys(),
+	]);
+	const graphScores = walkGraph([...allSeedIds], graph);
+	const graphRanks = scoresToRanks(graphScores);
+
+	// 融合 + 重排（任一路有结果才需要重排）
+	if (bm25Ranks.size > 0 || vectorRanks.size > 0 || graphRanks.size > 0) {
+		const fused = rrfFusion(bm25Ranks, vectorRanks, graphRanks);
+		const ranked = rankByScore(fused);
+		// 候选池 = BM25 seedNodes + Vector 独有 + Graph-only 邻居
+		// graph-only 邻居从 allParsed 查转成 BoardNode（Finding 1 修复：
+		// 让被多 seed 引用的高置信 graph 邻居能进 seedNodes，不再被丢弃）
+		const seedMap = new Map<string, BoardNode>();
+		for (const s of seedNodes) seedMap.set(s.nodeId, s);
+		for (const id of vectorRanks.keys()) {
+			if (!seedMap.has(id)) {
+				const node = allParsed.find((n) => n.nodeId === id);
+				if (node) seedMap.set(id, toBoardNode(node, 0));
+			}
+		}
+		for (const id of graphRanks.keys()) {
+			if (!seedMap.has(id)) {
+				const node = allParsed.find((n) => n.nodeId === id);
+				if (node) seedMap.set(id, toBoardNode(node, 0));
+			}
+		}
+		// 按融合分数重排
+		const reordered: typeof seedNodes = [];
+		for (const id of ranked) {
+			const node = seedMap.get(id);
+			if (node) reordered.push(node);
+		}
+		seedNodes.length = 0;
+		seedNodes.push(...reordered);
+	}
+
+	// ── 2.5: Graph forced injection（仅 challenge/inspire）──
+	// allParsed 已在三路块前收集（graph-only 邻居要用）
 	const forcedNodes: Map<string, BoardNode> = new Map();
-	for (const seed of seedNodes) {
-		const relatedEdges = graph.edges.filter(
-			(e) => e.from === seed.nodeId || e.to === seed.nodeId,
-		);
-		for (const edge of relatedEdges) {
-			const otherId = edge.from === seed.nodeId ? edge.to : edge.from;
-			if (!forcedNodes.has(otherId)) {
-				const node = allParsed.find((n) => n.nodeId === otherId);
-				if (node) {
-					const bn = toBoardNode(node, 0.5); // lower score for forced nodes
-					forcedNodes.set(otherId, bn);
+	if (mode === "challenge" || mode === "inspire") {
+		for (const seed of seedNodes) {
+			const relatedEdges = graph.edges.filter(
+				(e) => e.from === seed.nodeId || e.to === seed.nodeId,
+			);
+			for (const edge of relatedEdges) {
+				const otherId = edge.from === seed.nodeId ? edge.to : edge.from;
+				if (!forcedNodes.has(otherId)) {
+					const node = allParsed.find((n) => n.nodeId === otherId);
+					if (node) {
+						const bn = toBoardNode(node, 0.5);
+						forcedNodes.set(otherId, bn);
+					}
 				}
 			}
 		}
@@ -259,66 +327,34 @@ async function assembleBoard(
 
 	switch (mode) {
 		case "ask": {
-			// seeds 之外，按 shared sourceIds 找 evidence nodes
-			const evidenceNodes = pickEvidence(
-				seeds,
-				allBoardNodes,
-				seedIds,
-				/* max */ 5,
-			);
-			const relatedNodes = pickRelated(
-				seeds,
-				allBoardNodes,
-				seedIds,
-				/* max */ 3,
-			);
+			// v2 简化：ask 只做搜索——不强制注入 counter/question
+			const evidenceNodes = pickEvidence(seeds, allBoardNodes, seedIds, 5);
+			const relatedNodes = pickRelated(seeds, allBoardNodes, seedIds, 3);
 			const limitNodes = seeds.filter((n) => n.limits.length > 0);
-			const counterNodes = allBoardNodes
-				.filter((n) => n.kind === "counter" && !seedIds.has(n.nodeId))
-				.slice(0, 2);
-			const questionNodes = allBoardNodes
-				.filter((n) => n.kind === "question" && !seedIds.has(n.nodeId))
-				.slice(0, 2);
 			result = {
 				seedNodes: seeds,
 				evidenceNodes,
 				relatedNodes,
 				limitNodes,
-				counterNodes,
-				questionNodes,
+				counterNodes: [],
+				questionNodes: [],
 				tensionNodes: [],
 			};
 			break;
 		}
 
 		case "trace": {
-			// trace: seeds 优先 + 它们的 evidence（full）+ shared sourceIds
-			const evidenceNodes = pickEvidence(
-				seeds,
-				allBoardNodes,
-				seedIds,
-				/* max */ 10,
-			);
-			const relatedNodes = pickRelated(
-				seeds,
-				allBoardNodes,
-				seedIds,
-				/* max */ 5,
-			);
+			// v2 简化：trace 只做追溯——不强制注入 counter/question
+			const evidenceNodes = pickEvidence(seeds, allBoardNodes, seedIds, 10);
+			const relatedNodes = pickRelated(seeds, allBoardNodes, seedIds, 5);
 			const limitNodes = seeds.filter((n) => n.limits.length > 0);
-			const counterNodes = allBoardNodes
-				.filter((n) => n.kind === "counter" && !seedIds.has(n.nodeId))
-				.slice(0, 3);
-			const questionNodes = allBoardNodes
-				.filter((n) => n.kind === "question" && !seedIds.has(n.nodeId))
-				.slice(0, 3);
 			result = {
 				seedNodes: seeds,
 				evidenceNodes,
 				relatedNodes,
 				limitNodes,
-				counterNodes,
-				questionNodes,
+				counterNodes: [],
+				questionNodes: [],
 				tensionNodes: [],
 			};
 			break;
@@ -470,20 +506,22 @@ async function assembleBoard(
 				(e.to === nodeId && seedIds.has(e.from)),
 		);
 		for (const edge of connectingEdges) {
+			// Q10: Board 注入只处理「保证存在」类边（contradicts/superseded_by）。
+			// derived_from/related/supports 是「提升排名」类——靠三路搜索的 Graph 路
+			// (walkGraph) 自然提升排名，不在此强制注入（避免掩盖结构信号）。
 			switch (edge.type) {
 				case "contradicts":
 					if (!result.counterNodes.some((n) => n.nodeId === nodeId)) {
 						result.counterNodes.push(boardNode);
 					}
 					break;
-				case "derived_from":
-				case "supports":
-				case "relates_to":
 				case "superseded_by":
+					// 被取代的旧节点必须出现（保证存在），让 LLM 知道有更新
 					if (!result.relatedNodes.some((n) => n.nodeId === nodeId)) {
 						result.relatedNodes.push(boardNode);
 					}
 					break;
+				// derived_from / related / supports: 不注入——靠三路搜索排名
 			}
 		}
 	}

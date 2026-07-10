@@ -138,7 +138,7 @@ export type GraphEdgeType =
 	| "derived_from"
 	| "contradicts"
 	| "supports"
-	| "relates_to"
+	| "related"
 	| "superseded_by";
 
 /** 图谱边——frontmatter 是边的主数据源，graph.json 是 daemon 重建的聚合索引 */
@@ -235,6 +235,8 @@ export interface WikiFrontmatter {
 	sourceIds?: string[];
 	/** v5 清洗后输入层路径 */
 	sourceChase?: string[];
+	/** v6 chase 文件内容哈希——覆盖式 ingest 的权威匹配键 */
+	fingerprint?: string;
 	/** v6 命题引用（替代旧 chunkRefs） */
 	propRefs?: string[];
 	/** v6 语义审计裁决——5 维度 verdict 存入 frontmatter */

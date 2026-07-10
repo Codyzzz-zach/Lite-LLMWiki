@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>LiteWikiagent v2.0 施工细则</title>
+  <style>
+    :root { --ink: #172033; --muted: #617087; --green: #3a8068; --amber: #9b6a1a; --rose: #b2485a; --paper: #fbfcfe; --white: #fff; --code-bg: #182235; --line: #d7e0ea; }
+    body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: var(--ink); background: var(--paper); line-height: 1.74; padding: 0 22px 72px; max-width: 1100px; margin: 0 auto; }
+    h1 { margin: 48px 0 10px; font-size: 2.2rem; }
+    h2 { margin: 40px 0 14px; padding-top: 30px; border-top: 1px solid var(--line); font-size: 1.5rem; }
+    h3 { margin: 24px 0 8px; font-size: 1.15rem; }
+    .phase { padding: 14px 18px; border-radius: 6px; margin: 16px 0; font-weight: 700; font-size: 1.1rem; }
+    .phase-a { background: #d4edda; color: #155724; } .phase-b { background: #cce5ff; color: #004085; } .phase-c { background: #fdf2d0; color: #7a5e1b; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; background: var(--white); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+    th, td { padding: 10px 14px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; font-size: 0.9rem; }
+    th { background: #eef4fb; font-size: 0.8rem; text-transform: uppercase; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.88em; background: #eef3f8; padding: 1px 4px; border-radius: 3px; }
+    pre { padding: 14px; background: var(--code-bg); color: #eff6ff; border-radius: 8px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; }
+    .tag { display: inline-block; padding: 1px 7px; border-radius: 3px; font-size: 0.72rem; font-weight: 700; }
+    .tag-new { background: #cce5ff; color: #004085; } .tag-mod { background: #fdf2d0; color: #7a5e1b; } .tag-del { background: #f8d7da; color: #721c24; }
+  </style>
+</head>
+<body>
+
+<h1>LiteWikiagent v2.0 施工细则</h1>
+<p>基于 architecture-design-v2.html · 12 项架构决断 · 三段施工路线 (A→B→C)</p>
+
+<!-- ═══════════════════════════════════════════════ -->
+<h2>Phase A · 发动机改造（无外部依赖）</h2>
+<div class="phase phase-a">A 段 · 5 项任务 · 纯代码改动 · 无外部工具依赖</div>
+
+<!-- A1 -->
+<h3>A1 · Board 简化</h3>
+<p><strong>目标</strong>：删除 ask/trace/expand/compare 四个 mode 的 counter/question 强制注入。仅保留 challenge（全量 counter）和 inspire（降阈值 cross-kind）的注入逻辑。</p>
+
+<table>
+  <tr><th>文件</th><th>类型</th><th>改动内容</th></tr>
+  <tr>
+    <td><code>query/board.ts</code></td>
+    <td><span class="tag tag-mod">修改</span></td>
+    <td>
+      <strong>ask mode</strong>：删除 <code>counterNodes</code> 和 <code>questionNodes</code> 的 filter 注入，保留 seeds + evidence + related + limits。<br>
+      <strong>trace mode</strong>：删除 counter 注入，保留全链追溯。<br>
+      <strong>expand mode</strong>：删除 counter 注入，保留 method/case/equation 的 kind-based 注入。<br>
+      <strong>compare mode</strong>：删除 counter 注入，保留 sourceId 分组。<br>
+      <strong>challenge mode</strong>：不变——保持 ALL counter + ALL limits。<br>
+      <strong>inspire mode</strong>：不变——保持低阈值 cross-kind 发现。
+    </td>
+  </tr>
+  <tr>
+    <td><code>tests/board.test.ts</code></td>
+    <td><span class="tag tag-mod">修改</span></td>
+    <td>更新测试断言：ask mode 不再预期有 counterNodes；challenge mode 仍然预期有。</td>
+  </tr>
+</table>
+
+<pre>// ask mode — before
+const counterNodes = allBoardNodes
+  .filter((n) => n.kind === "counter" && !seedIds.has(n.nodeId))
+  .slice(0, 2);
+const questionNodes = allBoardNodes
+  .filter((n) => n.kind === "question" && !seedIds.has(n.nodeId))
+  .slice(0, 2);
+
+// ask mode — after
+const counterNodes: BoardNode[] = [];
+const questionNodes: BoardNode[] = [];</pre>
+
+<p><strong>验证</strong>：<code>npm test -- tests/board.test.ts</code> + <code>npx tsx src/cli/index.ts query "1/e" --mode ask --json</code> → 输出中 counterNodes 为空。</p>
+
+<!-- A2 -->
+<h3>A2 · Graph Traversal</h3>
+<p><strong>目标</strong>：新增 <code>walkGraph()</code> 函数——从 seed nodes 出发，1-hop 遍历图，按边 confidence 打分。作为三路搜索的 Graph 路。</p>
+
+<table>
+  <tr><th>文件</th><th>类型</th><th>改动内容</th></tr>
+  <tr>
+    <td><code>query/graph-search.ts</code></td>
+    <td><span class="tag tag-new">新增</span></td>
+    <td>
+      新增 <code>walkGraph(seedIds, graph)</code> 函数：<br>
+      ① 遍历 graph.edges，找所有与 seedIds 有边的节点（1-hop）<br>
+      ② 每条边取 edge.confidence（已存在）<br>
+      ③ 评分公式（对齐 agentmemory）：<code>avgConfidence × (1/pathLength)</code>——pathLength=1<br>
+      ④ 同一个节点被多个 seed 引用 → 取最高分
+    </td>
+  </tr>
+  <tr>
+    <td><code>knowledge/graph.ts</code></td>
+    <td><span class="tag tag-mod">修改</span></td>
+    <td>导出 <code>walkGraph</code> 或保持 graph-search.ts 为独立模块（推荐——职责分离）</td>
+  </tr>
+  <tr>
+    <td><code>tests/graph-search.test.ts</code></td>
+    <td><span class="tag tag-new">新增</span></td>
+    <td>测试：单 seed 1-hop、多 seed 去重、空 graph、confidence=0 的边、contradicts vs derived_from 置信度差异</td>
+  </tr>
+</table>
+
+<pre>export function walkGraph(
+  seedIds: string[],
+  graph: GraphData,
+): Map&lt;string, number&gt; {
+  const scores = new Map&lt;string, number&gt;();
+  const seedSet = new Set(seedIds);
+
+  for (const edge of graph.edges) {
+    const fromSeed = seedSet.has(edge.from);
+    const toSeed = seedSet.has(edge.to);
+    if (!fromSeed && !toSeed) continue;  // 与任何 seed 无关
+
+    const neighborId = fromSeed ? edge.to : edge.from;
+    if (seedSet.has(neighborId)) continue; // 跳过 seed 自身
+
+    const confidence = edge.confidence ?? 0.5;
+    const score = confidence * (1 / 1); // pathLength=1
+
+    // 取最高分（不是累加——对齐 agentmemory 的 expandFromChunks 逻辑）
+    const current = scores.get(neighborId) ?? 0;
+    if (score > current) scores.set(neighborId, score);
+  }
+  return scores;
+}</pre>
+
+<p><strong>验证</strong>：<code>npm test -- tests/graph-search.test.ts</code> → 通过。</p>
+
+<!-- A3 -->
+<h3>A3 · Counter 来源</h3>
+<p><strong>目标</strong>：在 compile prompt 中加一行指令——让 LLM 主动提取材料中的反方观点，编译为 <code>kind=counter</code> 的节点。</p>
+
+<table>
+  <tr><th>文件</th><th>类型</th><th>改动内容</th></tr>
+  <tr>
+    <td><code>ingest/pipeline.ts</code></td>
+    <td><span class="tag tag-mod">修改</span></td>
+    <td>
+      compile prompt 追加一行：<br>
+      <code>如果材料中有与主流观点矛盾或提出反例的命题，也编译为 kind=counter 的节点。counter 节点的 claim 应以「通常认为…但…」的形式呈现反方观点。</code>
+    </td>
+  </tr>
+  <tr>
+    <td><code>cli/commands/compile-from-props.ts</code></td>
+    <td><span class="tag tag-mod">修改</span></td>
+    <td>同上——compile-from-props 有独立的 prompt 构建逻辑</td>
+  </tr>
+</table>
+
+<p><strong>验证</strong>：re-ingest e 基本画像 → <code>ls wiki/counters/</code> 不再为空。至少 1 个 counter 节点。</p>
+
+<!-- A4 -->
+<h3>A4 · Pipeline 写 progress.md</h3>
+<p><strong>目标</strong>：contradict/reinforce 的检测结果不再丢弃——写入 progress.md 等待人类确认。</p>
+
+<table>
+  <tr><th>文件</th><th>类型</th><th>改动内容</th></tr>
+  <tr>
+    <td><code>ingest/pipeline.ts</code></td>
+    <td><span class="tag tag-mod">修改</span></td>
+    <td>
+      在 contradict/reinforce 结果产生后，调用 <code>writeConfirmSection()</code> 写入 progress.md：<br>
+      ① contradicts 候选 → type=edge → 写入 progress.md ## 待确认 段<br>
+      ② reinforce 候选 → type=reinforce → 写入 progress.md ## 待确认 段<br>
+      ③ 复用已有的 <code>evolution/confirm.ts → writeConfirmSection()</code>
+    </td>
+  </tr>
+</table>
+
+<pre>// pipeline.ts Step 5 末尾添加
+const confirmItems = [];
+for (const c of contradictions.candidates) {
+  confirmItems.push({
+    id: `contradict-${Date.now()}-${confirmItems.length}`,
+    type: "edge",
+    priority: "high",
+    summary: `矛盾: ${c.nodeA} ↔ ${c.nodeB}`,
+    createdAt: new Date().toISOString(),
+    status: "pending",
+  });
+}
+for (const r of reinforceResults) {
+  confirmItems.push({
+    id: `reinforce-${Date.now()}-${confirmItems.length}`,
+    type: "reinforce",
+    priority: "medium",
+    summary: `强化: ${r.nodeId} ← ${r.sourceNodeId}`,
+    createdAt: new Date().toISOString(),
+    status: "pending",
+  });
+}
+if (confirmItems.length > 0) {
+  writeConfirmSection(config.projectRoot || process.cwd(), confirmItems);
+}</pre>
+
+<p><strong>验证</strong>：ingest 后检查 <code>loopadvance/progress.md</code> → ## 待确认 段新增了候选条目。</p>
+
+<!-- A5 -->
+<h3>A5 · Daemon 队列消费</h3>
+<p><strong>目标</strong>：<code>pendingAudit</code> 入队后实际触发 <code>runSemanticAudit()</code>，而不是只 push 不消费。</p>
+
+<table>
+  <tr><th>文件</th><th>类型</th><th>改动内容</th></tr>
+  <tr>
+    <td><code>daemon/index.ts</code></td>
+    <td><span class="tag tag-mod">修改</span></td>
+    <td>
+      在 onWikiChange 回调中：push queue 后，异步调用 <code>runSemanticAudit(config, { llmJudge })</code> → 写回 frontmatter。处理完后从队列移除。
+    </td>
+  </tr>
+</table>
+
+<pre>onWikiChange: (wikiPath: string) => {
+  log("info", `[daemon] ③ wiki changed: ${wikiPath}`);
+  state.queue.pendingAudit.push(wikiPath);
+  writeDaemonState(projectRoot, state);
+
+  // 异步消费——不阻塞 watcher
+  runSemanticAudit(config, { llmJudge: async (p) => {
+    const r = await client.chat({ model: config.model, messages: [{role:"user",content:p}], responseFormat:"json_object", thinkingDisabled:true, maxTokens:4096 });
+    return r.content;
+  }}).then(result => {
+    writeSemanticAuditResults(config, result);
+    state.queue.pendingAudit = state.queue.pendingAudit.filter(p => p !== wikiPath);
+    writeDaemonState(projectRoot, state);
+  }).catch(err => { log("error", `audit failed: ${err.message}`); });
+},</pre>
+
+<p><strong>验证</strong>：daemon 运行时修改一个 wiki 节点 → daemon.log 中出现 audit 日志 → frontmatter 中 auditStatus 更新。</p>
+
+<!-- A6-A10: Loader→Proposition 改造（来自 §02） -->
+<h3>A6–A10 · Loader → Proposition 管线改造（§02 五个改造点）</h3>
+<p><strong>目标</strong>：执行设计决策 #1-4——消灭 chunk 标记、审计用 prop 窗口、compile 截断自适应、CLI 统一配置。</p>
+
+<table>
+  <tr><th>#</th><th>任务</th><th>文件</th><th>类型</th><th>改动内容</th></tr>
+  <tr>
+    <td><strong>A6</strong></td>
+    <td>Loader 不再切 chunk</td>
+    <td><code>knowledge/store.ts</code></td>
+    <td><span class="tag tag-mod">修改</span></td>
+    <td>
+      <code>saveRaw()</code>：删除 chunk marker 写入逻辑（<code>chunkMarkers</code> 变量和 <code>.map</code> 拼接）。<br>
+      chase 文件 = frontmatter YAML + body 文本（无 chunk 标记）。
+    </td>
+  </tr>
+  <tr>
+    <td><strong>A7</strong></td>
+    <td>命题提取不变</td>
+    <td><code>ingest/proposition.ts</code></td>
+    <td>—</td>
+    <td>无需改动——全文一次送 LLM，逻辑不变。</td>
+  </tr>
+  <tr>
+    <td><strong>A8</strong></td>
+    <td>审计上下文改用 prop 窗口</td>
+    <td><code>knowledge/chase.ts</code></td>
+    <td><span class="tag tag-new">新增函数</span></td>
+    <td>
+      新增 <code>selectPropsContext(content, propRefs, window=±3)</code>：<br>
+      解析 chase 中所有 prop → 取目标 ±3 个 prop 原文 → 拼接返回。<br>
+      替代当前的 <code>selectChaseChunks()</code>。
+    </td>
+  </tr>
+  <tr>
+    <td><strong>A8b</strong></td>
+    <td>审计切换上下文源</td>
+    <td><code>knowledge/semantic-audit.ts</code></td>
+    <td><span class="tag tag-mod">修改</span></td>
+    <td>
+      <code>selectChaseChunks(config, sourceChase, propRefs)</code> → <code>selectPropsContext(chaseContent, propRefs, 3)</code>。<br>
+      修复 P1 bug（prop 索引当 chunk 索引传）。<strong>需要 A/B 对比验证审计质量不下降。</strong>
+    </td>
+  </tr>
+  <tr>
+    <td><strong>A9</strong></td>
+    <td>compile 截断自适应</td>
+    <td><code>ingest/pipeline.ts</code></td>
+    <td><span class="tag tag-mod">修改</span></td>
+    <td>
+      <code>propTexts.slice(0, 12000)</code> → <code>propTexts.slice(0, computeSafeInputLimit(8192))</code>。<br>
+      <code>computeSafeInputLimit(maxTokens) = maxTokens × 3.5</code>（≈28672 字符）。
+    </td>
+  </tr>
+  <tr>
+    <td><strong>A10</strong></td>
+    <td>extract-props CLI 统一配置</td>
+    <td><code>cli/commands/extract-props.ts</code></td>
+    <td><span class="tag tag-mod">修改</span></td>
+    <td>
+      <code>model: "deepseek-chat"</code> → <code>model: config.model</code><br>
+      <code>maxTokens: 16000</code> → <code>32768</code><br>
+      加 <code>thinkingDisabled: true</code>
+    </td>
+  </tr>
+  <tr>
+    <td><strong>A11</strong></td>
+    <td>删除 chunk fallback</td>
+    <td><code>knowledge/chase.ts</code> + <code>knowledge/wiki-parser.ts</code></td>
+    <td><span class="tag tag-del">删除</span></td>
+    <td>
+      删除 <code>collectPropIndices</code> 的 chunk fallback、<code>parseChunkRefs()</code>、<code>readChaseChunks()</code>、<code>selectChaseChunks()</code>。<br>
+      无 prop → 报错——不做 chunk 凑合。
+    </td>
+  </tr>
+</table>
+
+<p><strong>A8b 验证（关键）</strong>：重跑 e 基本画像审计——对比 A8 前后的 audit score 和 issue 列表。要求：score 不下降。如有回归，回退 A8b 并调整窗口大小。</p>
+<p><strong>A11 验证</strong>：typecheck + full test suite 通过。</p>
+
+<!-- ═══════════════════════════════════════════════ -->
+<h2>Phase B · qmd 集成</h2>
+<div class="phase phase-b">B 段 · 2 项任务 · 需要一次 qmd 配置 · npm install @tobilu/qmd</div>
+
+<!-- B1 -->
+<h3>B1 · qmd 配置</h3>
+<table>
+  <tr><th>步骤</th><th>命令/代码</th></tr>
+  <tr><td>1. 安装</td><td><code>npm install @tobilu/qmd</code></td></tr>
+  <tr><td>2. 配置 collection</td><td><code>qmd collection add wiki/ --name litewiki</code></td></tr>
+  <tr><td>3. 生成嵌入</td><td><code>qmd embed -c litewiki</code></td></tr>
+  <tr><td>4. 验证</td><td><code>qmd query "1/e" --json -c litewiki -n 5</code> → 返回 wiki 节点文件路径</td></tr>
+</table>
+
+<!-- B2 -->
+<h3>B2 · QmdSearchProvider 重写</h3>
+<table>
+  <tr><th>文件</th><th>类型</th><th>改动内容</th></tr>
+  <tr>
+    <td><code>query/qmd-search.ts</code></td>
+    <td><span class="tag tag-mod">重写</span></td>
+    <td>
+      ① 改用 qmd SDK <code>createStore()</code>（替代 CLI execSync）<br>
+      ② <strong>分别暴露</strong> <code>searchLex(query)</code> 和 <code>searchVector(query)</code>（CC 段 RRF 用原始排名）<br>
+      ③ 搜索结果 → <code>parseWikiFile(file)</code> → 返回完整 BoardNode（含 propRefs + edges + auditStatus）<br>
+      ④ 不再返回假节点（nodeId=文件路径, kind="concept" 硬编码）
+    </td>
+  </tr>
+</table>
+
+<p><strong>验证</strong>：<code>npx tsx -e "import { QmdSearchProvider } from './src/query/qmd-search.js'; ..."</code> → 返回的节点有真实的 propRefs 和 edges。</p>
+
+<!-- ═══════════════════════════════════════════════ -->
+<h2>Phase C · RRF 三路融合</h2>
+<div class="phase phase-c">C 段 · 2 项任务 · 依赖 A+B 全部就绪</div>
+
+<!-- C1 -->
+<h3>C1 · RRF 三路融合公式</h3>
+<table>
+  <tr><th>文件</th><th>类型</th><th>改动内容</th></tr>
+  <tr>
+    <td><code>query/rrf.ts</code></td>
+    <td><span class="tag tag-new">新增</span></td>
+    <td>
+      实现 <code>rrfFusion(bm25Ranks, vectorRanks, graphScores)</code>：<br>
+      • K=60<br>
+      • 权重：BM25=0.4, Vector=0.6, Graph=0.3<br>
+      • 公式：<code>0.4/(K+bm25Rank) + 0.6/(K+vectorRank) + 0.3×graphScore</code><br>
+      • 参考：agentmemory hybrid-search.ts 第 216-218 行
+    </td>
+  </tr>
+  <tr>
+    <td><code>query/board.ts</code></td>
+    <td><span class="tag tag-mod">修改</span></td>
+    <td>
+      在 SearchProvider.search() 后：<br>
+      ① 调 <code>walkGraph(seedIds, graph)</code> 拿 graph 分数<br>
+      ② 调 <code>rrfFusion(bm25, vector, graph)</code> 融合三路<br>
+      ③ 按融合分数排序 seed nodes<br>
+      ④ 后续 mode 分派基于融合后的排名
+    </td>
+  </tr>
+  <tr>
+    <td><code>tests/rrf.test.ts</code></td>
+    <td><span class="tag tag-new">新增</span></td>
+    <td>测试：三路全有、仅 BM25、Graph 高分节点被正确融合、K 值边界</td>
+  </tr>
+</table>
+
+<!-- C2 -->
+<h3>C2 · SearchProvider 切换</h3>
+<table>
+  <tr><th>文件</th><th>类型</th><th>改动内容</th></tr>
+  <tr>
+    <td><code>query/search-provider.ts</code></td>
+    <td><span class="tag tag-mod">修改</span></td>
+    <td>
+      SearchProvider 接口扩展：新增可选的 <code>searchLex()</code> 和 <code>searchVector()</code> 方法（qmd 专有，keyword 不实现）<br>
+      默认仍用 KeywordSearchProvider——qmd 作为可选后端
+    </td>
+  </tr>
+</table>
+
+<p><strong>验证</strong>：三路搜索结果 vs 单路 keyword 搜索 → 对比 recall。预期三路融合能发现 keyword 搜索不到的 semantically related 节点。</p>
+
+<!-- ═══════════════════════════════════════════════ -->
+<h2>施工顺序与依赖</h2>
+
+<div class="diagram-wrap">
+  <pre class="mermaid">
+flowchart TB
+  A1[A1: Board 简化] --> A_READY
+  A2[A2: Graph traversal] --> A_READY
+  A3[A3: Counter 来源] --> A_READY
+  A4[A4: Pipeline 写 progress.md] --> A_READY
+  A5[A5: Daemon 队列消费] --> A_READY
+
+  A_READY["✅ A 段完成"] --> B1
+  B1[B1: qmd 配置] --> B2
+  B2[B2: QmdSearchProvider 重写] --> B_READY
+
+  B_READY["✅ B 段完成"] --> C1
+  A2 --> C1
+  C1[C1: RRF 三路融合] --> C2
+  C2[C2: SearchProvider 切换] --> C_DONE
+  C_DONE["✅ v2.0 施工完成"]
+    </pre>
+  </div>
+</section>
+
+</body>
+</html>

@@ -1,0 +1,900 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LiteWikiagent 架构精设 — 设计决策与问答记录</title>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true, theme: "base",
+      themeVariables: {
+        fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+        primaryColor: "#eef6ff", primaryTextColor: "#172033", primaryBorderColor: "#77a6d9",
+        lineColor: "#5f748d", secondaryColor: "#f5f0ff", tertiaryColor: "#fff8e8", fontSize: "13px",
+      },
+      flowchart: { useMaxWidth: true, htmlLabels: true, curve: "basis" },
+    });
+  </script>
+  <style>
+    :root { --ink: #172033; --muted: #617087; --soft: #eef3f8; --line: #d7e0ea; --blue: #2f6fbd; --green: #3a8068; --amber: #9b6a1a; --rose: #b2485a; --paper: #fbfcfe; --white: #ffffff; --code-bg: #182235; --brand: #0D5C41; }
+    * { box-sizing: border-box; } html { scroll-behavior: smooth; }
+    body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif; color: var(--ink); background: linear-gradient(180deg, rgba(238,246,255,0.9), rgba(251,252,254,0.9) 34rem), var(--paper); line-height: 1.74; }
+    .page { max-width: 1000px; margin: 0 auto; padding: 0 22px 72px; }
+    header { padding: 64px 0 38px; border-bottom: 1px solid var(--line); margin-bottom: 38px; }
+    .eyebrow { display: inline-flex; align-items: center; gap: 10px; color: var(--green); font-size: 0.84rem; font-weight: 780; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 18px; }
+    .eyebrow::before { content: ""; width: 34px; height: 2px; background: var(--green); border-radius: 999px; }
+    h1 { max-width: 950px; margin: 0; font-size: clamp(2.2rem, 5.5vw, 3.5rem); line-height: 1.04; }
+    h2 { margin: 48px 0 18px; font-size: clamp(1.4rem, 2.8vw, 2rem); line-height: 1.16; padding-top: 36px; border-top: 1px solid rgba(215,224,234,0.86); }
+    h2:first-of-type { border-top: none; padding-top: 0; }
+    h3 { margin: 26px 0 10px; font-size: 1.22rem; line-height: 1.32; }
+    p { margin: 0 0 16px; }
+    .q { padding: 18px 22px; background: #f3f8fd; border: 1px solid #c4daf0; border-radius: 8px; margin: 28px 0; }
+    .q::before { content: "❓ 问题"; display: block; font-size: 0.78rem; color: var(--blue); font-weight: 700; letter-spacing: 0.08em; margin-bottom: 8px; text-transform: uppercase; }
+    .a { padding: 18px 22px; background: rgba(255,255,255,0.82); border: 1px solid var(--line); border-radius: 8px; margin: 18px 0; box-shadow: 0 6px 20px rgba(32,50,72,0.05); }
+    .a::before { content: "📐 回答"; display: block; font-size: 0.78rem; color: var(--green); font-weight: 700; letter-spacing: 0.08em; margin-bottom: 8px; text-transform: uppercase; }
+    .decision { padding: 18px 22px; background: #fffaf0; border: 1px solid #ead5a4; border-radius: 8px; margin: 18px 0; }
+    .decision::before { content: "⚡ 设计决策"; display: block; font-size: 0.78rem; color: var(--amber); font-weight: 700; letter-spacing: 0.08em; margin-bottom: 8px; text-transform: uppercase; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.88em; background: var(--soft); padding: 1px 4px; border-radius: 3px; }
+    .code { padding: 18px; color: #eff6ff; background: var(--code-bg); border-radius: 8px; overflow-x: auto; line-height: 1.6; font-size: 0.88rem; }
+    table { width: 100%; border-collapse: collapse; margin: 22px 0; background: var(--white); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+    th, td { padding: 12px 16px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; font-size: 0.92rem; }
+    th { background: #eef4fb; color: #20324c; font-size: 0.82rem; letter-spacing: 0.04em; text-transform: uppercase; }
+    footer { padding: 30px 0 10px; color: var(--muted); font-size: 0.9rem; border-top: 1px solid var(--line); margin-top: 48px; }
+    .tag { display: inline-block; padding: 1px 7px; border-radius: 3px; font-size: 0.72rem; font-weight: 700; vertical-align: middle; margin-right: 4px; }
+    .tag-mech { background: #d4edda; color: #155724; } .tag-llm { background: #cce5ff; color: #004085; } .tag-human { background: #fdf2d0; color: #7a5e1b; }
+    .diagram-wrap { margin: 24px 0; padding: 22px; background: var(--white); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; box-shadow: 0 10px 30px rgba(32,50,72,0.07); }
+    .mermaid { min-width: 500px; text-align: center; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <div class="eyebrow">Architecture Refinement · v0.1 · 2026-07-09</div>
+  <h1>LiteWikiagent 架构精设</h1>
+  <p style="color:#34435a; font-size:1.05rem; max-width:700px;">
+    基于 <code>architecture-baseline.html</code> 的逐层问答——记录每个设计决策的<strong>为什么</strong>、<strong>替代方案</strong>、<strong>取舍理由</strong>。
+  </p>
+</header>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Q1 · Loader 层：为什么既有 chunk marker 又有 prop marker？</h2>
+
+<div class="q">
+  <p>Loader 层：<code>Source → chunkText() → chase</code> 写入 chunk marker，然后命题提取层：<code>LLM 拆分 → prop marker</code>。为什么刚输入时要切 chunk，之后又要切命题？是否有更好的做法？</p>
+</div>
+
+<div class="a">
+  <h3>现状（从源码提取）</h3>
+  <table>
+    <tr><th>步骤</th><th>谁执行</th><th>标记格式</th><th>是否需要 LLM</th></tr>
+    <tr><td>1. 切 chunk</td><td><code>chunkText()</code> in <code>src/ingest/loader.ts</code></td><td><code>&lt;!-- chunk:1 --&gt;…&lt;!-- /chunk:1 --&gt;</code></td><td>❌ 纯机械</td></tr>
+    <tr><td>2. 写 chase</td><td><code>KnowledgeStore.saveRaw()</code> in <code>src/knowledge/store.ts</code></td><td>同上 + frontmatter</td><td>❌ 纯机械</td></tr>
+    <tr><td>3. 切命题</td><td><code>extractPropositions()</code> in <code>src/ingest/proposition.ts</code></td><td><code>&lt;!-- prop N --&gt;</code></td><td>✅ deepseek-v4-flash</td></tr>
+    <tr><td>4. 编译</td><td><code>runCompilePass()</code> in <code>src/cli/commands/compile-from-props.ts</code></td><td>wiki node frontmatter <code>propRefs: ["N"]</code></td><td>✅ deepseek-v4-flash</td></tr>
+    <tr><td>5. 审计</td><td><code>auditWiki()</code> in <code>src/knowledge/audit.ts</code></td><td>验证 propRefs 在 chase 中存在</td><td>结构: ❌ / 语义: ✅</td></tr>
+  </table>
+
+  <p><strong>chunkText() 具体行为（从源码）：</strong></p>
+  <ul>
+    <li>按 <code>\n\n+</code> 分割段落</li>
+    <li>贪心合并段落，直到累计 ~2000 tokens</li>
+    <li>每个 chunk 末尾保留 overlap tokens 的哨兵（与下一 chunk 开头重叠）</li>
+    <li>目标：确保 chunk 边界不会切断关键上下文</li>
+  </ul>
+
+  <p><strong>prop marker 插入点：</strong>LLM 输出 <code>{"propositions": [{"index":1, "text":"…", "chunkIndex":1}]}</code>，代码遍历每个命题，找到对应 chunk 的 <code>&lt;!-- /chunk:N --&gt;</code> 关闭标记后插入 <code>&lt;!-- prop 1 --&gt;</code>。</p>
+
+  <p><strong>关键桥接：collectPropIndices() 的 fallback</strong>——如果 chase 文件有 chunk marker 但没有 prop marker（命题提取还没执行），<code>collectPropIndices()</code> 回退到 <code>collectChunkIndices()</code>。这意味着系统在命题提取前也能运作（粗粒度检查）。</p>
+</div>
+
+<div class="decision">
+  <h3>为什么是两层标记而不是一层？</h3>
+  <p><strong>根因：chunk 和 prop 解决的是两个完全不同的问题。</strong></p>
+  <table>
+    <tr><th></th><th>Chunk</th><th>Prop</th></tr>
+    <tr><td>目的</td><td>控制 LLM 上下文窗口大小</td><td>控制语义审查粒度</td></tr>
+    <tr><td>边界</td><td>机械的（token 数 + 段落）</td><td>语义的（原子事实）</td></tr>
+    <tr><td>产生者</td><td>代码（chunkText，0 cost）</td><td>LLM（一次 deepseek 调用）</td></tr>
+    <tr><td>粒度</td><td>~2000 tokens（几十个事实混在一起）</td><td>1 个自包含的原子事实</td></tr>
+    <tr><td>为什么不能跳过</td><td>LLM 有 context window 限制。30 页 PDF → 5万 tokens → 必须在机械层先切成 ~2000 token 块才能喂给 LLM。</td><td>段落级 chunk 会引入无关上下文。"claim X 是否被 chunk 2 支持？"——chunk 2 可能包含 15 个不相关的事实，干扰 LLM judge 的判断。</td></tr>
+  </table>
+
+  <p><strong>EMNLP 2024 (Dense X Retrieval) 实验证据：</strong>命题级分块在 Recall@20 上比段落级提升 2-10%。原子命题 = 自包含语义单元 = 没有上下文溢出 = LLM judge 更准确。</p>
+</div>
+
+<div class="decision">
+  <h3>是否有更好的做法？</h3>
+  <p><strong>方案 A：跳过 chunk，直接用 LLM 从原文提取命题（chunk-free）。</strong></p>
+  <p style="color:var(--rose);">❌ 不可行。30 页 PDF → 5万+ tokens → 超出 LLM context window。你需要先把原文切成 LLM 能处理的块，chunk 是必然的。</p>
+
+  <p><strong>方案 B：LLM 提取命题后，用命题边界重新切 chunk，消除 chunk marker（prop-only）。</strong></p>
+  <p style="color:var(--amber);">⚠️ 理论上可行但复杂度高。需要命题提取输出文本位置（start/end offset），然后按命题边界重新分块，写回 chase 覆盖原 chunk。好处：只有一个标记系统。代价：命题提取失败时失去 fallback，且 offset 计算不稳定（LLM 输出的命题文本可能不是原文的精确子串）。</p>
+
+  <p><strong>方案 C：保留两层，但优化——chunk 越小越好，prop 直接取代 chunk 作为编译输入（当前做法）。</strong></p>
+  <p style="color:var(--green);">✅ 当前做法。chunk 只为一个目的存在——让 LLM 读得动原文。一旦命题提取完成，编译和审计都以 prop 为输入，chunk 退化为纯读缓存。collectPropIndices 的 fallback 确保系统在命题提取前也能运作。</p>
+
+  <p><strong>方案 D：不切 chunk，直接长上下文 LLM 一次处理（Gemini 2.5 Pro 支持 100万 tokens）。</strong></p>
+  <p style="color:var(--amber);">⚠️ 技术上可行但成本高。100万 token 输入 ≈ $1.25/次（deepseek 定价），且长上下文推理质量随长度衰减。保留 chunk 作为成本优化——命题提取只需一次调用。</p>
+</div>
+
+<div class="a">
+  <h3>总结：两层标记是分层的必然结果</h3>
+  <pre class="code">Layer 0 (机械)  Layer 1 (LLM)    Layer 2 (LLM)
+  原始文本       命题提取         编译 + 审计
+    ↓              ↓                ↓
+  chunk           prop             wiki node
+  marker          marker           frontmatter.propRefs
+  (机械切分)      (语义切分)       (证据链)</pre>
+  <p>chunk 解决 <strong>"LLM 能不能读"</strong>，prop 解决 <strong>"judge 能不能精确判断"</strong>。两个问题分属不同层，合并会导致其中一层妥协。</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>等待下一个问题…</h2>
+
+<div class="q" style="opacity:0.5;">
+  <p>（后续问答将在此处追加）</p>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Q2 · DeepSeek 100万上下文了为什么还要切？切完再提取 prop 会影响语义吗？</h2>
+
+<div class="q">
+  <p>DeepSeek 现在的上下文窗口已经有 100万 tokens 了，为什么 loader 层还要切 chunk？而且切完 chunk 之后再做命题提取，会不会破坏语义完整性——LLM 看到的不再是一个连续文档，而是一堆被 <!-- chunk:N --> 标记打断的片段？</p>
+</div>
+
+<div class="a">
+  <h3>源码核实结果</h3>
+
+  <p><strong>事实 1：命题提取不逐 chunk 发送。</strong></p>
+  <p><code>extractPropositions(chaseContent, llmCaller)</code> 的 <code>buildPropositionPrompt()</code> 直接把 <code>${chaseContent}</code> 拼进 prompt——<strong>全文一次发送</strong>。不是每个 chunk 调一次 LLM。</p>
+
+  <pre class="code">function buildPropositionPrompt(chaseContent: string): string {
+  return `请将以下文档拆分为原子命题。输出 JSON 对象……
+
+---
+${chaseContent}   ← 完整 chase 内容，所有 chunk 在一起
+---`;
+}</pre>
+
+  <p><strong>事实 2：e 基本画像实测——chase 文件 37156 chars ≈ 10616 tokens → 完全在上下文窗口内。</strong></p>
+
+  <p><strong>事实 3：compile 阶段有限制——propTexts 截断到 12000 字符。</strong></p>
+  <pre class="code">const propTexts = props.map(p => `[prop ${p.index}] ${p.text}`).join('\n\n');
+${propTexts.slice(0, 12000)};   // ← 这里截断！</pre>
+  <p>这是真正的瓶颈：命题提取可以处理全文，但编译时 LLM 只看到前 12000 字符的命题。对 30 页论文（~50000 tokens），大部分命题会在编译阶段丢失。</p>
+
+  <p><strong>事实 4：extract-props CLI 用的 model 不一致。</strong></p>
+  <table>
+    <tr><th>调用位置</th><th>model</th><th>maxTokens</th><th>thinking</th></tr>
+    <tr><td><code>extract-props</code> CLI</td><td><code>"deepseek-chat"</code> (硬编码)</td><td>16000</td><td>未设置 ❌</td></tr>
+    <tr><td>pipeline.ts</td><td><code>config.model</code> (来自 .env)</td><td>32768</td><td>disabled ✅</td></tr>
+  </table>
+</div>
+
+<div class="decision">
+  <h3>切 chunk 是否影响语义理解？</h3>
+  <p><strong>当前实现：不影响。</strong>LLM 看到的是完整文档——chunk 标记只是内联注释，不是分隔符。</p>
+  <p>LLM 实际读到的内容（简化版）：</p>
+  <pre class="code">&lt;!-- chunk:1 id=... --&gt;
+段落一的完整文本内容……
+&lt;!-- /chunk:1 --&gt;
+&lt;!-- prop 1 --&gt;1/e约等于0.3679…&lt;!-- prop 2 --&gt;极限lim_{n→∞}(1-1/n)^n = 1/e…
+&lt;!-- chunk:2 id=... --&gt;
+段落二的完整文本内容……
+&lt;!-- /chunk:2 --&gt;</pre>
+  <p>LLM 能看到全部文本的连续性。chunk marker 和 prop marker 对它来说就像 HTML 注释——<strong>不破坏语义流</strong>。实验证据：e 基本画像的 104 个命题质量正常（人工抽样确认）。</p>
+</div>
+
+<div class="decision">
+  <h3>那为什么还要切 chunk？不是什么用都没有吗？</h3>
+
+  <p><strong>chunk 存在的原因不是语义层面，是工程层面。</strong>三个实际用途：</p>
+
+  <table>
+    <tr><th>用途</th><th>如果不切 chunk 会怎样</th></tr>
+    <tr>
+      <td><strong>1. collectPropIndices() 的 fallback</strong></td>
+      <td>如果命题提取还没执行（新 chase 文件刚写入），系统用 chunk indices 做粗粒度审计——保证系统在 prop 提取完成前也能运作。</td>
+    </tr>
+    <tr>
+      <td><strong>2. 语义审计的 selectChaseChunks()</strong></td>
+      <td>审计时 LLM judge 需要原文上下文。如果只送一个 prop 的文本（~20 字），judge 缺少上下文无法判断。chunk 提供了「送这个 prop 所在的整段原文」的机制。</td>
+    </tr>
+    <tr>
+      <td><strong>3. 旧 ingest 管线的 chunkRefs 引用</strong></td>
+      <td>v5 遗留代码（<code>ingest.ts</code>, <code>prefix.ts</code>）大量使用 chunkRefs。移除 chunk 需要同时重构这些文件。</td>
+    </tr>
+  </table>
+</div>
+
+<div class="decision">
+  <h3>如果你决定大规模输入的论文——真正需要改的是什么？</h3>
+
+  <p><strong>瓶颈不在 chunk，在 compile 的 12000 字符截断。</strong></p>
+  <p>流程是：loader → chunkText(机械, ~2000t) → chase → extractPropositions(全文, 不受限) → <strong>compile(propTexts.slice(0, 12000) ← 这里丢数据)</strong></p>
+
+  <p><strong>解决方案（按优先级）：</strong></p>
+  <ol>
+    <li><strong>compile 去掉 12000 截断</strong>——改用模型 maxTokens 做自适应（当前 8192 输出 tokens 完全够容纳更多命题）。</li>
+    <li><strong>如果单次 compile 装不下</strong>——分多个 compile pass：按 chunk 分组命题，每批编译产生该批的节点。最后用 graph edges 连接跨批节点。</li>
+    <li><strong>chunk 本身可以保留</strong>——它不是瓶颈，但在大论文场景下作为「分批编译的边界」是合理的工程抽象。</li>
+  </ol>
+</div>
+
+<div class="a">
+  <h3>总结</h3>
+  <table>
+    <tr><th>问题</th><th>答案</th></tr>
+    <tr><td>chunk 是否影响命题提取的语义理解？</td><td><strong>不影响。</strong>全文一次发送，chunk marker 只是内联注释。</td></tr>
+    <tr><td>DeepSeek 大上下文了为什么还要切？</td><td>不是因为上下文限制，是因为<strong>工程需要</strong>：fallback、审计上下文选择、旧代码兼容。不是语义需要。</td></tr>
+    <tr><td>30 页论文的真正瓶颈在哪？</td><td><strong>compile 阶段的 <code>propTexts.slice(0, 12000)</code></strong>。命题提取可以处理全文，但编译截断了。</td></tr>
+    <tr><td>chunk 可以去掉吗？</td><td>技术上可以，但需要重构 3 个模块（ingest.ts, prefix.ts, semantic-audit.ts）。优先级低于修复 compile 截断。</td></tr>
+  </table>
+</div>
+
+<footer>
+  <p>生成日期：2026-07-09 · 从 <code>architecture-baseline.html</code> 精化而来<br>
+  每个决策记录：现状(从源码提取) → 为什么 → 替代方案 → 取舍理由<br>
+  本章节对应 baseline §02 Layer 0·1。</p>
+</footer>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Q13 · Counter 能来自 daemon 自进化吗？qmd 在设计中的位置是什么？</h2>
+
+<div class="q">
+  <ol>
+    <li>counter 应该从 contradiction.ts 来——矛盾检测是否可以通过 daemon 自进化来产生 counter 节点？</li>
+    <li>qmd 在设计中你又放到了什么位置？为什么你会遗漏了 qmd？</li>
+  </ol>
+</div>
+
+<div class="a">
+  <h3>Q13-1：矛盾检测产生的是 edges，不是 counter 节点</h3>
+
+  <p><strong>关键区分：contradicts edge ≠ counter node。</strong></p>
+
+  <table>
+    <tr><th></th><th>contradicts edge</th><th>counter node</th></tr>
+    <tr><td><strong>是什么</strong></td><td>两个已有 wiki 节点之间的关系——「A 和 B 在同一事实上给出互斥结论」</td><td>一个独立的 wiki 节点——「关于 X 的反方观点」——有完整的 claim/evidence/propRefs</td></tr>
+    <tr><td><strong>谁产生</strong></td><td>daemon contradiction.ts：新节点 vs 已有节点 → LLM judge</td><td>理论上应该由 LLM 从材料中提取，或由人类手动创建</td></tr>
+    <tr><td><strong>存储位置</strong></td><td><code>frontmatter.edges</code> → graph</td><td><code>wiki/counters/counter-xxx.md</code></td></tr>
+    <tr><td><strong>当前存在?</strong></td><td>⚠️ 检测运行，但不写 progress.md</td><td>❌ wiki/counters/ 目录为空</td></tr>
+  </table>
+
+  <p><strong>矛盾检测不产生 counter 节点——它只产生 contradicts 边。</strong>这两个是不同的东西。counter 节点需要有人从材料中提取反方观点作为独立断言。矛盾检测只是标记「两个已有节点有矛盾」——它不会凭空创造新节点。</p>
+
+  <p><strong>counter 节点可以来自 daemon 自进化吗？</strong></p>
+  <p>理论上可以——但需要一个新的 daemon 步骤：</p>
+  <ol>
+    <li>contradiction.ts 检测到「节点 A 和节点 B 矛盾」→ contradicts edge</li>
+    <li>当同一个主题出现 3+ 条 contradicts edges → daemon 识别为「争议主题」</li>
+    <li>Daemon 调用 LLM：总结这个争议是什么 → 生成 counter 节点</li>
+    <li>Counter 节点标注 <code>reflowOrigin: "contradiction-resolution"</code></li>
+  </ol>
+  <p>但这是自进化系统尚未实现的部分——「从矛盾模式中合成 counter 节点」需要 LLM 推理，而不是简单的模式匹配。</p>
+
+  <p><strong>当前最合理的 counter 来源：ingest 时 LLM 主动提取。</strong>在 compile prompt 中加一条指令：</p>
+  <pre class="code">如果材料中有与主流观点矛盾或提出反例的命题，也编译为 kind=counter 的节点。
+counter 节点的 claim 应以「通常认为…但…」的形式呈现反方观点。</pre>
+  <p>这比 daemon 合成更简单、更可靠——LLM 在读到材料时就能识别 counter。</p>
+</div>
+
+<div class="a">
+  <h3>Q13-2：qmd 在设计中的位置——不是遗漏，是指定不清</h3>
+
+  <p><strong>qmd 在原始设计中的定位：</strong></p>
+  <ul>
+    <li>决策表 #3：「搜索后端切换。v1 只用 KeywordSearchProvider，qmd 集成时再加 QmdSearchProvider。YAGNI。」</li>
+    <li>设计文档中出现 qmd 作为代码示例：<code>class QmdSearchProvider implements SearchProvider { // BM25 + Vector + RRF + LLM Rerank }</code></li>
+    <li>设计说：「qmd 处理搜索端（混合搜索 + 重排序），engine 处理 board 端（强制注入 + 局面装配）。两部分通过搜索结果衔接。」</li>
+  </ul>
+
+  <p><strong>不是「遗漏」——是三个关键细节在设计时未被指定：</strong></p>
+
+  <table>
+    <tr><th>未指定的细节</th><th>设计说了什么</th><th>实际应该是什么</th></tr>
+    <tr>
+      <td><strong>qmd 索引什么？</strong></td>
+      <td>未指定。设计只说「qmd 处理搜索」</td>
+      <td><strong>wiki/</strong> 目录——每个 wiki 节点作为一个文档。否则 qmd 搜索文件和 board 搜索知识节点不在一个语义层</td>
+    </tr>
+    <tr>
+      <td><strong>qmd 结果如何映射到 wiki 节点？</strong></td>
+      <td>未指定。假设「通过 SearchProvider 接口」但没定义映射规则</td>
+      <td>qmd 返回文件路径 → <code>parseWikiFile(path)</code> → 完整 BoardNode（含 propRefs/edges）</td>
+    </tr>
+    <tr>
+      <td><strong>qmd vs keyword：什么时候切？</strong></td>
+      <td>「v1 用 keyword，qmd 未来加」——但没定义切换条件</td>
+      <td>当 wiki 节点量 >500 时，keyword 搜索的精度下降，qmd 的向量语义搜索开始体现优势。在此之前 keyword 足够</td>
+    </tr>
+  </table>
+
+  <p><strong>根因：qmd 在设计中被当作「更好的搜索」——但没有考虑它搜索的是不同层面的东西。</strong>设计假设 qmd 搜索 wiki 节点是自然成立的——但实际上 qmd 是一个文件搜索引擎，需要额外配置才能索引 wiki 节点。这个「自然成立」的假设是 gap 的来源。</p>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Q10 · 三路搜索和 board 注入——为什么不是做同一件事？</h2>
+
+<div class="q">
+  <p>理想态是三路并行搜索（BM25+Vector+Graph）决定排名，然后 board 再做强制注入。这两步不都是在处理 graph 对搜索结果的影响吗？为什么不是同一件事？</p>
+</div>
+
+<div class="a">
+  <h3>用一个具体查询说明区别</h3>
+
+  <p><strong>场景</strong>：用户问「1/e 在概率论中有什么应用？」wiki 中有 10 个 e 相关节点。</p>
+
+  <table>
+    <tr><th>节点</th><th>类型</th><th>BM25</th><th>Vector</th><th>Graph 关系</th></tr>
+    <tr><td>A: 秘书问题与1/e最优策略</td><td>concept</td><td style="color:var(--green);">0.90</td><td style="color:var(--green);">0.85</td><td>—</td></tr>
+    <tr><td>B: 错位排列的1/e极限</td><td>concept</td><td style="color:var(--green);">0.85</td><td style="color:var(--green);">0.80</td><td>related→A</td></tr>
+    <tr><td>C: 1/e不是自然常数</td><td>counter</td><td style="color:var(--rose);">0.10</td><td style="color:var(--rose);">0.15</td><td><strong>contradicts→A</strong></td></tr>
+    <tr><td>D: 指数过程的1/e时间常数</td><td>concept</td><td style="color:var(--green);">0.75</td><td style="color:var(--green);">0.70</td><td>—</td></tr>
+    <tr><td>E: 泊松分布与1/e深层联系</td><td>insight</td><td style="color:var(--amber);">0.30</td><td style="color:var(--amber);">0.35</td><td><strong>derived_from→A, derived_from→B</strong></td></tr>
+  </table>
+
+  <h3>只看三路搜索（无 board 注入）</h3>
+
+  <p>BM25 + Vector + Graph → RRF 融合后排名：<strong>A(0.92), B(0.83), D(0.73), E(0.55), …C(0.25)</strong></p>
+  <p>取 top 5 给 LLM：A, B, D, E 和另一个节点。</p>
+  <p><strong>C（counter 节点）排在 #8，LLM 看不到。</strong>虽然 graph 给了它一点加分（从 0.15→0.25），但 counter 和查询的语义相似度天然低——它不会因为 graph 信号就跳进 top 5。</p>
+  <p style="color:var(--rose);"><strong>结果</strong>：LLM 给出了一个没有反方观点的答案——信息不完整。</p>
+
+  <h3>只看 board 注入（无三路搜索）</h3>
+
+  <p>BM25+Vector 搜索返回 seed：A(0.90), B(0.85), D(0.75)。<br>
+  Board 强制注入：C(contradicts→A, score=0.5), E(derived_from→A,B, score=0.5)。</p>
+  <p>最终 board：A(0.90), B(0.85), D(0.75), <strong>C(0.5), E(0.5)</strong>。</p>
+  <p style="color:var(--amber);"><strong>问题</strong>：C 和 E 都是 0.5。但 E 被 2 个 seed 共同引用（更强的结构信号）而 C 只是一个 counter。LLM 无法从分数区分哪个更值得关注。</p>
+
+  <h3>三路搜索 + board 注入（互补）</h3>
+
+  <p>三路搜索后排名：A(0.92), B(0.83), D(0.73), <strong>E(0.55)</strong>, …C(0.25)<br>
+  Board 注入：C 仍在 top 5 之外 → <strong>强制补入 C(0.5)</strong></p>
+  <p>最终 board：A(0.92), B(0.83), D(0.73), E(0.55), C(0.5)</p>
+  <p style="color:var(--green);"><strong>结果</strong>：E 因为被两个 seed 引用而获得了更高的自然排名（graph 信号融入了分数）。C 因为 contradicts 关系而被强制补入（board 保证了完整性）。LLM 看到所有关键节点，且分数有意义。</p>
+</div>
+
+<div class="decision">
+  <h3>根本区别：graph 在两步中扮演的角色不同</h3>
+
+  <table>
+    <tr><th></th><th>三路搜索中的 Graph</th><th>Board 注入中的 Graph</th></tr>
+    <tr><td><strong>作用</strong></td><td><strong>提升排名</strong>——结构连接使节点在列表中更靠前</td><td><strong>保证存在</strong>——不管排名，这个节点必须出现</td></tr>
+    <tr><td><strong>适用边类型</strong></td><td>derived_from, related, supports<br>（「节点 E 被 3 个 seed 引用 → E 可能很重要」）</td><td>contradicts, superseded_by<br>（「节点 C 和 seed A 矛盾 → C 必须被 LLM 看到」）</td></tr>
+    <tr><td><strong>操作</strong></td><td>调整<strong>分数</strong>（graph 是打分信号）</td><td>调整<strong>集合</strong>（graph 是包含规则）</td></tr>
+    <tr><td><strong>解决的失败模式</strong></td><td>「应该排名靠前的节点排到了后面」</td><td>「应该出现的节点根本没出现」</td></tr>
+    <tr><td><strong>对 counter 节点的效果</strong></td><td>微弱提升（counter 和查询语义相似度天然低，graph 信号无法完全补偿）</td><td>强制包含（counter 必须出现，不管相关性多低）</td></tr>
+    <tr><td><strong>对 related 节点的效果</strong></td><td>显著提升（被多个 seed 引用的 related 节点天然有结构重要性）</td><td>无必要（related 节点通过三路搜索已经被自然排在前面了）</td></tr>
+  </table>
+</div>
+
+<div class="decision">
+  <h3>类比：搜索引擎 vs 编辑审阅</h3>
+
+  <p><strong>三路搜索 = Google 的 PageRank。</strong> Graph 结构（谁链接到谁）影响结果的<strong>排名</strong>。被很多相关页面链接的内容排名更高。</p>
+
+  <p><strong>Board 注入 = Wikipedia 编辑的「中立性」检查。</strong> 不管搜索排名如何，反方观点<strong>必须出现</strong>。这不是排名问题——是内容完整性要求。</p>
+
+  <p>两者回答了不同的问题：</p>
+  <ul>
+    <li><strong>三路搜索</strong>：「在符合查询的结果中，谁应该排最前面？」—— graph 是<strong>打分信号</strong></li>
+    <li><strong>Board 注入</strong>：「在 LLM 做推理前，哪些信息必须出现在它面前？」—— graph 是<strong>包含规则</strong></li>
+  </ul>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Q14 · 搜索架构重新设计：三路融合 + 简化 Board</h2>
+
+<div class="q">
+  <p>基于 qmd 源码分析 + V2 参考架构 + 之前所有讨论——重新设计一版完整的搜索+Board 架构。用图说清楚要造一个什么样的东西。</p>
+</div>
+
+<div class="a">
+  <h3>设计前提（来自 Q1-Q13 的结论）</h3>
+  <table>
+    <tr><th>前提</th><th>来源</th></tr>
+    <tr><td>qmd 是 2/3 的轮子——BM25+Vector+RRF 两路融合已实现，Graph 这路必须自己写</td><td>Q9+源码分析</td></tr>
+    <tr><td>Board 强制注入不应在所有 mode 生效——只有 challenge 和 inspire 需要</td><td>Q11</td></tr>
+    <tr><td>Counter 节点当前不存在——需要从 compile prompt 中产生</td><td>Q12</td></tr>
+    <tr><td>qmd 入口装错了——必须索引 wiki/ 而不是 raw/</td><td>Q8</td></tr>
+    <tr><td>自进化的起点是 wiki 不是原材料</td><td>Q6</td></tr>
+  </table>
+</div>
+
+<div class="decision">
+  <h3>总览：三层搜索 + 简化 Board</h3>
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  subgraph INPUT["用户查询"]
+    Q["问题: 1/e 在概率论中有哪些应用？"]
+    MODE["mode: ask / trace / expand / compare / challenge / inspire"]
+  end
+
+  subgraph SEARCH["搜索层 · 三路并行 → RRF 融合"]
+    direction LR
+    BM25["BM25 关键词<br/>qmd FTS5<br/>精确术语匹配"]
+    VEC["Vector 语义<br/>qmd GGUF embedding<br/>语义相似性"]
+    GRAPH["Graph 结构<br/>自研 graph.ts<br/>实体感知 · 1-hop 遍历"]
+    FUSION["RRF 三路融合<br/>K=60 · query expansion<br/>position-aware blend"]
+    RERANK["LLM 重排<br/>qmd Qwen3-Reranker<br/>cross-encoder"]
+    
+    BM25 & VEC & GRAPH --> FUSION --> RERANK
+  end
+
+  subgraph SEEDS["Seed Nodes 输出"]
+    S1["concept: 秘书问题 0.92"]
+    S2["concept: 错位排列 0.83"]
+    S3["concept: 指数过程 0.75"]
+    S4["insight: 泊松联系 0.55"]
+  end
+
+  INPUT --> SEARCH --> SEEDS
+
+  subgraph BOARD["Board 装配层 · 按 mode 分派"]
+    direction TB
+    ASK["ask<br/>纯 seeds · 不注入"]
+    TRACE["trace<br/>seeds + chase excerpts"]
+    EXPAND["expand<br/>seeds + 1-hop related"]
+    COMPARE["compare<br/>seeds + by-source groups"]
+    CHALLENGE["challenge<br/>seeds + ALL counters + ALL limits"]
+    INSPIRE["inspire<br/>seeds + 低阈值 cross-kind 发现"]
+  end
+
+  SEEDS --> ASK & TRACE & EXPAND & COMPARE & CHALLENGE & INSPIRE
+
+  subgraph LLM["LLM 推理"]
+    ANSWER["answer<br/>+ fromWiki<br/>+ missingEvidence"]
+  end
+
+  ASK & TRACE & EXPAND & COMPARE & CHALLENGE & INSPIRE --> LLM
+    </pre>
+  </div>
+</div>
+
+<div class="decision">
+  <h3>qmd 集成：正确的入口</h3>
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  subgraph SETUP["一次性配置"]
+    S1["qmd collection add wiki/ --name litewiki"]
+    S2["qmd embed -c litewiki"]
+  end
+
+  subgraph INDEX["qmd 索引内容"]
+    I1["wiki/concepts/*.md → title + claim + tags"]
+    I2["wiki/methods/*.md → title + claim + evidence"]
+    I3["wiki/insights/*.md → title + claim + tags"]
+  end
+
+  subgraph QUERY["查询时"]
+    Q1["board 调 QmdSearchProvider.search(query)"]
+    Q2["qmd query query --json -c litewiki -n 20"]
+    Q3["返回 [{file: wiki/concepts/xxx.md, score: 0.92, snippet: ...}]"]
+    Q4["parseWikiFile(file) → 真实 BoardNode<br/>含 propRefs + edges + auditStatus"]
+  end
+
+  SETUP --> INDEX
+  INDEX --> QUERY
+  Q1 --> Q2 --> Q3 --> Q4
+    </pre>
+  </div>
+</div>
+
+<div class="decision">
+  <h3>Graph Traversal 的搜索范围</h3>
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart LR
+  subgraph SEEDS["种子节点"]
+    A["seed A<br/>秘书问题"]
+    B["seed B<br/>错位排列"]
+  end
+
+  subgraph HOP1["1-hop 邻居（始终遍历）"]
+    C["counter C<br/>1/e不是常数<br/>↔ contradicts A"]
+    D["insight D<br/>泊松联系<br/>→ derived_from A,B"]
+    E["concept E<br/>伯努利极限<br/>→ related B"]
+  end
+
+  subgraph HOP2["2-hop 邻居（仅限 supports）"]
+    F["claim F<br/>随机过程<br/>→ supports D"]
+  end
+
+  SEEDS -->|"1-hop: all edge types"| HOP1
+  HOP1 -->|"2-hop: supports only"| HOP2
+
+  subgraph OUTPUT["Graph 候选列表"]
+    G1["C: 0.25 = 0.1 + 0.05"]
+    G2["D: 0.40 = 0.1 + 0.15x2"]
+    G3["E: 0.18 = 0.1 + 0.08"]
+    G4["F: 0.10 = 0.1 base only"]
+  end
+
+  HOP1 & HOP2 --> OUTPUT
+    </pre>
+  </div>
+</div>
+
+<div class="decision">
+  <h3>简化后的 Board：每种 mode 的差异</h3>
+  <table>
+    <tr><th>Mode</th><th>输入</th><th>额外装配</th><th>LLM 调用</th></tr>
+    <tr><td><strong>ask</strong></td><td>三路搜索 top K seeds</td><td><strong>无</strong></td><td>1 次</td></tr>
+    <tr><td><strong>trace</strong></td><td>三路搜索 seeds</td><td>chase excerpts（从 sourceChase + propRefs）</td><td>1 次</td></tr>
+    <tr><td><strong>expand</strong></td><td>三路搜索 seeds</td><td>1-hop related（graph 搜索路自然排名）</td><td>1 次</td></tr>
+    <tr><td><strong>compare</strong></td><td>三路搜索 seeds</td><td>按 sourceIds 分组 + bridge nodes</td><td>1 次</td></tr>
+    <tr><td><strong>challenge</strong></td><td>三路搜索 seeds</td><td><strong>强制注入 ALL counter + ALL limits</strong></td><td>1 次</td></tr>
+    <tr><td><strong>inspire</strong></td><td>三路搜索 seeds</td><td><strong>降低阈值</strong>：cross-kind + 低分连通节点</td><td>1 次</td></tr>
+  </table>
+</div>
+
+<div class="decision">
+  <h3>实现路径：三步走</h3>
+  <table>
+    <tr><th>步</th><th>内容</th><th>破坏性</th></tr>
+    <tr><td><strong>Step A</strong></td><td><strong>修 qmd 入口 + 简化 Board。</strong>QmdSearchProvider 索引 wiki/ → parseWikiFile 真节点。board.ts 删除 ask/trace/expand/compare 的强制注入。</td><td>🟡 中</td></tr>
+    <tr><td><strong>Step B</strong></td><td><strong>Graph Traversal 作为第三搜索路。</strong>searchGraph(graph, seedIds) → 1-hop/2-hop → 三路 RRF。</td><td>🟡 中</td></tr>
+    <tr><td><strong>Step C</strong></td><td><strong>Counter 节点来源。</strong>compile prompt 加 counter 提取指令。验证 challenge mode 端到端。</td><td>🟢 低</td></tr>
+  </table>
+</div>
+
+<div class="a">
+  <h3>架构对比：旧 vs 新</h3>
+  <table>
+    <tr><th></th><th>旧架构（当前 baseline）</th><th>新架构</th></tr>
+    <tr><td>搜索</td><td>Keyword search 单路</td><td>qmd BM25+Vector + Graph → <strong>三路 RRF 融合</strong></td></tr>
+    <tr><td>qmd</td><td>索引 raw/，返回假节点</td><td>索引 wiki/，返回真节点</td></tr>
+    <tr><td>Board</td><td>所有 6 种 mode 全量注入</td><td><strong>只有 challenge/inspire 做注入</strong></td></tr>
+    <tr><td>Counter</td><td>wiki/counters/ 空</td><td>compile prompt 产生 + challenge 注入</td></tr>
+    <tr><td>Graph</td><td>搜索后注入（不参与排名）</td><td><strong>搜索时参与 RRF</strong> + challenge 专属注入</td></tr>
+  </table>
+</div>
+
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Q15 · 现状→目标：搜索架构的精简设计</h2>
+
+<div class="q">
+  <p>扫完 qmd 和 agentmemory 之后情况复杂了。从现在到目标，搜索这边需要做一轮梳理——less is more，不是什么都搬过来。</p>
+</div>
+
+<div class="a">
+  <h3>当前真实规模</h3>
+  <table>
+    <tr><th>指标</th><th>值</th><th>意味着什么</th></tr>
+    <tr><td>wiki 节点数</td><td><strong>10</strong></td><td>关键词搜索完全足够。qmd 的向量语义搜索要到 500+ 节点才体现优势</td></tr>
+    <tr><td>每节点边数</td><td><strong>1</strong></td><td>图遍历极简单。1-hop 就是全部图</td></tr>
+    <tr><td>搜索方式</td><td>Intl.Segmenter 中文分词</td><td>对 10 个节点，6 行关键词匹配代码已经够用</td></tr>
+    <tr><td>counter 节点</td><td><strong>0</strong></td><td>challenge mode 没有 counter 可以注入</td></tr>
+  </table>
+</div>
+
+<div class="decision">
+  <h3>三个轮子的适用性分析</h3>
+
+  <table>
+    <tr><th>轮子</th><th>什么时候有用</th><th>现在需要吗</th></tr>
+    <tr>
+      <td><strong>qmd BM25</strong></td>
+      <td>wiki > 200 节点时，FTS5 比 Intl.Segmenter 更快更准</td>
+      <td style="color:var(--rose);">❌ 现在不需要</td>
+    </tr>
+    <tr>
+      <td><strong>qmd Vector + RRF</strong></td>
+      <td>wiki > 1000 节点时，语义搜索发现关键词匹配不到的节点</td>
+      <td style="color:var(--rose);">❌ 现在不需要</td>
+    </tr>
+    <tr>
+      <td><strong>agentmemory Graph traversal</strong></td>
+      <td>任何时候——图遍历不依赖节点数量。10 个节点也一样需要</td>
+      <td style="color:var(--green);">✅ 现在就需要</td>
+    </tr>
+    <tr>
+      <td><strong>agentmemory RRF 三路融合</strong></td>
+      <td>当有 2+ 路独立搜索时。你目前只有 1 路</td>
+      <td style="color:var(--rose);">❌ 现在不需要</td>
+    </tr>
+  </table>
+</div>
+
+<div class="decision">
+  <h3>精简后的目标架构</h3>
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  subgraph NOW["当前规模 · 10 nodes"]
+    direction LR
+    KW["Keyword Search<br/>Intl.Segmenter<br/>6 行代码"]
+    GRAPH_NOW["Graph Walk<br/>1-hop edges<br/>确定性遍历"]
+  end
+
+  subgraph PHASE2["Phase 2 · wiki > 200"]
+    QMD_BM25["qmd BM25<br/>FTS5 + CJK<br/>替换 Keyword"]
+  end
+
+  subgraph PHASE3["Phase 3 · wiki > 1000"]
+    QMD_FULL["qmd Hybrid<br/>BM25 + Vector<br/>+ RRF + Rerank"]
+    RRF3["三路 RRF<br/>BM25 + Vector + Graph<br/>agentmemory 公式"]
+  end
+
+  NOW -->|"规模增长"| PHASE2 -->|"规模增长"| PHASE3
+
+  subgraph ALWAYS["始终需要的"]
+    BOARD_SIMPLE["简化 Board<br/>ask: 纯搜索<br/>challenge: 搜索 + graph counter<br/>inspire: 搜索 + graph 低阈值"]
+    COUNTER["Counter 来源<br/>compile prompt 提取<br/>contradiction 检测"]
+  end
+
+  NOW & PHASE2 & PHASE3 --> ALWAYS
+    </pre>
+  </div>
+</div>
+
+<div class="decision">
+  <h3>具体做什么、不做什么</h3>
+
+  <table>
+    <tr><th>做什么</th><th>不做什么</th><th>理由</th></tr>
+    <tr>
+      <td><strong>修复 qmd 入口</strong>（索引 wiki/ → parseWikiFile）</td>
+      <td>启用 qmd 搜索</td>
+      <td>入口必须正确。但 10 个节点不需要切搜索后端</td>
+    </tr>
+    <tr>
+      <td><strong>Graph traversal</strong>（1-hop walk + 边类型加分）</td>
+      <td>RRF 三路融合</td>
+      <td>challenge/inspire 需要 graph。单路搜索不需要 RRF</td>
+    </tr>
+    <tr>
+      <td><strong>简化 Board</strong>（ask 纯搜索，challenge 加 counter）</td>
+      <td>给 ask mode 做 graph 注入</td>
+      <td>ask 用户只要答案，counter 会干扰</td>
+    </tr>
+    <tr>
+      <td><strong>compile prompt 加 counter 提取</strong></td>
+      <td>daemon 自动合成 counter</td>
+      <td>LLM 读材料就能识别反方观点。一行指令</td>
+    </tr>
+    <tr>
+      <td><strong>保留 SearchProvider 接口</strong></td>
+      <td>实现 QmdSearchProvider 的完整 vector+rerank</td>
+      <td>接口在就够了。未来切 qmd 只需换实现</td>
+    </tr>
+    <tr>
+      <td><strong>保留 agentmemory RRF 公式作为注释</strong></td>
+      <td>现在就写三路 RRF 代码</td>
+      <td>YAGNI。先让 graph traversal 跑起来</td>
+    </tr>
+  </table>
+</div>
+
+<div class="decision">
+  <h3>Graph traversal 的精简实现</h3>
+  <p>agentmemory 用 Dijkstra BFS + 边权重 + 路径长度——因为它的图有万级节点和加权边。你的图：10 节点，1 边/节点。</p>
+  <pre class="code">// 精简版——现在就够用
+function walkGraph(seedIds: string[], graph: GraphData): Map&lt;string, number&gt; {
+  const scores = new Map();
+  for (const seedId of seedIds) {
+    for (const edge of graph.edges) {
+      if (edge.from === seedId || edge.to === seedId) {
+        const other = edge.from === seedId ? edge.to : edge.from;
+        const boost = edge.type === "contradicts" ? 0.3
+                    : edge.type === "derived_from" ? 0.2 : 0.1;
+        scores.set(other, (scores.get(other) ?? 0) + boost);
+      }
+    }
+  }
+  return scores;
+}</pre>
+  <p>不需要 Dijkstra。不需要路径长度。1-hop + 边类型加分。</p>
+</div>
+
+<div class="a">
+  <h3>复用清单</h3>
+
+  <table>
+    <tr><th>来自</th><th>复用方式</th><th>时机</th></tr>
+    <tr><td>qmd BM25 FTS5</td><td>替换 Intl.Segmenter 关键词搜索</td><td>wiki > 200</td></tr>
+    <tr><td>qmd Vector + RRF</td><td>作为第二搜索路</td><td>wiki > 1000</td></tr>
+    <tr><td>agentmemory RRF 公式</td><td>保留为注释/文档，未来用</td><td>wiki > 1000</td></tr>
+    <tr><td>agentmemory Graph traversal</td><td>简化为 1-hop walk（不需要 Dijkstra）</td><td>现在</td></tr>
+  </table>
+
+  <table>
+    <tr><th>自研（必须自己写的）</th><th>理由</th></tr>
+    <tr><td>Graph traversal + 边类型打分</td><td>qmd 没有图概念，agentmemory 的图是代码关系</td></tr>
+    <tr><td>简化 Board（按 mode 分派）</td><td>发动机的独特设计——外部工具做不了</td></tr>
+    <tr><td>Counter 节点产生（compile prompt）</td><td>agentmemory 不记反方观点</td></tr>
+  </table>
+</div>
+
+
+
+<!-- ════════════════════════════════════════════════════════════════ -->
+<h2>Q16 · 搜索架构精细设计：基于轮子的最终方案</h2>
+
+<div class="q">
+  <p>基于 qmd 和 agentmemory 两个代码库，重新精细设计搜索架构。明确哪些要加、哪些不加。</p>
+</div>
+
+<div class="a">
+  <h3>方案 C 精确定义：qmd 做搜索引擎，我们做三路融合</h3>
+  <table>
+    <tr><th>组件</th><th>谁提供</th><th>怎么用</th></tr>
+    <tr><td><strong>BM25 搜索</strong></td><td>qmd SDK: <code>store.searchLex(query)</code></td><td>调用 qmd FTS5，拿到 BM25 排名列表</td></tr>
+    <tr><td><strong>Vector 嵌入生成</strong></td><td>qmd CLI: <code>qmd embed -c litewiki</code></td><td>一次性对 wiki/ 目录生成所有节点嵌入</td></tr>
+    <tr><td><strong>Vector 搜索</strong></td><td>qmd SDK: <code>store.searchVector(query)</code></td><td>调用 qmd sqlite-vec，拿到 Vector 排名列表</td></tr>
+    <tr><td><strong>Graph traversal</strong></td><td>自研: <code>walkGraph(seedIds, graph)</code></td><td>1-hop 遍历 + 边类型加权打分</td></tr>
+    <tr><td><strong>RRF 三路融合</strong></td><td>自研: 照抄 agentmemory 公式</td><td>合并 BM25 rank + Vector rank + Graph rank</td></tr>
+    <tr><td><strong>LLM 重排（可选）</strong></td><td>qmd SDK: <code>store.rerank(query, docs)</code></td><td>对 RRF 融合后的 top 20-40 候选做 cross-encoder 精排</td></tr>
+  </table>
+
+  <p><strong>关键决策：不用 qmd 的 unified search()。</strong>qmd 的 <code>store.search("query")</code> 内部自动做 BM25+Vector → 2-way RRF → rerank。我们不要这个封装——我们要 <code>searchLex()</code> 和 <code>searchVector()</code> 的原始排名，加上自己的 graph rank，三路一起 RRF。</p>
+</div>
+
+<div class="decision">
+  <h3>施工路线：三段并行</h3>
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  subgraph A["A 段 · 无外部依赖 · 立即启动"]
+    A1["Board 简化<br/>删除 ask/trace/expand/compare<br/>的强制注入逻辑"]
+    A2["Graph traversal<br/>walkGraph + 边类型打分"]
+    A3["Counter 来源<br/>compile prompt 加 counter 提取"]
+  end
+
+  subgraph B["B 段 · 依赖 qmd 配置 · 紧接着"]
+    B1["qmd 集成<br/>collection add wiki/<br/>SDK searchLex/searchVector"]
+    B2["qmd embed<br/>wiki/ 节点嵌入生成"]
+  end
+
+  subgraph C["C 段 · 依赖 A+B · 最后"]
+    C1["RRF 三路融合<br/>BM25 + Vector + Graph<br/>agentmemory 公式"]
+    C2["SearchProvider 切换<br/>Keyword→QmdSearchProvider<br/>默认仍 keyword，可选 qmd"]
+  end
+
+  A --> B --> C
+    </pre>
+  </div>
+</div>
+
+<div class="decision">
+  <h3>A 段详细设计</h3>
+  <table>
+    <tr><th>任务</th><th>文件</th><th>具体改动</th></tr>
+    <tr>
+      <td><strong>A1: Board 简化</strong></td>
+      <td><code>query/board.ts</code></td>
+      <td>
+        <strong>删除</strong>：ask 的 counterNodes、questionNodes 注入<br>
+        <strong>删除</strong>：trace/expand/compare 的 counter 注入<br>
+        <strong>保留</strong>：challenge 的 ALL counter + ALL limits 注入<br>
+        <strong>保留</strong>：inspire 的 低阈值 cross-kind 注入
+      </td>
+    </tr>
+    <tr>
+      <td><strong>A2: Graph traversal</strong></td>
+      <td><code>query/graph-search.ts</code>（新增）</td>
+      <td>
+        <pre class="code">export function walkGraph(
+  seedIds: string[],
+  graph: GraphData
+): Map&lt;string, number&gt; {
+  // contradicts → +0.3, derived_from → +0.2
+  // supports → +0.25, related → +0.1
+  // 被多个 seed 引用 → 分数累加
+}</pre>
+      </td>
+    </tr>
+    <tr>
+      <td><strong>A3: Counter 来源</strong></td>
+      <td><code>ingest/pipeline.ts</code></td>
+      <td>compile prompt 加：<code>如果材料中有与主流矛盾或反例的命题，编译为 kind=counter</code></td>
+    </tr>
+  </table>
+</div>
+
+<div class="decision">
+  <h3>B 段详细设计</h3>
+  <table>
+    <tr><th>任务</th><th>文件</th><th>具体改动</th></tr>
+    <tr>
+      <td><strong>B1: qmd 配置</strong></td>
+      <td>启动脚本 / daemon init</td>
+      <td>
+        <code>qmd collection add wiki/ --name litewiki</code><br>
+        <code>qmd embed -c litewiki</code><br>
+        用 <code>createStore({dbPath})</code> SDK 调用 searchLex/searchVector
+      </td>
+    </tr>
+    <tr>
+      <td><strong>B2: QmdSearchProvider</strong></td>
+      <td><code>query/qmd-search.ts</code></td>
+      <td>
+        改索引 wiki/ → <code>searchLex()</code> + <code>searchVector()</code> → <code>parseWikiFile(file)</code> 真节点
+      </td>
+    </tr>
+  </table>
+</div>
+
+<div class="decision">
+  <h3>C 段：RRF 融合公式</h3>
+  <pre class="code">// 照抄 agentmemory hybrid-search.ts 第 216-218 行
+const K = 60;
+function rrfFusion(
+  bm25Ranks: Map&lt;string, number&gt;,
+  vectorRanks: Map&lt;string, number&gt;,
+  graphScores: Map&lt;string, number&gt;,
+): Map&lt;string, number&gt; {
+  const allIds = new Set([...bm25Ranks.keys(), ...vectorRanks.keys(), ...graphScores.keys()]);
+  const scores = new Map();
+  for (const id of allIds) {
+    const br = bm25Ranks.get(id) ?? Infinity;
+    const vr = vectorRanks.get(id) ?? Infinity;
+    const gs = graphScores.get(id) ?? 0;
+    scores.set(id,
+      1.0 / (K + br) +     // BM25: 关键词 = 最重要
+      0.8 / (K + vr) +     // Vector: 语义 = 次重要
+      0.4 * gs             // Graph: 结构加分（已在上游归一化）
+    );
+  }
+  return scores;
+}</pre>
+</div>
+
+<div class="decision">
+  <h3>明确排除——不需要加的东西</h3>
+  <table>
+    <tr><th>不做什么</th><th>来自</th><th>为什么不需要</th></tr>
+    <tr><td>qmd unified search()</td><td>qmd</td><td>内部 2-way RRF——我们要三路</td></tr>
+    <tr><td>agentmemory Dijkstra BFS</td><td>agentmemory</td><td>边无权重——1-hop walk 够</td></tr>
+    <tr><td>qmd query expansion</td><td>qmd</td><td>DeepSeek 自然语言够丰富</td></tr>
+    <tr><td>agentmemory entity extraction</td><td>agentmemory</td><td>知识问答 ≠ 代码搜索</td></tr>
+    <tr><td>qmd MCP server</td><td>qmd</td><td>engine 本身 MCP-ready</td></tr>
+    <tr><td>agentmemory KV + snapshot</td><td>agentmemory</td><td>文件系统存 frontmatter</td></tr>
+    <tr><td>qmd smart chunking</td><td>qmd</td><td>已有 loader→chunk→prop 管线</td></tr>
+  </table>
+</div>
+
+<div class="a">
+  <h3>最终架构</h3>
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  Q["用户查询"] --> PARALLEL
+
+  subgraph PARALLEL["三路并行搜索"]
+    direction LR
+    BM25["BM25 路<br/>qmd store.searchLex()"]
+    VEC["Vector 路<br/>qmd store.searchVector()"]
+    GRAPH["Graph 路<br/>自研 walkGraph()"]
+  end
+
+  BM25 --> RRF["RRF 融合<br/>agentmemory 公式"]
+  VEC --> RRF
+  GRAPH --> RRF
+
+  RRF --> SEEDS["Seed Nodes 排名"]
+
+  SEEDS --> MODE{"mode?"}
+  MODE -->|ask| ASK["纯 seeds"]
+  MODE -->|trace| TRACE["+ excerpts"]
+  MODE -->|expand| EXPAND["+ 1-hop"]
+  MODE -->|compare| COMPARE["+ groups"]
+  MODE -->|challenge| CH["+ ALL counters"]
+  MODE -->|inspire| INS["+ cross-kind"]
+    </pre>
+  </div>
+</div>
+
+
+</body>
+</html>

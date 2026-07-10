@@ -153,7 +153,7 @@ describe("graph health", () => {
 
   it("有边连接时不产生孤立节点", () => {
     saveNode("concepts", "a.md", "test/concept/a", {
-      edges: j([{ from: "test/concept/a", to: "test/concept/b", type: "relates_to" }]),
+      edges: j([{ from: "test/concept/a", to: "test/concept/b", type: "related" }]),
     });
     saveNode("concepts", "b.md", "test/concept/b");
 

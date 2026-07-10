@@ -34,9 +34,10 @@ function writeChase(config: AppConfig, fileName: string, frontmatter: string[], 
   const markedBody = [
     body,
     "",
-    "<!-- chunk:1 id=test-chunk-1 charStart=0 charEnd=100 -->",
     body,
-    "<!-- /chunk:1 -->",
+    "<!-- prop 1 -->",
+    body,
+    "<!-- /prop 1 -->",
   ].join("\n");
   writeFileSync(
     join(chaseDir, fileName),

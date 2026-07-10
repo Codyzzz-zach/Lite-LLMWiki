@@ -1,0 +1,671 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LiteWikiagent 架构设计 v2.0</title>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true, theme: "base",
+      themeVariables: {
+        fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+        primaryColor: "#eef6ff", primaryTextColor: "#172033", primaryBorderColor: "#77a6d9",
+        lineColor: "#5f748d", secondaryColor: "#f5f0ff", tertiaryColor: "#fff8e8", fontSize: "13px",
+      },
+      flowchart: { useMaxWidth: true, htmlLabels: true, curve: "basis" },
+    });
+  </script>
+  <style>
+    :root { --ink: #172033; --muted: #617087; --soft: #eef3f8; --line: #d7e0ea; --blue: #2f6fbd; --green: #3a8068; --amber: #9b6a1a; --rose: #b2485a; --paper: #fbfcfe; --white: #ffffff; --code-bg: #182235; --brand: #0D5C41; }
+    * { box-sizing: border-box; } html { scroll-behavior: smooth; }
+    body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif; color: var(--ink); background: linear-gradient(180deg, rgba(238,246,255,0.9), rgba(251,252,254,0.9) 34rem), var(--paper); line-height: 1.74; }
+    a { color: var(--blue); text-underline-offset: 0.18em; }
+    .page { max-width: 1200px; margin: 0 auto; padding: 0 22px 72px; }
+    header { padding: 64px 0 38px; }
+    .eyebrow { display: inline-flex; align-items: center; gap: 10px; color: var(--green); font-size: 0.84rem; font-weight: 780; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 18px; }
+    .eyebrow::before { content: ""; width: 34px; height: 2px; background: var(--green); border-radius: 999px; }
+    .version-badge { display: inline-block; margin-left: 12px; padding: 2px 10px; background: var(--brand); color: #fff; border-radius: 999px; font-size: 0.78rem; font-weight: 700; vertical-align: middle; }
+    h1 { max-width: 950px; margin: 0; font-size: clamp(2.2rem, 5.5vw, 4rem); line-height: 1.04; }
+    .subtitle { max-width: 820px; margin: 24px 0 0; color: #34435a; font-size: clamp(1rem, 2vw, 1.3rem); line-height: 1.68; }
+    .meta-bar { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; padding: 18px 22px; background: rgba(255,255,255,0.82); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(32,50,72,0.06); }
+    nav.quick-nav { display: flex; flex-wrap: wrap; gap: 10px; margin: 32px 0 0; }
+    nav.quick-nav a { display: inline-flex; align-items: center; min-height: 38px; padding: 7px 13px; color: #26354a; background: rgba(255,255,255,0.72); border: 1px solid var(--line); border-radius: 999px; text-decoration: none; font-size: 0.92rem; font-weight: 650; }
+    main { display: grid; gap: 22px; }
+    section { padding: 46px 0; border-top: 1px solid rgba(215,224,234,0.86); }
+    .section-head { display: grid; grid-template-columns: minmax(0,0.42fr) minmax(0,0.9fr); gap: 32px; align-items: start; margin-bottom: 26px; }
+    .kicker { color: var(--blue); font-size: 0.82rem; font-weight: 820; letter-spacing: 0.09em; text-transform: uppercase; }
+    h2 { margin: 0; font-size: clamp(1.6rem, 2.8vw, 2.5rem); line-height: 1.16; }
+    h3 { margin: 26px 0 10px; font-size: 1.22rem; line-height: 1.32; }
+    p { margin: 0 0 16px; }
+    .diagram-wrap { margin: 24px 0; padding: 22px; background: var(--white); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; box-shadow: 0 10px 30px rgba(32,50,72,0.07); }
+    .mermaid { min-width: 500px; text-align: center; }
+    table { width: 100%; border-collapse: collapse; margin: 22px 0; background: var(--white); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; box-shadow: 0 10px 30px rgba(32,50,72,0.06); }
+    th, td { padding: 12px 16px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; font-size: 0.92rem; }
+    th { background: #eef4fb; color: #20324c; font-size: 0.82rem; letter-spacing: 0.04em; text-transform: uppercase; }
+    tr:last-child td { border-bottom: 0; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 0.88em; background: var(--soft); padding: 1px 4px; border-radius: 3px; }
+    .code { padding: 18px; color: #eff6ff; background: var(--code-bg); border-radius: 8px; overflow-x: auto; line-height: 1.6; font-size: 0.88rem; margin: 14px 0; }
+    .callout { padding: 20px 24px; background: rgba(255,255,255,0.82); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 30px rgba(32,50,72,0.06); margin: 20px 0; }
+    .callout.warn { border-color: #ead5a4; background: #fffaf0; }
+    .callout.good { border-color: #b8d9cd; background: #f3fbf8; }
+    .callout.info { border-color: #c4daf0; background: #f3f8fd; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.76rem; font-weight: 700; }
+    .badge-new { background: #cce5ff; color: #004085; }
+    .badge-changed { background: #fdf2d0; color: #7a5e1b; }
+    .badge-exists { background: #d4edda; color: #155724; }
+    .annot { font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
+    footer { padding: 30px 0 10px; color: var(--muted); font-size: 0.9rem; }
+    @media (max-width: 860px) { .section-head { grid-template-columns: 1fr; } .mermaid { min-width: 400px; } }
+  </style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <div class="eyebrow">Architecture Design · v2.0 <span class="version-badge">2026-07-09</span></div>
+  <h1>LiteWikiagent 架构设计 v2.0</h1>
+  <p class="subtitle">
+    基于 v1.0 设计文档 + Q1–Q16 精设讨论 + advance_point1 管线细化 + qmd/agentmemory 源码分析。<br>
+    所有设计决策均经过「现状→为什么→替代方案→取舍理由」四步验证。
+  </p>
+</header>
+
+<nav class="quick-nav">
+  <a href="#overview">总览</a>
+  <a href="#loader">Loader → Prop</a>
+  <a href="#ingest">Ingest 管线</a>
+  <a href="#audit">审计体系</a>
+  <a href="#search">搜索架构</a>
+  <a href="#board">Board 装配</a>
+  <a href="#graph">图谱系统</a>
+  <a href="#evolution">自进化</a>
+  <a href="#daemon">Daemon</a>
+  <a href="#okf">OKF</a>
+  <a href="#counter">Counter 来源</a>
+  <a href="#decisions">决策表</a>
+  <a href="#phases">施工路线</a>
+</nav>
+
+<main>
+
+<!-- ═══════════════════════ 01 · 总览 ═══════════════════════ -->
+<section id="overview">
+  <div class="section-head">
+    <div class="kicker">01 / Overview</div>
+    <div><h2>系统总览</h2></div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  subgraph INPUT["📥 输入"]
+    PDF["PDF"] & MD["Markdown"] & TEX["TeX"]
+  end
+
+  subgraph L0["L0 · Loader"]
+    L0a["loader.ts · pdf-loader.ts · tex-loader.ts"]
+    L0b["纯文本正文 → chase 文件"]
+  end
+
+  subgraph L1["L1 · Proposition"]
+    L1a["proposition.ts: LLM 拆分原子命题"]
+    L1b["&lt;!-- prop N --&gt; marker"]
+  end
+
+  subgraph L2["L2 · Engine Core"]
+    L2a["pipeline.ts: compile → wiki nodes + edges"]
+    L2b["audit.ts + semantic-audit.ts: 结构+语义审计"]
+    L2c["graph.ts: buildGraph + walkGraph"]
+    L2d["board.ts: 按 mode 装配推理残局"]
+  end
+
+  subgraph SEARCH["搜索层"]
+    S1["qmd BM25 · FTS5"]
+    S2["qmd Vector · GGUF embedding"]
+    S3["自研 Graph · 1-hop traversal"]
+    S4["RRF 三路融合"]
+  end
+
+  subgraph L3["L3 · Maintenance"]
+    L3a["daemon: watcher + timer + state + lint"]
+  end
+
+  subgraph L4["L4 · Evolution"]
+    L4a["contradiction · reinforce · confirm"]
+    L4b["supersede · reflow(stub)"]
+  end
+
+  subgraph OUTPUT["📤 输出"]
+    O1["wiki/{kind}/*.md"]
+    O2["audit-gate.json"]
+    O3["progress.md"]
+  end
+
+  INPUT --> L0 --> L1 --> L2
+  L2 --> L3
+  L2 --> L4
+  SEARCH --> L2
+  L2 --> OUTPUT
+  L3 --> OUTPUT
+  L4 --> OUTPUT
+    </pre>
+  </div>
+</section>
+
+<!-- ═══════════════════════ 02 · Loader → Prop ═══════════════════════ -->
+<section id="loader">
+  <div class="section-head">
+    <div class="kicker">02 / Loader → Proposition</div>
+    <div><h2>消灭 chunk 标记，统一 prop-only 管线</h2></div>
+  </div>
+
+  <div class="callout warn">
+    <strong>v1.0 设计明确要求「无 chunk 标记、无 fallback」——当前代码未完全执行。</strong>
+    代码中的 chunk marker、collectPropIndices 的 chunk fallback、wiki-parser 的 chunkRefs 解析——都是设计违规残留。
+  </div>
+
+  <h3>目标 chase 格式</h3>
+  <pre class="code">---
+sourceId: raw_pdf_e_的基本画像_3ef24c47e940cf85
+fingerprint: 3ef24c47e940cf85
+---
+
+e（欧拉数）约等于 2.718281828459045，是自然对数的底数。
+
+&lt;!-- prop 1 --&gt;
+1/e约等于0.3678794411，约等于36.8%。
+&lt;!-- /prop 1 --&gt;
+
+极限lim_{n→∞}(1-1/n)^n = 1/e。当n趋于无穷大时…
+
+&lt;!-- prop 2 --&gt;
+极限lim_{n→∞}(1-1/n)^n = 1/e。
+&lt;!-- /prop 2 --&gt;</pre>
+
+  <p><strong>与当前格式的区别：</strong>❌ 无 <code>&lt;!-- chunk:N --&gt;</code> 标记。Prop 用开闭标记环绕正文。无 prop 时 chase 为纯文本（命题提取前中间态）。</p>
+
+  <h3>五个改造点</h3>
+  <table>
+    <tr><th>#</th><th>改造</th><th>文件</th></tr>
+    <tr><td>①</td><td>Loader 不再切 chunk——chase 文件 = frontmatter + 正文，无 chunk 标记</td><td><code>knowledge/store.ts</code></td></tr>
+    <tr><td>②</td><td>命题提取不变——全文一次送 LLM</td><td><code>ingest/proposition.ts</code></td></tr>
+    <tr><td>③</td><td>审计上下文改用 prop 邻近窗口（±3 prop）替代 chunk 选择 <span class="badge badge-exists">已实现</span></td><td><code>knowledge/chase.ts</code>（<code>selectPropsContext()</code>）</td></tr>
+    <tr><td>④</td><td>compile 硬截断改为自适应——<code>slice(0, maxTokens × 2.5)</code> <span class="badge badge-exists">已实现</span></td><td><code>ingest/pipeline.ts</code>（<code>compileInputBudget()</code>）</td></tr>
+    <tr><td>⑤</td><td>extract-props CLI 统一配置——<code>config.model</code> + <code>thinkingDisabled: true</code></td><td><code>cli/commands/extract-props.ts</code></td></tr>
+  </table>
+</section>
+
+<!-- ═══════════════════════ 03 · Ingest ═══════════════════════ -->
+<section id="ingest">
+  <div class="section-head">
+    <div class="kicker">03 / Ingest Pipeline</div>
+    <div><h2>覆盖式 ingest + 共享管线</h2></div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart LR
+  subgraph TRIGGER["触发"]
+    C1["CLI: llmwiki ingest2"]
+    C2["Daemon: onNewChase"]
+  end
+
+  subgraph PIPELINE["runIngestPipeline()"]
+    direction TB
+    P1["① extract props<br/>(if no prop marker)"]
+    P2["② cleanup: 删旧节点<br/>(fingerprint match)"]
+    P3["③ compile<br/>命题 → wiki nodes + edges"]
+    P4["④ audit<br/>结构 + 语义"]
+    P5["⑤ contradict + reinforce<br/>→ progress.md"]
+  end
+
+  C1 & C2 --> PIPELINE
+    </pre>
+  </div>
+
+  <div class="callout good">
+    <strong>关键设计决策：</strong><br>
+    • <strong>覆盖式 ingest</strong>：同 fingerprint 的旧节点先删再写——防止 wiki 膨胀。<br>
+    • <strong>fingerprint 做主键</strong>：chase 文件的 <code>fingerprint</code> 字段（内容哈希）是清理旧节点的权威标识——文件重命名不影响清理。<br>
+    • <strong>自进化起点是 wiki</strong>：原材料 → wiki 是一次性 bootstrap。daemon 不做自动 re-ingest。<br>
+    • <strong>pipeline 写 progress.md</strong>：contradict/reinforce 结果不再丢弃——写入 progress.md 等待人类确认。
+  </div>
+</section>
+
+<!-- ═══════════════════════ 04 · Audit ═══════════════════════ -->
+<section id="audit">
+  <div class="section-head">
+    <div class="kicker">04 / Audit</div>
+    <div><h2>双重审计 + 闸门</h2></div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  subgraph STRUCT["结构审计 · 无 LLM"]
+    S1["nodeId/kind 格式检查"]
+    S2["sourceChase 存在性"]
+    S3["propRefs 非空 + 在 chase 中存在"]
+    S4["claim/evidence 非空"]
+  end
+
+  subgraph SEM["语义审计 · LLM judge"]
+    SE1["读 chase excerpts<br/>(prop 邻近窗口 ±3)"]
+    SE2["构造 audit prompt"]
+    SE3["5 维度 verdict"]
+    SE4["support · addition · inference · limits · citation"]
+    SE5["anchor: prop N '原文' → Layer 1 防御"]
+  end
+
+  subgraph GATE["闸门"]
+    GA["结构失败 → 阻止 query (hard)"]
+    GB["语义失败 → 警告放行 (soft)"]
+    GC["审计未执行 → 警告放行 (soft)"]
+  end
+
+  STRUCT --> GATE
+  SEM --> GATE
+    </pre>
+  </div>
+
+  <p><strong>审计 JSON 输出：</strong>无 semantic → <code>{ok, summary, issues}</code>；semantic 通过 → <code>{structure, semantic}</code>；semantic 失败 → 追加 <code>{stage, blockingIssues, suggestedNextActions}</code>（agent contract spec 11.3）。</p>
+</section>
+
+<!-- ═══════════════════════ 05 · Search ═══════════════════════ -->
+<section id="search">
+  <div class="section-head">
+    <div class="kicker">05 / Search Architecture</div>
+    <div><h2>三路并行搜索 + RRF 三路融合</h2></div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  Q["用户查询"] --> PARALLEL
+
+  subgraph PARALLEL["三路并行搜索"]
+    direction LR
+    BM25["BM25 路<br/>qmd SDK searchLex()<br/>SQLite FTS5"]
+    VEC["Vector 路<br/>qmd SDK searchVector()<br/>sqlite-vec + GGUF"]
+    GRAPH["Graph 路<br/>自研 walkGraph()<br/>1-hop + 边类型打分"]
+  end
+
+  BM25 --> RRF["RRF 三路融合<br/>agentmemory 公式<br/>K=60 · w: 0.4 / 0.6 / 0.3"]
+  VEC --> RRF
+  GRAPH --> RRF
+
+  RRF --> SEEDS["Seed Nodes<br/>按融合分数排名"]
+
+  SEEDS --> MODE{"mode?"}
+  MODE -->|ask| A["纯 seeds → LLM"]
+  MODE -->|trace| T["+ excerpts → LLM"]
+  MODE -->|expand| E["+ 1-hop → LLM"]
+  MODE -->|compare| C["+ groups → LLM"]
+  MODE -->|challenge| CH["+ ALL counters → LLM"]
+  MODE -->|inspire| I["+ cross-kind → LLM"]
+    </pre>
+  </div>
+
+  <h3>组件职责分配</h3>
+  <table>
+    <tr><th>组件</th><th>谁提供</th><th>怎么用</th></tr>
+    <tr><td><strong>BM25 搜索</strong></td><td>qmd SDK: <code>store.searchLex(query)</code></td><td>调用 qmd FTS5，拿到 BM25 排名列表</td></tr>
+    <tr><td><strong>Vector 嵌入</strong></td><td>qmd CLI: <code>qmd embed -c litewiki</code></td><td>一次性对 wiki/ 目录生成所有节点嵌入（本地 GGUF）</td></tr>
+    <tr><td><strong>Vector 搜索</strong></td><td>qmd SDK: <code>store.searchVector(query)</code></td><td>调用 qmd sqlite-vec，拿到 Vector 排名列表</td></tr>
+    <tr><td><strong>Graph traversal</strong></td><td>自研: <code>walkGraph(seedIds, graph)</code></td><td>1-hop 遍历 + 边 confidence 加权（照抄 agentmemory: <code>avgConfidence × (1/pathLength)</code>）</td></tr>
+    <tr><td><strong>RRF 三路融合</strong></td><td>自研</td><td>照抄 agentmemory 公式：<code>Σ(w_i / (K + rank_i))</code> · 权重对齐 agentmemory: BM25=0.4, Vector=0.6, Graph=0.3</td></tr>
+    <tr><td><strong>LLM 重排（可选）</strong></td><td>qmd SDK: <code>store.rerank(query, docs)</code></td><td>对 RRF 融合后的 top 20-40 候选做 cross-encoder 精排</td></tr>
+  </table>
+
+  <div class="callout info">
+    <strong>qmd 集成：</strong><br>
+    • 一次性配置：<code>qmd collection add wiki/ --name litewiki</code> + <code>qmd embed -c litewiki</code><br>
+    • <strong>不用 qmd 的 unified search()</strong>——它内部做 2-way RRF。我们要 <code>searchLex()</code> + <code>searchVector()</code> 的原始排名，加上自己的 graph rank，三路一起 RRF。<br>
+    • QmdSearchProvider 从 qmd 返回的文件路径调用 <code>parseWikiFile()</code> 解析真实节点（含 propRefs + edges + auditStatus）。<br>
+    • <strong>默认仍用 keyword search</strong>——qmd 作为可替换后端，接口已定义，不强制启用。<br>
+    • <strong>优雅降级（对齐 agentmemory hybrid-search.ts）</strong>：默认 keyword 后端（<code>KeywordSearchProvider</code>）不实现 <code>searchVector</code> → Vector 路传空 RankMap → RRF 中 <code>0.6/(K+Infinity)=0</code>，Vector 自然贡献 0 分，等效「BM25(0.4) + Graph(0.3) 两路」，相对比例保持。qmd embed 配置后 <code>searchVector</code> 返回真向量排名，三路才齐生效。绝不用「Vector=BM25 伪造三路」——那会让 BM25 权重实际变 0.4+0.6=1.0，扭曲 Graph 相对权重。
+  </div>
+
+  <h3>RRF 融合公式</h3>
+  <pre class="code">// 照抄 agentmemory hybrid-search.ts 第 216-218 行——三路统一用 weight/(K+rank) 形式
+const K = 60;
+
+function rrfFusion(bm25Ranks, vectorRanks, graphRanks) {
+  // bm25Ranks:  Map&lt;nodeId, BM25 rank (1-based)&gt;
+  // vectorRanks: Map&lt;nodeId, Vector rank (1-based)&gt;
+  // graphRanks: Map&lt;nodeId, Graph rank (1-based，由 walkGraph score 经 scoresToRanks 转换)&gt;
+  //
+  // 权重对齐 agentmemory hybrid-search.ts 第 30-32 行:
+  // bm25Weight=0.4, vectorWeight=0.6, graphWeight=0.3
+  // 三路同量纲：graph 第1名 = 0.3/61 ≈ 0.0049，低于 BM25 第1名(0.0066)和 Vector 第1名(0.0098)
+  // → graph 邻居天然排不进前几名，但能进中后段（不泛滥也不消失）
+
+  const allIds = new Set([...bm25Ranks.keys(), ...vectorRanks.keys(), ...graphRanks.keys()]);
+  const scores = new Map();
+
+  for (const id of allIds) {
+    const br = bm25Ranks.get(id) ?? Infinity;   // 缺失路 = Infinity → 贡献 0（优雅降级）
+    const vr = vectorRanks.get(id) ?? Infinity;
+    const gr = graphRanks.get(id) ?? Infinity;
+
+    scores.set(id,
+      0.4 / (K + br) +    // BM25: 关键字
+      0.6 / (K + vr) +    // Vector: 语义（agentmemory 中权重最高）
+      0.3 / (K + gr)      // Graph: 结构（同量纲，不再用 0.3*score 避免压过 seed）
+    );
+  }
+  return scores;
+}</pre>
+
+  <h3>明确不用的轮子功能</h3>
+  <table>
+    <tr><th>不用什么</th><th>来自</th><th>为什么</th></tr>
+    <tr><td>qmd unified search()</td><td>qmd</td><td>内部 2-way RRF——我们要三路</td></tr>
+    <tr><td>agentmemory Dijkstra BFS</td><td>agentmemory</td><td>边无权重——1-hop walk 够</td></tr>
+    <tr><td>qmd query expansion</td><td>qmd</td><td>DeepSeek 自然语言已足够丰富</td></tr>
+    <tr><td>agentmemory entity extraction</td><td>agentmemory</td><td>知识问答 ≠ 代码搜索</td></tr>
+    <tr><td>agentmemory KV + snapshot</td><td>agentmemory</td><td>文件系统 frontmatter 存 edges</td></tr>
+    <tr><td>qmd smart chunking</td><td>qmd</td><td>设计决策 #1：消灭 chunk 标记。qmd smart chunking 是更好的分段技术（900t AST-aware + 打分 + 代码保护），但我们的架构正在移除 chunk——chase 文件将只有 prop 标记。qmd embed 内部会自动使用 smart chunking 对 wiki 节点分段做向量嵌入——不需要我们集成。</td></tr>
+  </table>
+</section>
+
+<!-- ═══════════════════════ 06 · Board ═══════════════════════ -->
+<section id="board">
+  <div class="section-head">
+    <div class="kicker">06 / Board Assembly</div>
+    <div><h2>简化 Board：按 mode 分派，只有两个 mode 需要注入</h2></div>
+  </div>
+
+  <table>
+    <tr><th>Mode</th><th>输入</th><th>额外装配</th><th>需要 board?</th></tr>
+    <tr><td><strong>ask</strong></td><td>三路搜索 top K seeds</td><td><strong>无</strong></td><td>❌</td></tr>
+    <tr><td><strong>trace</strong></td><td>三路搜索 seeds</td><td>chase excerpts（从 sourceChase + propRefs）</td><td>⚠️ 轻量</td></tr>
+    <tr><td><strong>expand</strong></td><td>三路搜索 seeds</td><td>1-hop related（graph 搜索路自然排名）</td><td>⚠️ 轻量</td></tr>
+    <tr><td><strong>compare</strong></td><td>三路搜索 seeds</td><td>按 sourceIds 分组 + bridge nodes</td><td>⚠️ 轻量</td></tr>
+    <tr><td><strong>challenge</strong></td><td>三路搜索 seeds</td><td><strong>强制注入 ALL counter + ALL limits</strong>（不管 RRF 排名）</td><td>✅ 完整</td></tr>
+    <tr><td><strong>inspire</strong></td><td>三路搜索 seeds</td><td><strong>降低阈值</strong>：cross-kind 节点 + 低分但连通的节点</td><td>✅ 完整</td></tr>
+  </table>
+
+  <div class="callout warn">
+    <strong>三路搜索和 board 注入在原理上是冲突的。</strong><br>
+    三路搜索说「我相信排名——Graph 结构影响分数，排到后面的节点就不应该出现在 LLM 面前」。<br>
+    Board 注入说「我不信任排名——有些节点排名低是搜索盲区，不是它不重要，我直接加进来」。<br>
+    一个相信排名，一个绕过排名——这是根本性的设计冲突。<br><br>
+    <strong>解决方案：按 mode 分离。不要让所有 mode 都做注入。</strong><br>
+    &nbsp;&nbsp;• ask/trace/expand/compare → <strong>纯三路搜索</strong>，信任排名。不注入。<br>
+    &nbsp;&nbsp;• challenge → <strong>三路搜索 + 强制注入</strong>。counter 和 limits 必须出现——这是 challenge mode 的存在意义。<br>
+    &nbsp;&nbsp;• inspire → <strong>三路搜索 + 降低阈值</strong>。主动发现排名低的隐藏关联——这是发现工具，不是搜索工具。<br>
+    不是「既要又要」——是「不同 mode 要不同的东西」。（详见 architecture-decisions Q11）
+  </div>
+</section>
+
+<!-- ═══════════════════════ 07 · Graph ═══════════════════════ -->
+<section id="graph">
+  <div class="section-head">
+    <div class="kicker">07 / Graph System</div>
+    <div><h2>图谱系统：frontmatter 真相源 + 搜索第三路</h2></div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart LR
+  FM["wiki/*.md<br/>frontmatter.edges"]
+  BUILD["buildGraph()"]
+  GRAPH["GraphData 内存"]
+
+  subgraph EDGES["5 种边"]
+    E1["derived_from — compile LLM （搜索路: confidence）"]
+    E2["related — compile + inspire （搜索路: confidence）"]
+    E3["supports — reinforce 确认 （搜索路: confidence）"]
+    E4["contradicts — 矛盾检测 （搜索路: confidence; 注入: 强制）"]
+    E5["superseded_by — 人类确认 （注入: 强制）"]
+  end
+
+  FM --> BUILD --> GRAPH
+  GRAPH -->|"三路搜索"| SEARCH["walkGraph()"]
+  GRAPH -->|"board 注入"| BOARD["challenge/inspire"]
+  GRAPH -->|"孤立检测"| LINT["daemon/lint.ts"]
+    </pre>
+  </div>
+
+  <p><strong>Edges 存储格式：</strong>frontmatter 中 edges 以 JSON 字符串存储（含 <code>confidence</code> 字段）。Graph Walk 使用 <code>avgConfidence × (1/pathLength)</code>（对齐 agentmemory 评分公式）——不硬编码 per-type 分数。</p>
+  <p><strong>Graph 无独立写盘文件——不需要。</strong>edges 的真相源在 wiki/*.md frontmatter 中——已经持久化了。<code>buildGraph()</code> 每次扫描 wiki 目录聚合 edges 到内存 GraphData。<code>walkGraph()</code> 在此内存结构上做图遍历。写一个 graph.json 副本反而引入 cache invalidation 问题（frontmatter 变了但 graph.json 没变 → 不一致）。agentmemory 同样不单独持久化 graph——它的 edges 存在 KV 数据库中，不是单独文件。产品定义 §08 原计划 graph.json 是 daemon 缓存——经过 v2.0 分析，决定不需要。</p>
+
+  <h3>Graph 在两步中的角色不同（Q10）</h3>
+  <p>边类型在三路搜索与 board 注入中扮演不同角色——这是 board 与三路「原理冲突、按 mode 分离」的具体落点：</p>
+  <table>
+    <tr><th></th><th>三路搜索中的 Graph</th><th>Board 注入中的 Graph</th></tr>
+    <tr><td><strong>作用</strong></td><td>提升排名（打分信号）</td><td>保证存在（包含规则）</td></tr>
+    <tr><td><strong>适用边类型</strong></td><td><code>derived_from / related / supports</code></td><td><code>contradicts / superseded_by</code></td></tr>
+    <tr><td><strong>操作</strong></td><td>调整分数（被多 seed 引用 → 自然排前）</td><td>调整集合（不管排名，必须出现）</td></tr>
+  </table>
+  <p class="annot"><strong>代码实现：</strong><code>board.ts</code> 的 forcedNodes 注入 switch 只处理 <code>contradicts</code>（→ counterNodes）和 <code>superseded_by</code>（→ relatedNodes）；<code>derived_from / related / supports</code> 不走注入，靠三路搜索的 <code>walkGraph</code> 自然提升排名。这避免了「假三路下靠注入兜底 related」掩盖结构信号的问题。</p>
+</section>
+
+<!-- ═══════════════════════ 08 · Evolution ═══════════════════════ -->
+<section id="evolution">
+  <div class="section-head">
+    <div class="kicker">08 / Self-Evolution</div>
+    <div><h2>自进化：五个方向</h2></div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  subgraph AUTO["自动检测 · pipeline Step 5"]
+    C1["矛盾检测: LLM judge<br/>新节点 vs 已有同 kind 节点"]
+    C2["强化检测: LLM judge 双维度<br/>语义一致度 + 证据增量度"]
+  end
+
+  subgraph CAND["候选 → progress.md"]
+    P1["contradicts 候选"]
+    P2["reinforce 候选"]
+    P3["inspire edge 候选"]
+  end
+
+  subgraph HUMAN["人类确认 · confirm CLI"]
+    H1["confirm --list / --all / --accept"]
+    H2["edges → frontmatter"]
+    H3["supersede → 标记旧节点"]
+    H4["reinforce → auditScore 提升"]
+  end
+
+  AUTO --> CAND --> HUMAN
+    </pre>
+  </div>
+
+  <table>
+    <tr><th>方向</th><th>机制</th><th>谁触发</th><th>状态</th></tr>
+    <tr><td><strong>取代</strong></td><td>矛盾检测 → contradicts 边 → superseded_by 标记</td><td>daemon (compile 后)</td><td>⚠️ 检测运行但不写 progress.md</td></tr>
+    <tr><td><strong>自愈</strong></td><td>定期 lint → 机械自动修复 + 语义工单</td><td>daemon 30min 定时器</td><td>⚠️ 仅检测不修复</td></tr>
+    <tr><td><strong>连接</strong></td><td>ingest 自动（derived_from/related）+ inspire 人类探索</td><td>ingest: daemon / inspire: CLI</td><td>✅ ingest 自动写入 edges</td></tr>
+    <tr><td><strong>缺口</strong></td><td>query missingEvidence → 聚合写入 progress.md</td><td>agent 定期聚合</td><td>🟡 需要 agent 层</td></tr>
+    <tr><td><strong>强化</strong></td><td>新节点 vs 已有节点 → LLM 双维度 → auditScore 提升</td><td>daemon (compile 后)</td><td>⚠️ 检测运行但不写 progress.md</td></tr>
+  </table>
+
+  <div class="callout warn">
+    <strong>最优先修复：pipeline 写 progress.md。</strong>contradict 和 reinforce 的 LLM 调用已经跑了——结果当前被丢弃。复用 <code>writeConfirmSection()</code> 写入 progress.md 是修复闭环的最小改动。
+  </div>
+</section>
+
+<!-- ═══════════════════════ 09 · Daemon ═══════════════════════ -->
+<section id="daemon">
+  <div class="section-head">
+    <div class="kicker">09 / Daemon</div>
+    <div><h2>Daemon：六项职责</h2></div>
+  </div>
+
+  <table>
+    <tr><th>#</th><th>职责</th><th>触发</th><th>间隔</th></tr>
+    <tr><td>①</td><td>命题提取</td><td>onNewChase → runIngestPipeline()</td><td>事件驱动</td></tr>
+    <tr><td>②</td><td>编译</td><td>pipeline 内部自动</td><td>事件驱动</td></tr>
+    <tr><td>③</td><td>审计</td><td>onWikiChange → push queue</td><td>事件驱动</td></tr>
+    <tr><td>④</td><td>lint</td><td>定时器：lintWiki() → lint-report.json</td><td>30min</td></tr>
+    <tr><td>⑤</td><td>回流标记</td><td>定时器：screenAndWriteReflow()</td><td>60min <span class="badge badge-changed">stub</span></td></tr>
+    <tr><td>⑥</td><td>强化检测</td><td>pipeline Step 5 post-compile</td><td>事件驱动</td></tr>
+  </table>
+
+  <p class="annot"><strong>Inspire 不属于 daemon。</strong>它是独立的 CLI 命令（<code>llmwiki inspire</code>），与 daemon 并列属于 L5 Interface 层。</p>
+  <p class="annot"><strong>Daemon 队列消费已纳入 A 段施工。</strong><code>pendingPropExtraction</code> 和 <code>pendingAudit</code> 入队后当前未消费——A5 修复为实际触发 <code>runSemanticAudit</code>。</p>
+</section>
+
+<!-- ═══════════════════════ 10 · OKF ═══════════════════════ -->
+<section id="okf">
+  <div class="section-head">
+    <div class="kicker">10 / OKF Integration</div>
+    <div><h2>OKF 生态兼容（L5 Interface 层）</h2></div>
+  </div>
+
+  <p>Open Knowledge Format (OKF) v0.1 是 Google Cloud 提出的厂商中立知识格式——用纯 Markdown + YAML frontmatter 表示知识。LiteWikiagent 的 wiki 节点格式天然匹配 OKF。</p>
+
+  <table>
+    <tr><th>功能</th><th>文件</th><th>状态</th></tr>
+    <tr><td><strong>导出</strong></td><td><code>okf/export.ts</code></td><td>✅ 已实现——kind→type 映射 + createdAt→timestamp 映射 + body 渲染 + index.md/log.md 生成</td></tr>
+    <tr><td><strong>导入</strong></td><td><code>okf/import.ts</code></td><td>✅ 已实现——OKF bundle → wiki 节点 draft → 走 audit + gate 管线（不绕过质量闸门）</td></tr>
+    <tr><td><strong>映射</strong></td><td><code>okf/mapping.ts</code></td><td>✅ 已实现——9 种 WikiKind ↔ OKF type 双向映射</td></tr>
+  </table>
+
+  <div class="callout info">
+    <strong>诚实评估：OKF 当前未解决任何实际问题。</strong><br>
+    OKF 导出做的事 = 字段改名（kind → type, createdAt → timestamp）。导入 = 逆向改名。<br>
+    我们的 wiki 已经是纯 Markdown + YAML——<code>git clone</code> 就能分发，不需要 OKF 做中间格式。<br>
+    OKF 生态尚未成形（v0.1 草案）——我们是第一个兼容的工具。<br>
+    <strong>保留 okf/ 模块但不作为产品路线图优先级。</strong>已实现的三个文件（export/import/mapping）零维护成本——保留，等生态成熟后再激活。
+  </div>
+  <p><strong>在产品中的位置：</strong>OKF 属于 L5 Interface 层——不影响发动机设计。与搜索/图谱/审计的关系：导入节点走标准管线（被 qmd 索引、参与图谱、被审计）——OKF 不改变任何发动机逻辑。</p>
+</section>
+
+<!-- ═══════════════════════ 11 · Counter ═══════════════════════ -->
+<section id="counter">
+  <div class="section-head">
+    <div class="kicker">11 / Counter Nodes</div>
+    <div><h2>Counter 节点来源</h2></div>
+  </div>
+
+  <p><strong>当前 wiki/counters/ 为空。</strong>Counter 节点和 contradicts edge 是两个不同的东西——矛盾检测产生 edges，不产生 counter 节点。</p>
+
+  <table>
+    <tr><th>来源</th><th>机制</th><th>状态</th></tr>
+    <tr><td><strong>compile prompt</strong></td><td>在 compile prompt 中加一行指令：<code>如果材料中有与主流矛盾或反例的命题，编译为 kind=counter</code></td><td>🟢 最小改动，一行指令</td></tr>
+    <tr><td>contradiction.ts</td><td>当同一主题出现 3+ 条 contradicts edges → daemon 调用 LLM 合成 counter 节点</td><td>🟡 自进化未实现</td></tr>
+    <tr><td>inspire</td><td>人类触发 inspire → 发现隐藏矛盾 → 手动标记为 counter</td><td>✅ 人类可操作</td></tr>
+  </table>
+
+  <p><strong>优先方案：compile prompt。</strong>LLM 在读到材料时就能识别反方观点——比 daemon 事后从矛盾模式中合成更简单、更可靠。</p>
+</section>
+
+<!-- ═══════════════════════ 12 · Decisions ═══════════════════════ -->
+<section id="decisions">
+  <div class="section-head">
+    <div class="kicker">12 / Decisions</div>
+    <div><h2>架构决断表（12 项）</h2></div>
+  </div>
+
+  <table>
+    <tr><th>#</th><th>决断</th><th>内容</th></tr>
+    <tr><td>1</td><td>消灭 chunk 标记</td><td>chase 文件只用 prop 标记。无 chunk fallback。设计 §04 + 决策表 #6/#8</td></tr>
+    <tr><td>2</td><td>审计上下文用 prop 邻近窗口</td><td>±3 prop 窗口替代 chunk 选择——效果相同，不依赖 chunk 标记 <span class="badge badge-exists">已实现</span></td></tr>
+    <tr><td>3</td><td>compile 截断自适应</td><td>硬编码 12000 → 基于 maxTokens 反推安全输入上限（<code>compileInputBudget(maxTokens, 2.5)</code>） <span class="badge badge-exists">已实现</span></td></tr>
+    <tr><td>4</td><td>CLI 与 pipeline 统一配置</td><td>所有 LLM 调用用 config.model + thinkingDisabled: true</td></tr>
+    <tr><td>5</td><td>覆盖式 ingest + fingerprint 主键</td><td>同 fingerprint 旧节点先删再写。三层 fallback：fingerprint → sourceId → sourceChase</td></tr>
+    <tr><td>6</td><td>自进化的起点是 wiki</td><td>原材料 → wiki 是 bootstrap。daemon 不做自动 re-ingest</td></tr>
+    <tr><td>7</td><td>语义审计失败 = 警告放行</td><td>LLM judge 是主观的——不能用主观判断做硬关卡</td></tr>
+    <tr><td>8</td><td>三路搜索架构</td><td>qmd BM25 + qmd Vector + 自研 Graph → RRF 三路融合。Vector 路优雅降级：默认 keyword 后端无 Vector → 空 RankMap → 等效 BM25+Graph 两路（绝非 Vector=BM25 伪造三路）</td></tr>
+    <tr><td>9</td><td>qmd 不用 unified search()</td><td>要 searchLex + searchVector 原始排名——自己三路 RRF</td></tr>
+    <tr><td>10</td><td>简化 Board</td><td>只有 challenge（全量 counter）和 inspire（降阈值 cross-kind）需要 board 注入。ask 纯搜索</td></tr>
+    <tr><td>11</td><td>Counter 来自 compile prompt</td><td>LLM 读材料时主动提取反方观点——一行 prompt 指令</td></tr>
+    <tr><td>12</td><td>Pipeline 写 progress.md</td><td>contradict/reinforce 结果不再丢弃——复用 writeConfirmSection()</td></tr>
+  </table>
+</section>
+
+<!-- ═══════════════════════ 13 · Phases ═══════════════════════ -->
+<section id="phases">
+  <div class="section-head">
+    <div class="kicker">13 / Phases</div>
+    <div><h2>施工路线：三段式</h2></div>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid">
+flowchart TB
+  subgraph A["A 段 · 无外部依赖 · 立即启动"]
+    A1["Board 简化<br/>删除 ask/trace/expand/compare<br/>的强制注入逻辑"]
+    A2["Graph traversal<br/>walkGraph() + 边类型打分"]
+    A3["Counter 来源<br/>compile prompt 加 counter 提取"]
+    A4["Pipeline 写 progress.md<br/>contradict/reinforce 结果持久化"]
+    A5["Daemon 队列消费<br/>pendingAudit → runSemanticAudit"]
+  end
+
+  subgraph B["B 段 · 依赖 qmd 配置"]
+    B1["qmd collection add wiki/<br/>+ qmd embed"]
+    B2["QmdSearchProvider 重写<br/>searchLex + searchVector<br/>+ parseWikiFile 真节点"]
+  end
+
+  subgraph C["C 段 · 依赖 A+B"]
+    C1["RRF 三路融合<br/>agentmemory 公式"]
+    C2["SearchProvider 切换<br/>默认 keyword，可选 qmd"]
+  end
+
+  A --> B --> C
+    </pre>
+  </div>
+
+  <table>
+    <tr><th>段</th><th>任务</th><th>破坏性</th><th>验证</th></tr>
+    <tr>
+      <td><strong>A1</strong></td>
+      <td>Board 简化——删除 4 个 mode 的强制注入</td><td>🟡 中</td>
+      <td>query --mode ask 返回简洁答案；challenge 仍带 counter</td>
+    </tr>
+    <tr>
+      <td><strong>A2</strong></td>
+      <td>Graph traversal——新增 walkGraph()</td><td>🟢 低</td>
+      <td>1-hop 邻居被正确发现 + 打分</td>
+    </tr>
+    <tr>
+      <td><strong>A3</strong></td>
+      <td>Counter 来源——compile prompt</td><td>🟢 低</td>
+      <td>ingest → wiki/counters/ 非空</td>
+    </tr>
+    <tr>
+      <td><strong>A4</strong></td>
+      <td>Pipeline 写 progress.md</td><td>🟢 低</td>
+      <td>contradict/reinforce 候选出现于 progress.md</td>
+    </tr>
+    <tr>
+      <td><strong>A5</strong></td>
+      <td>Daemon 队列消费</td>
+      <td>🟡 中</td>
+      <td>pendingAudit 入队后实际触发 runSemanticAudit</td>
+    </tr>
+    <tr>
+      <td><strong>B1-2</strong></td>
+      <td>qmd 集成——collection + embed + SDK</td><td>🟡 中</td>
+      <td>qmd query 返回 wiki 节点</td>
+    </tr>
+    <tr>
+      <td><strong>C1-2</strong></td>
+      <td>RRF 融合——三路公式 + SearchProvider 切换</td><td>🟡 中</td>
+      <td>三路搜索结果优于单路 keyword</td>
+    </tr>
+  </table>
+
+  <div class="callout info">
+    <strong>A 段可以立即启动——不依赖任何外部工具。</strong>Board 简化、Graph traversal、Counter prompt、Pipeline 写 progress.md 都是纯代码改动。<br>
+    B 段需要一次 qmd 配置——<code>npm install @tobilu/qmd</code> + collection add/embed。<br>
+    C 段依赖 A+B 全部就绪——实现 RRF 融合公式。
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <p>架构设计 v2.0 · 2026-07-09<br>
+  基于 v1.0 设计 + architecture-decisions.html Q1–Q16 + advance_point1.html + qmd/agentmemory 源码分析<br>
+  12 项架构决断 · 三段施工路线 (A→B→C) · 所有 mermaid 图表通过 CDN 渲染</p>
+</footer>
+
+</div>
+</body>
+</html>

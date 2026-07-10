@@ -17,7 +17,7 @@
 
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import type { AppConfig, GraphEdge, WikiKind } from "../types.js";
+import type { AppConfig, GraphEdge, GraphEdgeType, ParsedWikiNode, WikiKind } from "../types.js";
 import { parseWikiContent } from "./wiki-parser.js";
 
 // ─── 类型 ──────────────────────────────────────────────────────────
@@ -46,87 +46,57 @@ export interface GraphStats {
 // ─── 构建 ──────────────────────────────────────────────────────────
 
 /**
- * 从 wiki 目录重建完整图谱。
+ * 从已 parse 的 wiki 节点构造 GraphData（不读文件）。
  *
- * 读取所有 wiki/*.md 文件，提取 frontmatter.edges，
- * 合并去重后返回完整的 GraphData。
- * 这是 graph.json 的唯一构建路径。
+ * Finding 7：抽出此函数让 board 能复用一次 collectAllNodes 的读取结果，
+ * 避免 buildGraph 和 collectAllNodes 各读一遍全量 wiki 文件。
  */
-export function buildGraph(config: AppConfig): GraphData {
+export function buildGraphFromParsed(parsedNodes: ParsedWikiNode[]): GraphData {
 	const nodes: GraphNode[] = [];
 	const allEdges: GraphEdge[] = [];
 	const nodeIds = new Set<string>();
 
-	const wikiDir = config.wikiDir;
-	const wikiDirs = [
-		"concepts",
-		"claims",
-		"methods",
-		"cases",
-		"equations",
-		"questions",
-		"insights",
-		"anchors",
-		"counters",
-	];
+	for (const parsed of parsedNodes) {
+		const fm = parsed.frontmatter;
+		if (!fm.nodeId) continue;
+		nodeIds.add(fm.nodeId);
 
-	for (const dir of wikiDirs) {
-		const dirPath = join(wikiDir, dir);
-		// readdirSync would throw if dir doesn't exist; skip silently
-		let files: string[];
-		try {
-			files = readdirSync(dirPath).filter((f: string) => f.endsWith(".md"));
-		} catch {
-			continue;
-		}
+		nodes.push({
+			nodeId: fm.nodeId,
+			kind: fm.kind ?? "concept",
+			title: fm.title ?? parsed.filePath,
+			filePath: parsed.filePath,
+		});
 
-		for (const file of files) {
-			const fullPath = join(dirPath, file);
-			let content: string;
-			try {
-				content = readFileSync(fullPath, "utf-8");
-			} catch {
-				continue;
-			}
-
-			const parsed = parseWikiContent(content, `wiki/${dir}/${file}`);
-			const fm = parsed.frontmatter;
-
-			if (!fm.nodeId) continue;
-			nodeIds.add(fm.nodeId);
-
-			nodes.push({
-				nodeId: fm.nodeId,
-				kind: fm.kind ?? "concept",
-				title: fm.title ?? file.replace(/\.md$/, ""),
-				filePath: `wiki/${dir}/${file}`,
-			});
-
-			// 收集该节点的 edges（JSON 字符串——YAML 解析器不支持嵌套对象）
-			const rawEdges = fm.edges;
-			if (rawEdges) {
-				let edgeList: GraphEdge[];
-				if (typeof rawEdges === "string") {
-					try {
-						edgeList = JSON.parse(rawEdges as string);
-					} catch {
-						continue;
-					}
-				} else if (Array.isArray(rawEdges)) {
-					edgeList = rawEdges as unknown as GraphEdge[];
-				} else {
+		// 收集该节点的 edges（JSON 字符串——YAML 解析器不支持嵌套对象）
+		const rawEdges = fm.edges;
+		if (rawEdges) {
+			let edgeList: GraphEdge[];
+			if (typeof rawEdges === "string") {
+				try {
+					edgeList = JSON.parse(rawEdges as string);
+				} catch {
 					continue;
 				}
-				for (const edge of edgeList) {
-					if (edge.from && edge.to && edge.type) {
-						allEdges.push({
-							from: edge.from,
-							to: edge.to,
-							type: edge.type,
-							confidence: edge.confidence,
-							source: edge.source,
-						});
-					}
+			} else if (Array.isArray(rawEdges)) {
+				edgeList = rawEdges as unknown as GraphEdge[];
+			} else {
+				continue;
+			}
+			for (const edge of edgeList) {
+				if (edge.from && edge.to && edge.type) {
+					// Finding 5：归一化旧边类型 relates_to → related
+					// （边类型统一为 related，防御外部/旧数据带 relates_to；
+					//  edge.type 运行时可能是任意字符串，故 as string 比较）
+					const rawType = edge.type as string;
+					const normalizedType = (rawType === "relates_to" ? "related" : rawType) as GraphEdgeType;
+					allEdges.push({
+						from: edge.from,
+						to: edge.to,
+						type: normalizedType,
+						confidence: edge.confidence,
+						source: edge.source,
+					});
 				}
 			}
 		}
@@ -146,6 +116,52 @@ export function buildGraph(config: AppConfig): GraphData {
 		nodes,
 		edges: [...edgeMap.values()],
 	};
+}
+
+/**
+ * 从 wiki 目录重建完整图谱。
+ *
+ * 读取所有 wiki/*.md 文件，提取 frontmatter.edges，
+ * 合并去重后返回完整的 GraphData。
+ * 这是 graph.json 的唯一构建路径。
+ */
+export function buildGraph(config: AppConfig): GraphData {
+	const wikiDir = config.wikiDir;
+	const wikiDirs = [
+		"concepts",
+		"claims",
+		"methods",
+		"cases",
+		"equations",
+		"questions",
+		"insights",
+		"anchors",
+		"counters",
+	];
+
+	const parsedNodes: ParsedWikiNode[] = [];
+	for (const dir of wikiDirs) {
+		const dirPath = join(wikiDir, dir);
+		let files: string[];
+		try {
+			files = readdirSync(dirPath).filter((f: string) => f.endsWith(".md"));
+		} catch {
+			continue;
+		}
+
+		for (const file of files) {
+			const fullPath = join(dirPath, file);
+			let content: string;
+			try {
+				content = readFileSync(fullPath, "utf-8");
+			} catch {
+				continue;
+			}
+			parsedNodes.push(parseWikiContent(content, `wiki/${dir}/${file}`));
+		}
+	}
+
+	return buildGraphFromParsed(parsedNodes);
 }
 
 // ─── 查询 ──────────────────────────────────────────────────────────
